@@ -1,0 +1,91 @@
+{
+  "selectedStoreId": "store-1",
+  "activePage": "store",
+  "riskSafetyMargin": 0,
+  "platformRules": {
+    "commissionRate": 4.8,
+    "minCommission": 0.96,
+    "baseDeliveryFee": 2.7,
+    "extraDeliveryFee": 0.05,
+    "midPriceRate": 0.13,
+    "highPriceRate": 0.15,
+    "freightWithin3": 2.7,
+    "freightWithin5": 4,
+    "freightAbove5": 5,
+    "profitTargets": [
+      { "enabled": true, "payMin": 10, "payMax": 15, "rateMin": 18, "rateMax": 26 },
+      { "enabled": true, "payMin": 15, "payMax": 25, "rateMin": 22, "rateMax": 32 },
+      { "enabled": true, "payMin": 25, "payMax": 40, "rateMin": 28, "rateMax": 40 }
+    ],
+    "redTiers": {
+      "meituan": [
+        { "enabled": true, "threshold": 15, "min": 2, "max": 4 },
+        { "enabled": true, "threshold": 20, "min": 3, "max": 6 },
+        { "enabled": true, "threshold": 30, "min": 5, "max": 8 }
+      ],
+      "eleme": [
+        { "enabled": true, "threshold": 15, "min": 1.5, "max": 3.5 },
+        { "enabled": true, "threshold": 20, "min": 2, "max": 5 },
+        { "enabled": true, "threshold": 30, "min": 4, "max": 7 }
+      ]
+    }
+  },
+  "stores": [
+    {
+      "id": "store-1",
+      "name": "示例门店",
+      "startPrice": 20,
+      "deliveryDistance": 3,
+      "orderTime": "12:00",
+      "maxItems": 4,
+      "maxQtyPerSku": 2,
+      "maxCoupons": 1,
+      "maxDiscountItems": "",
+      "maxChecks": 250000,
+      "usePlatformFee": true,
+      "customFeeRule": null,
+      "usePlatformTargets": true,
+      "profitTargets": [],
+      "products": [
+        { "id": "p1", "name": "海鸭蛋和风饭团", "price": 15, "cost": 6, "meituanPrice": "", "elemePrice": "", "nonStandalone": false },
+        { "id": "p2", "name": "照烧鸡排饭团", "price": 16, "cost": 6.5, "meituanPrice": "", "elemePrice": "", "nonStandalone": false },
+        { "id": "p3", "name": "九州金枪鱼饭团", "price": 16, "cost": 6.5, "meituanPrice": "", "elemePrice": "", "nonStandalone": false },
+        { "id": "p4", "name": "酥香肉松饭团", "price": 8.9, "cost": 3.2, "meituanPrice": "", "elemePrice": "", "nonStandalone": false },
+        { "id": "p5", "name": "醇香豆浆", "price": 3, "cost": 1, "meituanPrice": "", "elemePrice": "", "nonStandalone": true },
+        { "id": "p6", "name": "茶叶蛋", "price": 2, "cost": 0.8, "meituanPrice": "", "elemePrice": "", "nonStandalone": true }
+      ],
+      "activities": {
+        "meituan": {
+          "fullReductions": [
+            { "enabled": true, "threshold": 25, "amount": 3 },
+            { "enabled": true, "threshold": 35, "amount": 6 }
+          ],
+          "coupons": [
+            { "enabled": true, "name": "美团店铺券", "threshold": 20, "amount": 3 }
+          ],
+          "redAddOns": [
+            { "enabled": true, "threshold": 20, "amount": 1 }
+          ],
+          "discountActivities": [
+            { "enabled": true, "name": "美团饭团折扣", "productNames": "饭团", "discountRate": 8.8, "itemLimit": "" }
+          ]
+        },
+        "eleme": {
+          "fullReductions": [
+            { "enabled": true, "threshold": 25, "amount": 3 },
+            { "enabled": true, "threshold": 35, "amount": 6 }
+          ],
+          "coupons": [
+            { "enabled": true, "name": "饿了么店铺券", "threshold": 20, "amount": 3 }
+          ],
+          "redAddOns": [
+            { "enabled": true, "threshold": 20, "amount": 1 }
+          ],
+          "discountActivities": [
+            { "enabled": true, "name": "饿了么饭团折扣", "productNames": "饭团", "discountRate": 8.8, "itemLimit": "" }
+          ]
+        }
+      }
+    }
+  ]
+}
