@@ -11,15 +11,23 @@
     meituan: {
       name: '美团',
       priceField: 'meituanPrice',
+      enabledField: 'meituanEnabled',
       nameHeaders: ['商品名称', '商品名', '名称'],
-      priceHeaders: ['外送价', '美团价', '售价', '价格(元)', '价格']
+      priceHeaders: ['外送价', '美团价', '售价', '价格(元)', '价格'],
+      statusHeaders: ['售卖状态', '上下架', '上架状态']
     },
     eleme: {
       name: '饿了么',
       priceField: 'elemePrice',
+      enabledField: 'elemeEnabled',
       nameHeaders: ['商品名称', '商品名', '名称'],
-      priceHeaders: ['价格(元)', '饿了么价', '外送价', '售价', '价格']
+      priceHeaders: ['价格(元)', '饿了么价', '外送价', '售价', '价格'],
+      statusHeaders: []
     }
+  };
+  const COST_IMPORT_RULE = {
+    nameHeaders: ['商品名称', '商品名', '名称', '菜品名称', '产品名称'],
+    costHeaders: ['成本价', '成本', '商品成本', '成本(元)', '成本价格', '采购价']
   };
   const TRUE_VALUES = new Set(['1','true','yes','y','on','是','有','启用','单点不送','不可单点']);
   const FALSE_VALUES = new Set(['0','false','no','n','off','否','无','不','停用','关闭']);
@@ -76,12 +84,12 @@
         usePlatformTargets: true,
         profitTargets: [],
         products: [
-          { id:'p1', name:'海鸭蛋和风饭团', price:15, cost:6, meituanPrice:'', elemePrice:'', nonStandalone:false },
-          { id:'p2', name:'照烧鸡排饭团', price:16, cost:6.5, meituanPrice:'', elemePrice:'', nonStandalone:false },
-          { id:'p3', name:'九州金枪鱼饭团', price:16, cost:6.5, meituanPrice:'', elemePrice:'', nonStandalone:false },
-          { id:'p4', name:'酥香肉松饭团', price:8.9, cost:3.2, meituanPrice:'', elemePrice:'', nonStandalone:false },
-          { id:'p5', name:'醇香豆浆', price:3, cost:1, meituanPrice:'', elemePrice:'', nonStandalone:true },
-          { id:'p6', name:'茶叶蛋', price:2, cost:0.8, meituanPrice:'', elemePrice:'', nonStandalone:true }
+          { id:'p1', name:'海鸭蛋和风饭团', price:15, cost:6, meituanPrice:'', elemePrice:'', meituanEnabled:true, elemeEnabled:true, nonStandalone:false },
+          { id:'p2', name:'照烧鸡排饭团', price:16, cost:6.5, meituanPrice:'', elemePrice:'', meituanEnabled:true, elemeEnabled:true, nonStandalone:false },
+          { id:'p3', name:'九州金枪鱼饭团', price:16, cost:6.5, meituanPrice:'', elemePrice:'', meituanEnabled:true, elemeEnabled:true, nonStandalone:false },
+          { id:'p4', name:'酥香肉松饭团', price:8.9, cost:3.2, meituanPrice:'', elemePrice:'', meituanEnabled:true, elemeEnabled:true, nonStandalone:false },
+          { id:'p5', name:'醇香豆浆', price:3, cost:1, meituanPrice:'', elemePrice:'', meituanEnabled:true, elemeEnabled:true, nonStandalone:true },
+          { id:'p6', name:'茶叶蛋', price:2, cost:0.8, meituanPrice:'', elemePrice:'', meituanEnabled:true, elemeEnabled:true, nonStandalone:true }
         ],
         activities: {
           meituan: makeDefaultActivities('美团'),
@@ -97,6 +105,7 @@
   let lastRiskWarnings = [];
   let resultSort = { key:'finalPay', dir:'asc' };
   let optimizationSort = { key:'score', dir:'asc' };
+  let pendingModalAction = null;
 
   function makeDefaultActivities(prefix){
     return {
@@ -346,6 +355,8 @@
         <td><input data-field="cost" type="number" step="0.01" value="${p.cost}" /></td>
         <td><input data-field="meituanPrice" type="number" step="0.01" value="${p.meituanPrice ?? ''}" placeholder="空=销售价" /></td>
         <td><input data-field="elemePrice" type="number" step="0.01" value="${p.elemePrice ?? ''}" placeholder="空=销售价" /></td>
+        <td class="center"><input data-field="meituanEnabled" type="checkbox" ${isProductListedOnPlatform(p, 'meituan') ? 'checked' : ''} /></td>
+        <td class="center"><input data-field="elemeEnabled" type="checkbox" ${isProductListedOnPlatform(p, 'eleme') ? 'checked' : ''} /></td>
         <td class="center"><input data-field="nonStandalone" type="checkbox" ${p.nonStandalone ? 'checked' : ''} /></td>
         <td><button class="tiny danger" data-remove="products" data-index="${index}">删</button></td>
       </tr>
@@ -511,6 +522,8 @@
         cost: Math.max(0, toMoneyNumber(row.cost, 0)),
         meituanPrice: normalizeOptionalPrice(row.meituanPrice),
         elemePrice: normalizeOptionalPrice(row.elemePrice),
+        meituanEnabled: parseBoolean(row.meituanEnabled, true),
+        elemeEnabled: parseBoolean(row.elemeEnabled, true),
         nonStandalone: parseBoolean(row.nonStandalone)
       };
     }).filter(Boolean);
@@ -625,6 +638,19 @@
     render();
   }
 
+  function confirmProductRemoval(index){
+    readAllForms();
+    const product = currentStore().products[index];
+    if(!product) return;
+    showConfirmDialog({
+      title: '删除商品',
+      body: `确定删除「${product.name}」吗？\n删除后当前门店的该商品价格、成本和上下架状态都会移除。`,
+      confirmText: '删除',
+      danger: true,
+      onConfirm: () => removeRow('products', index)
+    });
+  }
+
   function resolveCollection(type, store){
     const map = {
       products: store.products,
@@ -646,7 +672,7 @@
   }
 
   function makeNewRow(type){
-    if(type === 'products') return { id:uid('p'), name:'新商品', price:0, cost:0, meituanPrice:'', elemePrice:'', nonStandalone:false };
+    if(type === 'products') return { id:uid('p'), name:'新商品', price:0, cost:0, meituanPrice:'', elemePrice:'', meituanEnabled:true, elemeEnabled:true, nonStandalone:false };
     if(type.endsWith('Targets')) return { enabled:true, payMin:0, payMax:20, rateMin:20, rateMax:30 };
     if(type.endsWith('BaseRed')) return { enabled:true, threshold:0, min:0, max:0 };
     if(type.endsWith('-full')) return { enabled:true, threshold:0, amount:0 };
@@ -753,9 +779,14 @@
     const items = [];
     let originalTotal = 0;
     let costTotal = 0;
+    let hasUnlistedProduct = false;
     store.products.forEach((product, index) => {
       const qty = qtys[index] || 0;
       if(qty <= 0) return;
+      if(!isProductListedOnPlatform(product, platform)){
+        hasUnlistedProduct = true;
+        return;
+      }
       const price = platformPrice(product, platform);
       const cost = Number(product.cost) || 0;
       originalTotal += price * qty;
@@ -765,6 +796,9 @@
         units.push({ product, price, discount:0, activityName:'' });
       }
     });
+    if(hasUnlistedProduct){
+      return { items:[], originalTotal:0, costTotal:0, productDiscount:0, afterProductDiscount:0 };
+    }
     const discount = applyProductDiscounts(units, store.activities[platform].discountActivities, store.maxDiscountItems);
     return {
       items,
@@ -773,6 +807,11 @@
       productDiscount: roundMoney(discount),
       afterProductDiscount: roundMoney(originalTotal - discount)
     };
+  }
+
+  function isProductListedOnPlatform(product, platform){
+    const field = PLATFORM_PRODUCT_IMPORT_RULES[platform]?.enabledField;
+    return !field || product[field] !== false;
   }
 
   function platformPrice(product, platform){
@@ -1400,7 +1439,7 @@
 
   function downloadCsv(filename, rows){
     if(!rows.length){
-      alert('没有可导出的结果。');
+      showMessageDialog('无法导出', '没有可导出的结果。');
       return;
     }
     const headers = Object.keys(rows[0]);
@@ -1454,7 +1493,9 @@
         cost: fields[2],
         meituanPrice: fields[3],
         elemePrice: fields[4],
-        nonStandalone: fields[5]
+        nonStandalone: fields[5],
+        meituanEnabled: fields[6],
+        elemeEnabled: fields[7]
       };
       const product = normalizeImportedProduct(row);
       if(product) products.push(product);
@@ -1496,6 +1537,8 @@
       成本价:'cost', 成本:'cost', cost:'cost',
       美团价:'meituanPrice', 美团价格:'meituanPrice', meituanprice:'meituanPrice',
       饿了么价:'elemePrice', 饿了么价格:'elemePrice', elemeprice:'elemePrice',
+      美团上架:'meituanEnabled', 美团上下架:'meituanEnabled', 美团售卖状态:'meituanEnabled', 美团状态:'meituanEnabled', meituanenabled:'meituanEnabled',
+      饿了么上架:'elemeEnabled', 饿了么上下架:'elemeEnabled', 饿了么售卖状态:'elemeEnabled', 饿了么状态:'elemeEnabled', elemeenabled:'elemeEnabled',
       单点不送:'nonStandalone', 不可单点:'nonStandalone', nonstandalone:'nonStandalone'
     };
     return map[text] || text;
@@ -1519,8 +1562,18 @@
       cost: Math.max(0, toMoneyNumber(row.cost, 0)),
       meituanPrice: normalizeOptionalPrice(row.meituanPrice),
       elemePrice: normalizeOptionalPrice(row.elemePrice),
+      meituanEnabled: parseProductStatus(row.meituanEnabled, true),
+      elemeEnabled: parseProductStatus(row.elemeEnabled, true),
       nonStandalone: parseBoolean(row.nonStandalone)
     };
+  }
+
+  function parseProductStatus(value, fallback=true){
+    const text = String(value ?? '').trim();
+    if(text === '') return fallback;
+    if(/暂停|停售|下架|关闭|停用|不可售|未售/.test(text)) return false;
+    if(/售卖中|上架|在售|启用|开启/.test(text)) return true;
+    return parseBoolean(text, fallback);
   }
 
   function importPlatformProductsFile(file, platform, inputEl){
@@ -1528,7 +1581,7 @@
     const rule = PLATFORM_PRODUCT_IMPORT_RULES[platform];
     if(!rule) return;
     if(!window.XLSX){
-      alert('Excel 解析组件未加载，请刷新页面后重试。');
+      showMessageDialog('导入失败', 'Excel 解析组件未加载，请刷新页面后重试。');
       if(inputEl) inputEl.value = '';
       return;
     }
@@ -1539,7 +1592,7 @@
         const workbook = window.XLSX.read(reader.result, { type:'array', cellDates:false });
         const parsed = parsePlatformProductWorkbook(workbook, platform);
         if(!parsed.products.length){
-          alert(`没有识别到有效${rule.name}商品，请确认表格包含商品名称和价格列。`);
+          showMessageDialog('导入失败', `没有识别到有效${rule.name}商品，请确认表格包含商品名称和价格列。`);
           return;
         }
 
@@ -1547,16 +1600,16 @@
         const report = mergePlatformProducts(parsed.products, platform);
         clearCalculatedState();
         render();
-        alert(formatPlatformImportMessage(rule, report, parsed));
+        showMessageDialog(`${rule.name}商品导入完成`, formatPlatformImportMessage(rule, report, parsed));
       }catch(error){
-        alert(`导入${rule.name}商品表失败，请确认文件是平台导出的商品表。`);
+        showMessageDialog('导入失败', `导入${rule.name}商品表失败，请确认文件是平台导出的商品表。`);
         console.error(error);
       }finally{
         if(inputEl) inputEl.value = '';
       }
     };
     reader.onerror = () => {
-      alert('读取文件失败，请重新选择文件。');
+      showMessageDialog('读取失败', '读取文件失败，请重新选择文件。');
       if(inputEl) inputEl.value = '';
     };
     reader.readAsArrayBuffer(file);
@@ -1570,10 +1623,12 @@
     const rows = window.XLSX.utils.sheet_to_json(sheet, { header:1, defval:'', raw:false });
     const header = findPlatformProductHeader(rows, rule);
     if(!header) throw new Error('没有找到商品名称或价格列');
+    const statusIndex = findImportColumnIndex(rows[header.rowIndex] || [], rule.statusHeaders || []);
 
     const productsByName = new Map();
     let skipped = 0;
     let duplicated = 0;
+    let disabled = 0;
     rows.slice(header.rowIndex + 1).forEach(row => {
       const rawName = String(row[header.nameIndex] ?? '').trim();
       const price = toMoneyNumber(row[header.priceIndex], NaN);
@@ -1584,14 +1639,17 @@
 
       const name = normalizeImportedProductName(rawName);
       const key = normalizeProductMatchName(name);
+      const platformEnabled = statusIndex >= 0 ? parseProductStatus(row[statusIndex], true) : undefined;
+      if(platformEnabled === false) disabled++;
       if(productsByName.has(key)) duplicated++;
-      productsByName.set(key, { name, price });
+      productsByName.set(key, { name, price, platformEnabled });
     });
 
     return {
       products: Array.from(productsByName.values()),
       skipped,
       duplicated,
+      disabled,
       sheetName,
       headerRow: header.rowIndex + 1
     };
@@ -1609,6 +1667,7 @@
   }
 
   function findImportColumnIndex(row, candidates){
+    if(!candidates.length) return -1;
     const cells = row.map(normalizeImportHeader);
     const normalizedCandidates = candidates.map(normalizeImportHeader);
     for(const candidate of normalizedCandidates){
@@ -1665,8 +1724,11 @@
       const existing = productMap.get(key);
       if(existing){
         const oldValue = normalizeOptionalPrice(existing[rule.priceField]);
+        const oldEnabled = isProductListedOnPlatform(existing, platform);
         existing[rule.priceField] = item.price;
-        if(oldValue === item.price) unchanged++;
+        if(item.platformEnabled !== undefined) existing[rule.enabledField] = item.platformEnabled;
+        const enabledChanged = item.platformEnabled !== undefined && oldEnabled !== item.platformEnabled;
+        if(oldValue === item.price && !enabledChanged) unchanged++;
         else updated++;
         return;
       }
@@ -1678,9 +1740,12 @@
         cost: 0,
         meituanPrice: '',
         elemePrice: '',
+        meituanEnabled: true,
+        elemeEnabled: true,
         nonStandalone: false
       };
       product[rule.priceField] = item.price;
+      if(item.platformEnabled !== undefined) product[rule.enabledField] = item.platformEnabled;
       store.products.push(product);
       productMap.set(key, product);
       added++;
@@ -1694,29 +1759,175 @@
       `已导入${rule.name}商品表：识别 ${report.total} 个商品，更新 ${report.updated} 个，新增 ${report.added} 个，未变化 ${report.unchanged} 个。`
     ];
     if(parsed.duplicated) lines.push(`发现 ${parsed.duplicated} 个重复商品名，已按表格最后一条价格生效。`);
+    if(parsed.disabled) lines.push(`其中 ${parsed.disabled} 个商品为下架或暂停售卖状态。`);
     if(parsed.skipped) lines.push(`跳过 ${parsed.skipped} 行无效或无价格数据。`);
     return lines.join('\n');
+  }
+
+  function importCostProductsFile(file, inputEl){
+    if(!file) return;
+    if(!window.XLSX){
+      showMessageDialog('导入失败', 'Excel 解析组件未加载，请刷新页面后重试。');
+      if(inputEl) inputEl.value = '';
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = () => {
+      try{
+        const workbook = window.XLSX.read(reader.result, { type:'array', cellDates:false });
+        const parsed = parseCostWorkbook(workbook);
+        if(!parsed.costs.length){
+          showMessageDialog('导入失败', '没有识别到有效成本数据，请确认表格包含商品名称和成本价列。');
+          return;
+        }
+
+        readAllForms();
+        const report = mergeProductCosts(parsed.costs);
+        clearCalculatedState();
+        render();
+        showMessageDialog('成本导入完成', formatCostImportMessage(report, parsed));
+      }catch(error){
+        showMessageDialog('导入失败', '导入成本表失败，请确认文件是 Excel 表格，并包含商品名称和成本价列。');
+        console.error(error);
+      }finally{
+        if(inputEl) inputEl.value = '';
+      }
+    };
+    reader.onerror = () => {
+      showMessageDialog('读取失败', '读取文件失败，请重新选择文件。');
+      if(inputEl) inputEl.value = '';
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function parseCostWorkbook(workbook){
+    const sheetName = workbook.SheetNames[0];
+    if(!sheetName) throw new Error('工作簿没有可读取的工作表');
+    const sheet = workbook.Sheets[sheetName];
+    const rows = window.XLSX.utils.sheet_to_json(sheet, { header:1, defval:'', raw:false });
+    const header = findCostHeader(rows);
+    if(!header) throw new Error('没有找到商品名称或成本价列');
+
+    const costsByName = new Map();
+    let skipped = 0;
+    let duplicated = 0;
+    rows.slice(header.rowIndex + 1).forEach(row => {
+      const rawName = String(row[header.nameIndex] ?? '').trim();
+      const cost = toMoneyNumber(row[header.costIndex], NaN);
+      if(!rawName || !Number.isFinite(cost) || cost < 0){
+        if(rowHasText(row)) skipped++;
+        return;
+      }
+
+      const name = normalizeImportedProductName(rawName);
+      const key = normalizeProductMatchName(name);
+      if(costsByName.has(key)) duplicated++;
+      costsByName.set(key, { name, cost:roundMoney(cost) });
+    });
+
+    return {
+      costs: Array.from(costsByName.values()),
+      skipped,
+      duplicated,
+      sheetName,
+      headerRow: header.rowIndex + 1
+    };
+  }
+
+  function findCostHeader(rows){
+    const limit = Math.min(rows.length, 50);
+    for(let rowIndex = 0; rowIndex < limit; rowIndex++){
+      const row = rows[rowIndex] || [];
+      const nameIndex = findImportColumnIndex(row, COST_IMPORT_RULE.nameHeaders);
+      const costIndex = findImportColumnIndex(row, COST_IMPORT_RULE.costHeaders);
+      if(nameIndex >= 0 && costIndex >= 0) return { rowIndex, nameIndex, costIndex };
+    }
+    return null;
+  }
+
+  function mergeProductCosts(costs){
+    const store = currentStore();
+    const productMap = new Map(store.products.map(product => [
+      normalizeProductMatchName(product.name),
+      product
+    ]));
+    let updated = 0;
+    let unchanged = 0;
+    let unmatched = 0;
+
+    costs.forEach(item => {
+      const product = productMap.get(normalizeProductMatchName(item.name));
+      if(!product){
+        unmatched++;
+        return;
+      }
+      const oldCost = roundMoney(product.cost);
+      product.cost = item.cost;
+      if(oldCost === item.cost) unchanged++;
+      else updated++;
+    });
+
+    return { total:costs.length, updated, unchanged, unmatched };
+  }
+
+  function formatCostImportMessage(report, parsed){
+    const lines = [
+      `识别 ${report.total} 条成本数据，更新 ${report.updated} 个商品，未变化 ${report.unchanged} 个，未匹配 ${report.unmatched} 个。`
+    ];
+    if(parsed.duplicated) lines.push(`发现 ${parsed.duplicated} 个重复商品名，已按表格最后一条成本生效。`);
+    if(parsed.skipped) lines.push(`跳过 ${parsed.skipped} 行无效或无成本数据。`);
+    return lines.join('\n');
+  }
+
+  function showConfirmDialog(options){
+    pendingModalAction = typeof options.onConfirm === 'function' ? options.onConfirm : null;
+    $('#appModalTitle').textContent = options.title || '确认操作';
+    $('#appModalBody').textContent = options.body || '';
+    $('#appModalCancel').style.display = '';
+    $('#appModalCancel').textContent = options.cancelText || '取消';
+    const confirmBtn = $('#appModalConfirm');
+    confirmBtn.textContent = options.confirmText || '确认';
+    confirmBtn.className = options.danger ? 'danger' : 'primary';
+    $('#appModal').classList.remove('hidden');
+  }
+
+  function showMessageDialog(title, body){
+    pendingModalAction = null;
+    $('#appModalTitle').textContent = title || '提示';
+    $('#appModalBody').textContent = body || '';
+    $('#appModalCancel').style.display = 'none';
+    const confirmBtn = $('#appModalConfirm');
+    confirmBtn.textContent = '知道了';
+    confirmBtn.className = 'primary';
+    $('#appModal').classList.remove('hidden');
+  }
+
+  function hideAppModal(){
+    pendingModalAction = null;
+    $('#appModal').classList.add('hidden');
+    $('#appModalCancel').style.display = '';
   }
 
   function saveState(){
     readAllForms();
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    alert('已保存到当前浏览器。');
+    showMessageDialog('保存成功', '已保存到当前浏览器。');
   }
 
   function loadState(){
     const raw = localStorage.getItem(STORAGE_KEY);
     if(!raw){
-      alert('当前浏览器没有保存过新版配置。');
+      showMessageDialog('没有保存数据', '当前浏览器没有保存过新版配置。');
       return;
     }
     try{
       state = normalizeState(JSON.parse(raw));
       clearCalculatedState();
       render();
-      alert('已读取保存配置。');
+      showMessageDialog('读取成功', '已读取保存配置。');
     }catch(error){
-      alert('读取失败，保存数据可能已损坏。');
+      showMessageDialog('读取失败', '保存数据可能已损坏。');
       console.error(error);
     }
   }
@@ -1752,9 +1963,9 @@
         state = normalizeState(JSON.parse(reader.result));
         clearCalculatedState();
         render();
-        alert('配置已导入。');
+        showMessageDialog('导入成功', '配置已导入。');
       }catch(error){
-        alert('导入失败，请确认是新版配置 JSON。');
+        showMessageDialog('导入失败', '请确认是新版配置 JSON。');
         console.error(error);
       }
     };
@@ -1762,15 +1973,22 @@
   }
 
   function resetState(){
-    if(!confirm('确定恢复示例配置吗？当前未保存的修改会丢失。')) return;
-    state = deepClone(defaultState);
-    lastResults = [];
-    lastOptimizations = [];
-    lastRiskWarnings = [];
-    render();
-    renderResults([], 0, 0, 0);
-    renderOptimizations([]);
-    renderRiskWarnings([]);
+    showConfirmDialog({
+      title: '恢复示例',
+      body: '确定恢复示例配置吗？当前未保存的修改会丢失。',
+      confirmText: '恢复',
+      danger: true,
+      onConfirm: () => {
+        state = deepClone(defaultState);
+        lastResults = [];
+        lastOptimizations = [];
+        lastRiskWarnings = [];
+        render();
+        renderResults([], 0, 0, 0);
+        renderOptimizations([]);
+        renderRiskWarnings([]);
+      }
+    });
   }
 
   function addStore(){
@@ -1800,14 +2018,22 @@
 
   function deleteStore(){
     if(state.stores.length <= 1){
-      alert('至少保留一个门店。');
+      showMessageDialog('无法删除', '至少保留一个门店。');
       return;
     }
-    if(!confirm(`确定删除门店「${currentStore().name}」吗？`)) return;
-    state.stores = state.stores.filter(store => store.id !== state.selectedStoreId);
-    state.selectedStoreId = state.stores[0].id;
-    clearCalculatedState();
-    render();
+    const storeName = currentStore().name;
+    showConfirmDialog({
+      title: '删除门店',
+      body: `确定删除门店「${storeName}」吗？\n该门店的商品、平台活动和测算配置都会移除。`,
+      confirmText: '删除',
+      danger: true,
+      onConfirm: () => {
+        state.stores = state.stores.filter(store => store.id !== state.selectedStoreId);
+        state.selectedStoreId = state.stores[0].id;
+        clearCalculatedState();
+        render();
+      }
+    });
   }
 
   function clearCalculatedState(){
@@ -1839,7 +2065,13 @@
       }
       const remove = event.target.closest('[data-remove]');
       if(remove){
-        removeRow(remove.dataset.remove, Number(remove.dataset.index));
+        const type = remove.dataset.remove;
+        const index = Number(remove.dataset.index);
+        if(type === 'products'){
+          confirmProductRemoval(index);
+          return;
+        }
+        removeRow(type, index);
         return;
       }
       const sortHeader = event.target.closest('[data-sort]');
@@ -1892,6 +2124,7 @@
     $('#productCsvFile').addEventListener('change', event => importProductsFile(event.target.files[0]));
     $('#meituanProductExcelFile').addEventListener('change', event => importPlatformProductsFile(event.target.files[0], 'meituan', event.target));
     $('#elemeProductExcelFile').addEventListener('change', event => importPlatformProductsFile(event.target.files[0], 'eleme', event.target));
+    $('#costExcelFile').addEventListener('change', event => importCostProductsFile(event.target.files[0], event.target));
     $('#runResultsBtn').addEventListener('click', runCalculation);
     $('#runOptimizeBtn').addEventListener('click', runOptimization);
     $('#exportResultsBtn').addEventListener('click', exportResultsCsv);
@@ -1901,6 +2134,16 @@
       renderResults(lastResults, Number($('#comboCount').textContent) || 0, Number($('#validComboCount').textContent) || 0, null);
     });
     $('#riskSafetyMargin').addEventListener('change', runRiskWarnings);
+    $('#appModalCancel').addEventListener('click', hideAppModal);
+    $('#appModalClose').addEventListener('click', hideAppModal);
+    $('#appModalConfirm').addEventListener('click', () => {
+      const action = pendingModalAction;
+      hideAppModal();
+      if(action) action();
+    });
+    $('#appModal').addEventListener('click', event => {
+      if(event.target.id === 'appModal') hideAppModal();
+    });
   }
 
   function nextSort(current, key){
@@ -1911,14 +2154,27 @@
     readAllForms();
     const products = parseProducts($('#productBulkText').value);
     if(!products.length){
-      alert('没有识别到有效商品。');
+      showMessageDialog('无法导入', '没有识别到有效商品。');
       return;
     }
-    if(mode === 'replace' && !confirm(`确定用 ${products.length} 个商品替换当前门店商品吗？`)) return;
-    const store = currentStore();
-    store.products = mode === 'replace' ? products : store.products.concat(products);
-    $('#productBulkText').value = '';
-    render();
+    const applyProducts = () => {
+      const store = currentStore();
+      store.products = mode === 'replace' ? products : store.products.concat(products);
+      $('#productBulkText').value = '';
+      clearCalculatedState();
+      render();
+    };
+    if(mode === 'replace'){
+      showConfirmDialog({
+        title: '替换商品',
+        body: `确定用 ${products.length} 个商品替换当前门店商品吗？\n当前门店原商品会被移除。`,
+        confirmText: '替换',
+        danger: true,
+        onConfirm: applyProducts
+      });
+      return;
+    }
+    applyProducts();
   }
 
   function importProductsFile(file){
@@ -1927,13 +2183,14 @@
     reader.onload = () => {
       const products = parseProducts(reader.result);
       if(!products.length){
-        alert('没有识别到有效商品。');
+        showMessageDialog('无法导入', '没有识别到有效商品。');
         return;
       }
       readAllForms();
       currentStore().products = currentStore().products.concat(products);
+      clearCalculatedState();
       render();
-      alert(`已导入 ${products.length} 个商品。`);
+      showMessageDialog('商品导入完成', `已导入 ${products.length} 个商品。`);
     };
     reader.readAsText(file, 'utf-8');
   }

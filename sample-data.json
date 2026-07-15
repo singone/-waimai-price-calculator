@@ -47,12 +47,12 @@
       "usePlatformTargets": true,
       "profitTargets": [],
       "products": [
-        { "id": "p1", "name": "海鸭蛋和风饭团", "price": 15, "cost": 6, "meituanPrice": "", "elemePrice": "", "nonStandalone": false },
-        { "id": "p2", "name": "照烧鸡排饭团", "price": 16, "cost": 6.5, "meituanPrice": "", "elemePrice": "", "nonStandalone": false },
-        { "id": "p3", "name": "九州金枪鱼饭团", "price": 16, "cost": 6.5, "meituanPrice": "", "elemePrice": "", "nonStandalone": false },
-        { "id": "p4", "name": "酥香肉松饭团", "price": 8.9, "cost": 3.2, "meituanPrice": "", "elemePrice": "", "nonStandalone": false },
-        { "id": "p5", "name": "醇香豆浆", "price": 3, "cost": 1, "meituanPrice": "", "elemePrice": "", "nonStandalone": true },
-        { "id": "p6", "name": "茶叶蛋", "price": 2, "cost": 0.8, "meituanPrice": "", "elemePrice": "", "nonStandalone": true }
+        { "id": "p1", "name": "海鸭蛋和风饭团", "price": 15, "cost": 6, "meituanPrice": "", "elemePrice": "", "meituanEnabled": true, "elemeEnabled": true, "nonStandalone": false },
+        { "id": "p2", "name": "照烧鸡排饭团", "price": 16, "cost": 6.5, "meituanPrice": "", "elemePrice": "", "meituanEnabled": true, "elemeEnabled": true, "nonStandalone": false },
+        { "id": "p3", "name": "九州金枪鱼饭团", "price": 16, "cost": 6.5, "meituanPrice": "", "elemePrice": "", "meituanEnabled": true, "elemeEnabled": true, "nonStandalone": false },
+        { "id": "p4", "name": "酥香肉松饭团", "price": 8.9, "cost": 3.2, "meituanPrice": "", "elemePrice": "", "meituanEnabled": true, "elemeEnabled": true, "nonStandalone": false },
+        { "id": "p5", "name": "醇香豆浆", "price": 3, "cost": 1, "meituanPrice": "", "elemePrice": "", "meituanEnabled": true, "elemeEnabled": true, "nonStandalone": true },
+        { "id": "p6", "name": "茶叶蛋", "price": 2, "cost": 0.8, "meituanPrice": "", "elemePrice": "", "meituanEnabled": true, "elemeEnabled": true, "nonStandalone": true }
       ],
       "activities": {
         "meituan": {

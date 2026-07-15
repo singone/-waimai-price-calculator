@@ -1,0 +1,250 @@
+:root {
+  --bg: #f5f2ed;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: #221f1b;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", Arial, sans-serif;
+}
+
+.ant-layout {
+  min-height: 100vh;
+  min-width: 0;
+}
+
+.app-shell {
+  min-height: 100vh;
+  min-width: 0;
+  background: #f5f2ed;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 16px 20px;
+  background: #fff;
+  border-bottom: 1px solid #eadfd2;
+}
+
+.app-title {
+  margin: 0;
+  font-size: 22px;
+  line-height: 1.2;
+}
+
+.app-subtitle {
+  margin: 4px 0 0;
+  color: #746b60;
+}
+
+.app-content {
+  min-width: 0;
+  max-width: 100%;
+  overflow-x: hidden;
+  padding: 16px;
+}
+
+.side-menu {
+  border-inline-end: 1px solid #eadfd2 !important;
+}
+
+.section-stack {
+  display: grid;
+  gap: 16px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.section-stack > .ant-card,
+.section-stack .ant-card-body,
+.section-stack .ant-table-wrapper {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.section-stack .ant-table-wrapper {
+  overflow: hidden;
+}
+
+.field {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.field > .ant-typography {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.field .ant-input,
+.field .ant-input-number,
+.field .ant-picker,
+.field .ant-select {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: 100%;
+}
+
+.field-value {
+  min-height: 32px;
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  padding: 4px 0;
+  color: #221f1b;
+  font-weight: 500;
+  word-break: break-word;
+}
+
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.muted {
+  color: #746b60;
+}
+
+.table-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
+.table-metric-stack {
+  display: grid;
+  gap: 2px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.table-link-wrap.ant-btn-link {
+  display: inline-block;
+  max-width: 100%;
+  height: auto;
+  min-height: 22px;
+  padding: 0;
+  line-height: 1.45;
+  text-align: left;
+  white-space: normal;
+}
+
+.table-link-wrap.ant-btn-link > span,
+.table-text-wrap {
+  display: block;
+  max-width: 100%;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  line-height: 1.45;
+}
+
+.draggable-modal-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding-right: 28px;
+  cursor: move;
+  user-select: none;
+}
+
+.cost-analysis-modal .ant-modal-body {
+  max-height: min(72vh, 760px);
+  overflow: auto;
+}
+
+.cost-analysis-modal {
+  max-width: calc(100vw - 24px);
+}
+
+.cost-analysis-modal .ant-card,
+.cost-analysis-modal .ant-card-body {
+  min-width: 0;
+}
+
+.cost-analysis-modal .ant-table-wrapper {
+  max-width: 100%;
+}
+
+.cost-combo-detail-table .ant-table {
+  table-layout: fixed;
+}
+
+.cost-analysis-modal-fullscreen .draggable-modal-title {
+  cursor: default;
+}
+
+.cost-analysis-modal-fullscreen .ant-modal-body {
+  max-height: calc(100vh - 126px);
+}
+
+.risk-critical {
+  background: #fff0ed;
+}
+
+.risk-high {
+  background: #fff6e5;
+}
+
+.risk-medium {
+  background: #fffaf0;
+}
+
+.risk-config {
+  background: #f3f1ff;
+}
+
+.chart-frame {
+  width: 100%;
+  min-height: 298px;
+  overflow: hidden;
+  padding: 8px;
+  border: 1px solid #eadfd2;
+  border-radius: 8px;
+  background: #fffdf9;
+}
+
+.chart-frame canvas {
+  width: 100%;
+}
+
+.chart-empty {
+  display: flex;
+  min-height: 220px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #eadfd2;
+  border-radius: 8px;
+  background: #fffdf9;
+  color: #746b60;
+}
+
+@media (max-width: 900px) {
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .app-content {
+    padding: 12px;
+  }
+
+  .field {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}

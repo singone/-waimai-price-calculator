@@ -171,6 +171,53 @@ td.center{text-align:center}
 .risk-badge-medium{background:#f5c451;color:#4f3600}
 .risk-badge-config{background:#6554c0;color:#fff}
 .empty{text-align:center;color:var(--muted);padding:26px}
+.modal-layer{
+  position:fixed;
+  inset:0;
+  z-index:50;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+  background:rgba(34,31,27,.38);
+}
+.modal-layer.hidden{display:none}
+.modal-panel{
+  width:min(440px,100%);
+  background:#fff;
+  border:1px solid var(--line);
+  border-radius:10px;
+  box-shadow:0 24px 70px rgba(34,31,27,.22);
+  overflow:hidden;
+}
+.modal-title{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  padding:14px 16px;
+  background:var(--soft);
+  border-bottom:1px solid var(--line);
+}
+.modal-title h3{margin:0;font-size:16px;color:#34271f}
+.modal-close{
+  width:30px;
+  height:30px;
+  padding:0;
+  border-color:transparent;
+  background:transparent;
+  color:var(--muted);
+  font-size:20px;
+  line-height:1;
+}
+.modal-body{padding:15px 16px;color:#3b3027;white-space:pre-line}
+.modal-actions{
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  padding:12px 16px 15px;
+  border-top:1px solid var(--line);
+}
 @media(max-width:1120px){
   .app-header{align-items:flex-start;flex-direction:column}
   .header-actions{justify-content:flex-start}

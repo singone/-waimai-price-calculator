@@ -132,19 +132,20 @@
             <div class="action-group">
               <label class="file-btn file-btn-small">导入美团商品表<input id="meituanProductExcelFile" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /></label>
               <label class="file-btn file-btn-small">导入饿了么商品表<input id="elemeProductExcelFile" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /></label>
+              <label class="file-btn file-btn-small">导入成本表<input id="costExcelFile" type="file" accept=".xls,.xlsx,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" /></label>
               <label class="file-btn file-btn-small">导入商品CSV<input id="productCsvFile" type="file" accept=".csv,.txt,text/csv,text/plain" /></label>
               <button id="addProductBtn" class="small">添加商品</button>
             </div>
           </div>
           <div class="import-note">
-            平台商品表会按商品名称更新当前门店的对应平台价；已有成本价不会被覆盖，新商品成本价默认为 0。
+            平台商品表会按商品名称更新当前门店的对应平台价；成本表按商品名称更新成本价；美团表会同步售卖状态，饿了么上下架可手动维护。
           </div>
           <div class="bulk-panel">
             <label>批量商品
-              <textarea id="productBulkText" rows="4" placeholder="商品名,销售价,成本价,美团价,饿了么价,单点不送&#10;海鸭蛋和风饭团,15,6,,,否"></textarea>
+              <textarea id="productBulkText" rows="4" placeholder="商品名,销售价,成本价,美团价,饿了么价,单点不送,美团上架,饿了么上架&#10;海鸭蛋和风饭团,15,6,,,否,是,是"></textarea>
             </label>
             <div class="bulk-actions">
-              <span>字段：商品名,销售价,成本价,美团价,饿了么价,单点不送。</span>
+              <span>字段：商品名,销售价,成本价,美团价,饿了么价,单点不送,美团上架,饿了么上架。</span>
               <div class="action-group">
                 <button id="appendProductsBtn" class="small">追加</button>
                 <button id="replaceProductsBtn" class="small danger-light">替换</button>
@@ -153,7 +154,7 @@
           </div>
           <div class="table-wrap">
             <table id="productsTable">
-              <thead><tr><th>商品名</th><th>销售价</th><th>成本价</th><th>美团价</th><th>饿了么价</th><th>单点不送</th><th></th></tr></thead>
+              <thead><tr><th>商品名</th><th>销售价</th><th>成本价</th><th>美团价</th><th>饿了么价</th><th>美团上架</th><th>饿了么上架</th><th>单点不送</th><th></th></tr></thead>
               <tbody></tbody>
             </table>
           </div>
@@ -369,6 +370,20 @@
       </section>
     </section>
   </main>
+
+  <div id="appModal" class="modal-layer hidden" role="dialog" aria-modal="true" aria-labelledby="appModalTitle">
+    <div class="modal-panel">
+      <div class="modal-title">
+        <h3 id="appModalTitle">确认操作</h3>
+        <button id="appModalClose" class="modal-close" aria-label="关闭">×</button>
+      </div>
+      <div id="appModalBody" class="modal-body"></div>
+      <div class="modal-actions">
+        <button id="appModalCancel">取消</button>
+        <button id="appModalConfirm" class="primary">确认</button>
+      </div>
+    </div>
+  </div>
 
   <script src="vendor/xlsx.full.min.js"></script>
   <script src="js/app.js"></script>
