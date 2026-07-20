@@ -9,6 +9,8 @@ create type discount_match_mode as enum ('all', 'keyword', 'product');
 create type calculation_platform_filter as enum ('all', 'meituan', 'eleme');
 create type risk_severity as enum ('none', 'config', 'medium', 'high', 'critical');
 create type import_job_status as enum ('pending', 'success', 'failed');
+create type product_category as enum ('staple', 'snack_drink', 'add_on', 'set_meal', 'other');
+create type staple_scenario as enum ('single', 'double', 'multi');
 
 create table app_settings (
   id uuid primary key default gen_random_uuid(),
@@ -24,6 +26,8 @@ create table stores (
   start_price numeric(12,2) not null default 0 check (start_price >= 0),
   calculation_total_min numeric(12,2) not null default 0 check (calculation_total_min >= 0),
   calculation_total_max numeric(12,2) check (calculation_total_max is null or calculation_total_max >= calculation_total_min),
+  staple_count_min integer not null default 0 check (staple_count_min >= 0),
+  staple_count_max integer check (staple_count_max is null or staple_count_max >= staple_count_min),
   delivery_distance_km numeric(8,2) not null default 0 check (delivery_distance_km >= 0),
   order_time time not null default '12:00',
   max_items integer not null default 4 check (max_items > 0),
@@ -58,6 +62,9 @@ create table platform_fee_rules (
   pricing_add_on_target_rate_percent numeric(8,4) not null default 45 check (pricing_add_on_target_rate_percent >= 0),
   pricing_rice_ball_target_rate_percent numeric(8,4) not null default 32 check (pricing_rice_ball_target_rate_percent >= 0),
   pricing_set_meal_target_rate_percent numeric(8,4) not null default 36 check (pricing_set_meal_target_rate_percent >= 0),
+  pricing_single_staple_target_rate_percent numeric(8,4) not null default 32 check (pricing_single_staple_target_rate_percent >= 0),
+  pricing_double_staple_target_rate_percent numeric(8,4) not null default 36 check (pricing_double_staple_target_rate_percent >= 0),
+  pricing_multi_staple_target_rate_percent numeric(8,4) not null default 38 check (pricing_multi_staple_target_rate_percent >= 0),
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -84,6 +91,21 @@ create table platform_profit_target_tiers (
   pay_max numeric(12,2) not null check (pay_max > pay_min),
   rate_min_percent numeric(8,4) not null,
   rate_max_percent numeric(8,4) not null check (rate_max_percent > rate_min_percent),
+  sort_order integer not null default 0,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create table platform_pricing_strategy_tiers (
+  id uuid primary key default gen_random_uuid(),
+  scenario staple_scenario not null,
+  enabled boolean not null default true,
+  pay_min numeric(12,2) not null check (pay_min >= 0),
+  pay_max numeric(12,2) not null check (pay_max > pay_min),
+  pay_rate_min_percent numeric(8,4) not null default 0 check (pay_rate_min_percent >= 0),
+  pay_rate_target_percent numeric(8,4) not null default 0 check (pay_rate_target_percent >= pay_rate_min_percent),
+  net_rate_min_percent numeric(8,4) not null default 0 check (net_rate_min_percent >= 0),
+  net_rate_target_percent numeric(8,4) not null default 0 check (net_rate_target_percent >= net_rate_min_percent),
   sort_order integer not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -121,6 +143,8 @@ create table store_products (
   sale_price numeric(12,2) not null default 0 check (sale_price >= 0),
   cost_price numeric(12,2) not null default 0 check (cost_price >= 0),
   package_fee numeric(12,2) not null default 0 check (package_fee >= 0),
+  category product_category not null default 'other',
+  staple_serving_count integer not null default 0 check (staple_serving_count >= 0),
   non_standalone boolean not null default false,
   is_active boolean not null default true,
   created_at timestamptz not null default now(),
@@ -273,6 +297,8 @@ create table calculation_result_items (
   quantity integer not null check (quantity > 0),
   unit_price numeric(12,2) not null check (unit_price >= 0),
   unit_cost numeric(12,2) not null check (unit_cost >= 0),
+  category product_category not null default 'other',
+  staple_serving_count integer not null default 0 check (staple_serving_count >= 0),
   non_standalone boolean not null default false,
   sort_order integer not null default 0
 );

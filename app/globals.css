@@ -208,6 +208,30 @@ body {
   background: #f3f1ff;
 }
 
+.result-platform-tabs {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid #eadfd2;
+  border-radius: 8px;
+  background: #fff;
+}
+
+.result-platform-tabs > .ant-tabs-nav {
+  margin-bottom: 12px;
+}
+
+.result-platform-tabs .ant-tabs-content-holder {
+  min-width: 0;
+}
+
+.result-platform-panel {
+  background: #fff;
+}
+
+.clickable-tag {
+  cursor: pointer;
+}
+
 .chart-frame {
   width: 100%;
   min-height: 298px;
