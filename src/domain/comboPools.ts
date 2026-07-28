@@ -22,6 +22,7 @@ export type ComboPoolBuildOptions = {
   maxStapleCount: number;
   maxAddOnCount: number;
   maxOriginalTotal: number;
+  maxPoolRows?: number;
   shouldStop: () => boolean;
   maybeYield: () => Promise<void>;
 };
@@ -29,6 +30,7 @@ export type ComboPoolBuildOptions = {
 export type SeparatedComboPools = {
   mainCombos: ComboPoolRow[];
   addOnCombosByCount: ComboPoolRow[][];
+  truncated?: boolean;
 };
 
 const MAX_COMBO_POOL_CACHE_SIZE = 4;
@@ -66,12 +68,24 @@ export async function buildSeparatedComboPoolsAsync(options: ComboPoolBuildOptio
 
   const mainCombos: ComboPoolRow[] = [];
   const addOnCombosByCount: ComboPoolRow[][] = Array.from({ length: options.maxAddOnCount + 1 }, () => []);
+  const maxPoolRows = Math.max(0, Math.floor(Number(options.maxPoolRows) || 0));
+  let poolRowCount = 1;
+  let truncated = false;
   addOnCombosByCount[0].push({
     qtys: Array(options.productCount).fill(0),
     totalQty: 0,
     originalTotal: 0,
     stapleCount: 0
   });
+
+  function shouldStopPoolBuild() {
+    return options.shouldStop() || truncated;
+  }
+
+  function rememberPoolRow() {
+    poolRowCount++;
+    if (maxPoolRows > 0 && poolRowCount >= maxPoolRows) truncated = true;
+  }
 
   const mainStack: Array<ComboPoolRow & { startIndex: number }> = [{
     startIndex: 0,
@@ -81,7 +95,7 @@ export async function buildSeparatedComboPoolsAsync(options: ComboPoolBuildOptio
     stapleCount: 0
   }];
 
-  while (mainStack.length && !options.shouldStop()) {
+  while (mainStack.length && !shouldStopPoolBuild()) {
     const current = mainStack.pop() as ComboPoolRow & { startIndex: number };
     await options.maybeYield();
     if (
@@ -96,7 +110,9 @@ export async function buildSeparatedComboPoolsAsync(options: ComboPoolBuildOptio
         originalTotal: current.originalTotal,
         stapleCount: current.stapleCount
       });
+      rememberPoolRow();
     }
+    if (truncated) break;
     if (current.totalQty >= options.maxItems || current.stapleCount >= options.maxStapleCount) continue;
 
     const nextStates: Array<ComboPoolRow & { startIndex: number }> = [];
@@ -129,7 +145,7 @@ export async function buildSeparatedComboPoolsAsync(options: ComboPoolBuildOptio
     stapleCount: 0
   }];
 
-  while (addOnStack.length && !options.shouldStop()) {
+  while (addOnStack.length && !shouldStopPoolBuild()) {
     const current = addOnStack.pop() as ComboPoolRow & { startIndex: number };
     await options.maybeYield();
     if (current.originalTotal > options.maxOriginalTotal + 1e-9 || current.totalQty > options.maxAddOnCount) continue;
@@ -140,7 +156,9 @@ export async function buildSeparatedComboPoolsAsync(options: ComboPoolBuildOptio
         originalTotal: current.originalTotal,
         stapleCount: 0
       });
+      rememberPoolRow();
     }
+    if (truncated) break;
     if (current.totalQty >= options.maxAddOnCount) continue;
 
     const nextStates: Array<ComboPoolRow & { startIndex: number }> = [];
@@ -165,7 +183,7 @@ export async function buildSeparatedComboPoolsAsync(options: ComboPoolBuildOptio
 
   mainCombos.sort((a, b) => a.originalTotal - b.originalTotal || a.totalQty - b.totalQty);
   addOnCombosByCount.forEach(rows => rows.sort((a, b) => a.originalTotal - b.originalTotal || a.totalQty - b.totalQty));
-  const pools = { mainCombos, addOnCombosByCount };
-  if (!options.shouldStop()) rememberComboPools(options.cacheKey, pools);
+  const pools = { mainCombos, addOnCombosByCount, truncated };
+  if (!options.shouldStop() && !truncated) rememberComboPools(options.cacheKey, pools);
   return pools;
 }

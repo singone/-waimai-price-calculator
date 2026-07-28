@@ -69,7 +69,8 @@ workerContext.onmessage = async event => {
       return;
     }
     if (task.type === 'activityDesign') {
-      const result = await runActivityDesignCalculation(task.payload.state, task.payload.platformFilter, task.payload.settings, progress, task.limits);
+      const rowsChunk = (rows: ComboEvaluationRow[]) => post({ id: task.id, status: 'chunk', rows });
+      const result = await runActivityDesignCalculation(task.payload.state, task.payload.platformFilter, task.payload.settings, progress, task.limits, rowsChunk);
       post({ id: task.id, status: 'done', result });
       return;
     }

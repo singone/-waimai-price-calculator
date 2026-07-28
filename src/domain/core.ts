@@ -62,6 +62,48 @@ export function productStapleServingCount(product: Pick<Product, 'stapleServingC
   return Math.max(0, Math.floor(Number(product.stapleServingCount) || 0));
 }
 
+/**
+ * 判断商品是否可作为一单商品组合的主组合锚点。
+ *
+ * @param product 商品分类、主食份数和单点不送配置。
+ * @returns true 表示商品可独立作为饭团/套餐主组合参与点单。
+ */
+export function isMealMainProduct(product: Pick<Product, 'category' | 'stapleServingCount' | 'nonStandalone'>) {
+  if (product.nonStandalone) return false;
+  return product.category === 'staple' || product.category === 'setMeal' || productStapleServingCount(product) > 0;
+}
+
+/**
+ * 计算主组合商品贡献的主食份数。
+ *
+ * @param product 商品分类、主食份数和单点不送配置。
+ * @returns 非主组合商品返回 0；主组合商品至少按 1 份主食计算。
+ */
+export function mealMainStapleServingCount(product: Pick<Product, 'category' | 'stapleServingCount' | 'nonStandalone'>) {
+  return isMealMainProduct(product) ? Math.max(1, productStapleServingCount(product)) : 0;
+}
+
+/**
+ * 判断商品是否可进入凑单池。
+ *
+ * @param product 商品分类、主食份数和单点不送配置。
+ * @returns true 表示商品按“单点不送”配置进入凑单池，可和主组合做笛卡尔合并。
+ */
+export function isMealAddOnProduct(product: Pick<Product, 'category' | 'stapleServingCount' | 'nonStandalone'>) {
+  return product.nonStandalone && productStapleServingCount(product) <= 0;
+}
+
+/**
+ * 判断数量组合是否包含至少一个主组合锚点。
+ *
+ * @param store 当前门店。
+ * @param qtys 与门店商品顺序一致的购买数量。
+ * @returns true 表示组合满足“饭团/套餐 + 可选凑单”的基础点单规则。
+ */
+export function comboHasMealMainAnchor(store: Store, qtys: number[]) {
+  return qtys.some((qty, index) => qty > 0 && isMealMainProduct(store.products[index]));
+}
+
 export function comboStapleServingCount(items: ComboItem[]) {
   return items.reduce((sum, item) => sum + item.stapleServingCount * item.qty, 0);
 }
@@ -130,7 +172,7 @@ function buildCalculationPriceBounds(store: Store, platforms: Platform[]) {
       .map(platform => platformOriginalUnitPrice(product, platform));
     minPrices.push(prices.length ? Math.min(...prices) : 0);
     maxPrices.push(prices.length ? Math.max(...prices) : 0);
-    stapleCounts.push(productStapleServingCount(product));
+    stapleCounts.push(mealMainStapleServingCount(product));
   });
   const suffixMax: number[] = Array(store.products.length + 1).fill(0);
   const suffixMaxStaple: number[] = Array(store.products.length + 1).fill(0);
@@ -234,7 +276,7 @@ export async function enumerateStoreCombosAsync(
         return;
       }
       if (stopIfTimedOut()) return;
-      if (!qtys.some((qty, i) => qty > 0 && !store.products[i].nonStandalone)) return;
+      if (!comboHasMealMainAnchor(store, qtys)) return;
       if (!isInStapleCountRange(store, currentStapleCount)) return;
       validCombos++;
       visit(qtys.slice());

@@ -16,11 +16,13 @@ import {
   calculationStopWarning,
   currentStoreFrom,
   evaluateComboWithCurrentActivities,
+  isMealAddOnProduct,
+  isMealMainProduct,
   isProductListedOnPlatform,
+  mealMainStapleServingCount,
   normalizeCalculationMaxDuration,
   platformOriginalUnitPrice,
   PLATFORMS,
-  productStapleServingCount,
   summarizePriceBands
 } from '../core';
 import {
@@ -77,8 +79,7 @@ function measurementOriginalRange(store: ReturnType<typeof currentStoreFrom>, se
 
 function isMealMainCandidate(store: ReturnType<typeof currentStoreFrom>, platform: Platform, index: number) {
   const product = store.products[index];
-  if (!isProductListedOnPlatform(product, platform) || product.nonStandalone) return false;
-  return product.category === 'staple' || product.category === 'setMeal' || productStapleServingCount(product) > 0;
+  return isProductListedOnPlatform(product, platform) && isMealMainProduct(product);
 }
 
 function buildMeasurementCandidates(store: ReturnType<typeof currentStoreFrom>, platform: Platform) {
@@ -88,14 +89,14 @@ function buildMeasurementCandidates(store: ReturnType<typeof currentStoreFrom>, 
     if (!isProductListedOnPlatform(product, platform)) return;
     const price = platformOriginalUnitPrice(product, platform);
     const stapleCount = isMealMainCandidate(store, platform, index)
-      ? Math.max(1, productStapleServingCount(product))
+      ? mealMainStapleServingCount(product)
       : 0;
     const row = { index, price, stapleCount };
     if (isMealMainCandidate(store, platform, index)) {
       mainProducts.push(row);
       return;
     }
-    if (productStapleServingCount(product) <= 0) addOnProducts.push(row);
+    if (isMealAddOnProduct(product)) addOnProducts.push(row);
   });
   const byPrice = (a: MeasurementCandidate, b: MeasurementCandidate) => a.price - b.price || a.index - b.index;
   return {
@@ -300,9 +301,11 @@ async function enumerateMeasurementCombosByOriginalAsync(
     maxStapleCount,
     maxAddOnCount: addOnMaxCountLimit,
     maxOriginalTotal: range.max,
+    maxPoolRows: maxChecks,
     shouldStop: () => stopped,
     maybeYield
   });
+  const poolTruncated = Boolean(pools.truncated);
 
   for (const base of pools.mainCombos) {
     if (stopped) break;
@@ -321,6 +324,10 @@ async function enumerateMeasurementCombosByOriginalAsync(
     }
   }
 
+  if (poolTruncated && !stopped) {
+    stopped = true;
+    stoppedReason = 'maxChecks';
+  }
   onProgress?.({ checked, validCombos, stopped, stoppedReason });
   return { checked, validCombos, stopped, stoppedReason };
 }

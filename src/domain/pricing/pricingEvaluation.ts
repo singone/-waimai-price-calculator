@@ -12,6 +12,7 @@ import type {
 import {
   calculationNow,
   currentStoreFrom,
+  isMealMainProduct,
   isProductListedOnPlatform,
   normalizeCalculationMaxDuration,
   platformOriginalUnitPrice,
@@ -61,7 +62,7 @@ function targetRateForProduct(product: Product, rule: PricingEvaluationRule) {
 }
 
 function shouldApplyFixedCostAllocation(product: Product) {
-  return !product.nonStandalone && (product.category === 'staple' || product.category === 'setMeal');
+  return isMealMainProduct(product);
 }
 
 function maxSeverity(a: Severity, b: Severity): Severity {

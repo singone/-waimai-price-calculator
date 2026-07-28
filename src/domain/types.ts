@@ -2,7 +2,15 @@ export type Platform = 'meituan' | 'eleme';
 export type Severity = 'none' | 'critical' | 'high' | 'medium' | 'config';
 export type ProductCategory = 'staple' | 'snackDrink' | 'addOn' | 'setMeal' | 'other';
 export type StapleScenario = 'single' | 'double' | 'multi';
-export type ActivityDesignObjective = 'longTerm' | 'hotProduct' | 'orderGrowth';
+export type ActivityDesignObjective = string;
+export type ActivityDesignCalculationMode = 'priceScan' | 'routeDesign' | 'payValidation';
+export type ActivityObjectiveGroup = 'stable' | 'marketing';
+export type ActivityAmountRoundingMode = 'floor' | 'nearest' | 'ceil';
+export type ActivityFullAmountBasis = 'average' | 'p75' | 'min' | 'max';
+export type ActivityCouponScoringMode = 'conservative' | 'balanced' | 'aggressive';
+export type ActivityCouponThresholdMode = 'lowThresholdOrder' | 'fullReductionInterleave' | 'addOnCritical' | 'highMarginGuide' | 'retentionRecall';
+export type ActivityCouponChannel = 'inStore' | 'orderReturn' | 'reviewReturn' | 'pointsReturn' | 'targeted';
+export type ActivityCouponTargetUser = 'all' | 'newCustomer' | 'highFrequency' | 'highAov' | 'lostCustomer' | 'specified';
 
 export type Product = {
   id: string;
@@ -57,6 +65,11 @@ export type Coupon = {
   name: string;
   threshold: number;
   amount: number;
+  sceneKey?: string;
+  sceneName?: string;
+  channel?: ActivityCouponChannel;
+  targetUser?: ActivityCouponTargetUser;
+  thresholdMode?: ActivityCouponThresholdMode;
 };
 
 export type RedAddOn = {
@@ -127,13 +140,14 @@ export type Store = {
   profitTargets: ProfitTarget[];
   products: Product[];
   activities: Record<Platform, Activities>;
-  costPriceAdjustments?: unknown[];
+  activityDesignSettings?: ActivityDesignSettings;
 };
 
 export type CalculatorState = {
   selectedStoreId: string;
   activePage: string;
   riskSafetyMargin: number;
+  activityStrategySettings?: ActivityStrategySettings;
   platformRules: FeeRule;
   stores: Store[];
 };
@@ -175,6 +189,87 @@ export type ComboRangeSettings = {
   payMax: number | '';
 };
 
+export type ActivityObjectivePayTarget = {
+  payMin: number;
+  payMax: number;
+  targetPayProfitRate: number;
+  minPayProfitRate: number;
+  minNetProfitRate: number;
+  maxLossShare: number;
+};
+
+export type ActivityObjectiveTemplate = {
+  key: ActivityDesignObjective;
+  enabled: boolean;
+  name: string;
+  group: ActivityObjectiveGroup;
+  targetPayLabel: string;
+  targetPayMin: number;
+  targetPayMax: number;
+  description: string;
+  baseObjective?: ActivityDesignObjective;
+};
+
+export type ActivityOriginalDiscountTier = {
+  originalMin: number;
+  originalMax: number;
+  discountRate: number;
+};
+
+export type ActivityObjectiveStrategy = Partial<ActivityObjectivePayTarget> & {
+  baseOriginalDiscountRate?: number;
+  originalDiscountTiers: ActivityOriginalDiscountTier[];
+  fullDiscountShare: number;
+  couponDiscountShare: number;
+  reserveDiscountShare: number;
+  fullThresholdWindow: number;
+  fullThresholdMinGap: number;
+  minFullAmountIncrease: number;
+  fullAmountRounding: ActivityAmountRoundingMode;
+  fullAmountBasis: ActivityFullAmountBasis;
+  maxFullRuleCount: number;
+  minFullHitCount: number;
+  minNetPayFloor: number;
+  couponScoringMode: ActivityCouponScoringMode;
+  couponMergeThresholdGap: number;
+  couponMergeAmountTolerance: number;
+};
+
+export type ActivityCouponSceneTemplate = {
+  key: string;
+  enabled: boolean;
+  name: string;
+  platforms?: Platform[];
+  channel: ActivityCouponChannel;
+  targetUser: ActivityCouponTargetUser;
+  objective: ActivityDesignObjective;
+  thresholdMode: ActivityCouponThresholdMode;
+  payMin: number;
+  payMax: number;
+  thresholdMin: number;
+  thresholdMax: number;
+  thresholdStep: number;
+  thresholdWindow: number;
+  addOnMin: number;
+  addOnMax: number;
+  fullReductionOffsetMin: number;
+  fullReductionOffsetMax: number;
+  couponBudgetShare: number;
+  maxCouponCount: number;
+  maxCouponAmount: number;
+  minPayProfitRate: number;
+  minNetProfitRate: number;
+  maxLossShare: number;
+};
+
+export type ActivityStrategySettings = {
+  baseOriginalDiscountRate: number;
+  objectiveTemplates?: ActivityObjectiveTemplate[];
+  objectiveStrategies: Partial<Record<ActivityDesignObjective, ActivityObjectiveStrategy>>;
+  couponSceneTemplates: ActivityCouponSceneTemplate[];
+  platformCouponSceneKeys: Record<Platform, string[]>;
+};
+
 export type PricingEvaluationSettings = ComboRangeSettings & {
   redAddOnSpace: number;
   lowPayMax: number;
@@ -183,6 +278,10 @@ export type PricingEvaluationSettings = ComboRangeSettings & {
 
 export type ActivityDesignSettings = ComboRangeSettings & {
   redAddOnSpace: number;
+  baseOriginalDiscountRate?: number;
+  calculationMode?: ActivityDesignCalculationMode;
+  originalBandsSnapshot?: PriceBandRow[];
+  originalPriceBucketsSnapshot?: ActivityPriceBucketRow[];
   stapleMaxCount?: number;
   addOnMaxCount?: number | '';
   selectedRecommendationKey?: string;
@@ -196,6 +295,13 @@ export type ActivityDesignSettings = ComboRangeSettings & {
   couponDesignMaxCouponAmount: number | '';
   designMode: 'auto' | 'full' | 'coupon' | 'stacked';
   objective?: ActivityDesignObjective;
+  useDefaultObjectiveStrategies?: boolean;
+  objectivePayTargets?: Partial<Record<ActivityDesignObjective, ActivityObjectivePayTarget>>;
+  objectiveStrategies?: Partial<Record<ActivityDesignObjective, Partial<ActivityObjectiveStrategy>>>;
+  objectiveTemplates?: ActivityObjectiveTemplate[];
+  usePlatformCouponScenes?: boolean;
+  enabledCouponSceneKeys?: string[];
+  couponSceneTemplates?: ActivityCouponSceneTemplate[];
   minProfitRate?: number;
   originalBandSize?: number;
   payBandSize?: number;
@@ -345,12 +451,164 @@ export type ActivityBaseComboRow = ComboEvaluationRow & {
   baseFinalPay: number;
   baseNetPay: number;
   baseProfitRate: number | null;
+  activityTargetObjective?: ActivityDesignObjective;
+  activityTargetObjectiveName?: string;
+  activityTargetDiscountRate?: number;
+  activityTargetPay?: number;
+  activityTargetDiscountAmount?: number;
+  activityAlreadyDiscountAmount?: number;
+  activityRedAddOnAmount?: number;
+  activityDesignSpace?: number;
+  activityNetPayBoundarySpace?: number;
+  activitySafeDiscountSpace?: number;
+  activityTargetPayGap?: number;
+};
+
+export type ActivityScanComboPoolRow = {
+  key: string;
+  platform: Platform;
+  qtys: number[];
+  priceCents: number;
+  totalQty: number;
+  originalTotal: number;
+  stapleCount: number;
+};
+
+export type ActivityOriginalPriceBucketEntry = {
+  key: string;
+  originalTotalCents: number;
+  mainComboIds: string[];
+  addOnComboIds: string[];
+  comboCount: number;
+};
+
+export type ActivityScanComboPools = {
+  mainCombos: ActivityScanComboPoolRow[];
+  addOnCombos: ActivityScanComboPoolRow[];
+  mainComboCountByPlatform: Partial<Record<Platform, number>>;
+  addOnComboCountByPlatform: Partial<Record<Platform, number>>;
+};
+
+export type ActivityRouteScoreLevel = 'excellent' | 'usable' | 'review' | 'risk';
+export type ActivityRouteKind = 'fullReduction' | 'coupon' | 'combined';
+
+export type ActivityPriceBucketRow = {
+  key: string;
+  platform: Platform;
+  platformName: string;
+  priceBucket: number;
+  label: string;
+  min: number;
+  max: number;
+  comboCount: number;
+  weightedComboCount: number;
+  avgOriginalTotal: number;
+  avgFinalPay: number;
+  avgNetPay: number;
+  avgCost: number;
+  avgProfit: number;
+  weightedAvgFinalPay: number;
+  weightedAvgNetPay: number;
+  avgActivityTargetDiscountRate?: number | null;
+  weightedAvgActivityTargetDiscountRate?: number | null;
+  avgActivityTargetPay?: number;
+  weightedAvgActivityTargetPay?: number;
+  avgActivityTargetPayGap?: number;
+  weightedAvgActivityTargetPayGap?: number;
+  avgActivityTargetDiscountAmount?: number;
+  weightedAvgActivityTargetDiscountAmount?: number;
+  avgActivityAlreadyDiscountAmount?: number;
+  weightedAvgActivityAlreadyDiscountAmount?: number;
+  avgActivityRedAddOnAmount?: number;
+  weightedAvgActivityRedAddOnAmount?: number;
+  avgActivityDesignSpace?: number;
+  weightedAvgActivityDesignSpace?: number;
+  avgActivityNetPayBoundarySpace?: number;
+  weightedAvgActivityNetPayBoundarySpace?: number;
+  avgActivitySafeDiscountSpace?: number;
+  weightedAvgActivitySafeDiscountSpace?: number;
+  weightedAvgCost: number;
+  weightedAvgProfit: number;
+  weightedProfitRate: number | null;
+  avgProfitRate: number | null;
+  minProfitRate: number | null;
+  maxProfitRate: number | null;
+  profitRateSpread: number | null;
+  riskCount: number;
+  outlierCount: number;
+  entries?: ActivityOriginalPriceBucketEntry[];
+  sampleRows?: ActivityBaseComboRow[];
+  suggestion: string;
+};
+
+export type ActivityCouponBucketSuggestion = {
+  key: string;
+  originalBucket: number;
+  threshold: number;
+  amount: number;
+  targetSpace: number;
+  fullDiscountAmount: number;
+  remainingSpace: number;
+  boundarySpace: number;
+  minCoveredBucket: number;
+  maxCoveredBucket: number;
+  coveredBucketCount: number;
+  thresholdScore: number;
+  amountScore: number;
+  similarityScore: number;
+  sceneScore: number;
+  totalScore: number;
+  scoringMode: ActivityCouponScoringMode;
+  sceneKey?: string;
+  sceneName?: string;
+  selected?: boolean;
+  mergedCouponKey?: string;
+  diagnosis: string;
+};
+
+export type ActivityRouteScoreBreakdown = {
+  activeCount: number;
+  ignoredCount: number;
+  targetGap: number | null;
+  avgProfitRate: number | null;
+  targetProfitRate: number;
+  minProfitRate: number | null;
+  payBandSpread: number | null;
+  profitRateSpread: number | null;
+  lossCount: number;
+  lossShare: number;
+  maxLossShare: number;
+  lossOutOfToleranceCount: number;
+  minAllowedProfitRate: number;
+  targetPenalty: number;
+  spreadPenalty: number;
+  lossPenalty: number;
+  ignoredPenalty: number;
+  discountPenalty: number;
+  demandPenalty?: number;
+  businessPayWeight?: number;
+  corePayShare?: number;
+  mainPayShare?: number;
+  highPayShare?: number;
+  targetPayShareFloor?: number;
+  highPayShareLimit?: number;
+  totalPenalty: number;
 };
 
 export type ActivityRecommendationRow = {
   key: string;
   platform: Platform;
   platformName: string;
+  routeKind?: ActivityRouteKind;
+  routeGroup?: 'stable' | 'marketing';
+  userScenarioName?: string;
+  targetPayLabel?: string;
+  targetPayMin?: number;
+  targetPayMax?: number;
+  targetDiscountRate?: number | null;
+  targetPayAmount?: number | null;
+  targetPayGap?: number | null;
+  sourceRouteKeys?: string[];
   objective: ActivityDesignObjective;
   objectiveName: string;
   originalBandKey: string;
@@ -358,6 +616,7 @@ export type ActivityRecommendationRow = {
   threshold: number;
   fullReductionRules: FullReduction[];
   couponRules: Coupon[];
+  couponBucketSuggestions?: ActivityCouponBucketSuggestion[];
   fullAmount: number;
   couponAmount: number;
   productDiscountAmount: number;
@@ -373,6 +632,10 @@ export type ActivityRecommendationRow = {
   avgFinalPayAfter: number;
   targetProfitRate: number;
   score: number;
+  scoreLevel?: ActivityRouteScoreLevel;
+  scoreLabel?: string;
+  scoreDetails?: string[];
+  scoreBreakdown?: ActivityRouteScoreBreakdown;
   actionType: string;
   diagnosis: string;
   exampleItems: ComboItem[];
@@ -386,6 +649,12 @@ export type ActivityComboSimulationRow = ComboEvaluationRow & {
 
 export type ActivityDesignResult = {
   originalBands: PriceBandRow[];
+  originalPriceBuckets?: ActivityPriceBucketRow[];
+  originalComboRows?: ActivityBaseComboRow[];
+  routeSourceRows?: ActivityBaseComboRow[];
+  scanComboPools?: ActivityScanComboPools;
+  fullRoutes?: ActivityRecommendationRow[];
+  couponRoutes?: ActivityRecommendationRow[];
   recommendations: ActivityRecommendationRow[];
   payBands: PriceBandRow[];
   hitRows: ActivityComboSimulationRow[];
