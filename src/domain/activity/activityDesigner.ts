@@ -2,11 +2,11 @@ import type {
   ActivityBaseComboRow,
   ActivityComboSimulationRow,
   ActivityCouponBucketSuggestion,
-  ActivityCouponSceneTemplate,
   ActivityDesignObjective,
   ActivityDesignResult,
   ActivityDesignSettings,
   ActivityFullAmountBasis,
+  ActivityOriginalBucketRepresentativeCombo,
   ActivityOriginalDiscountTier,
   ActivityOriginalPriceBucketEntry,
   ActivityPriceBucketRow,
@@ -18,6 +18,7 @@ import type {
   CalculatorState,
   CalculationLimits,
   CalculationProgress,
+  ComboItem,
   ComboEvaluationRow,
   Coupon,
   FullReduction,
@@ -82,10 +83,13 @@ const ACTIVITY_ROUTE_SOURCE_LIMIT_PER_PLATFORM = 6000;
 const ACTIVITY_MIN_NET_PAY = 2;
 const ACTIVITY_ROUTE_DESIGN_SAMPLE_LIMIT = 1600;
 const ACTIVITY_ROUTE_MAX_FULL_RULES = 6;
-const ACTIVITY_ROUTE_COUPON_LIMIT = 8;
 const ACTIVITY_ROUTE_THRESHOLD_LIMIT = 180;
 const ACTIVITY_FULL_REDUCTION_LOG_LIMIT = 2000;
 const ACTIVITY_ROUTE_MIN_DESIGN_SPACE = 1;
+const ACTIVITY_ROUTE_MIN_FULL_AMOUNT = 1;
+const ACTIVITY_ROUTE_MIN_COUPON_AMOUNT = 1;
+const ACTIVITY_MONEY_AMOUNT_UNIT = 0.01;
+const ACTIVITY_COUPON_RECOMMEND_AMOUNT_UNIT = 0.5;
 const ACTIVITY_BUSINESS_PAY_SEGMENTS = [
   { min: 0, max: 15, label: '0-15', orderShare: 0.54, weight: 1 },
   { min: 15, max: 20, label: '15-20', orderShare: 0.19, weight: 0.88 },
@@ -111,14 +115,11 @@ const ACTIVITY_OBJECTIVE_PAY_PROFILES: Record<ActivityDesignObjective, {
   fullThresholdWindow: number;
   fullThresholdMinGap: number;
   minFullAmountIncrease: number;
-  fullAmountRounding: 'floor' | 'nearest' | 'ceil';
   fullAmountBasis: 'average' | 'p75' | 'min' | 'max';
   maxFullRuleCount: number;
   minFullHitCount: number;
   minNetPayFloor: number;
   couponScoringMode: 'conservative' | 'balanced' | 'aggressive';
-  couponMergeThresholdGap: number;
-  couponMergeAmountTolerance: number;
   segmentWeights: number[];
 }> = {
   longTerm: {
@@ -139,14 +140,11 @@ const ACTIVITY_OBJECTIVE_PAY_PROFILES: Record<ActivityDesignObjective, {
     fullThresholdWindow: 5,
     fullThresholdMinGap: 10,
     minFullAmountIncrease: 3,
-    fullAmountRounding: 'nearest',
     fullAmountBasis: 'average',
     maxFullRuleCount: 6,
     minFullHitCount: 3,
     minNetPayFloor: 2,
     couponScoringMode: 'balanced',
-    couponMergeThresholdGap: 3,
-    couponMergeAmountTolerance: 0.5,
     segmentWeights: [0.92, 1, 0.9, 0.38, 0.1]
   },
   orderGrowth: {
@@ -167,14 +165,11 @@ const ACTIVITY_OBJECTIVE_PAY_PROFILES: Record<ActivityDesignObjective, {
     fullThresholdWindow: 5,
     fullThresholdMinGap: 8,
     minFullAmountIncrease: 2,
-    fullAmountRounding: 'ceil',
     fullAmountBasis: 'p75',
     maxFullRuleCount: 6,
     minFullHitCount: 2,
     minNetPayFloor: 2,
     couponScoringMode: 'aggressive',
-    couponMergeThresholdGap: 4,
-    couponMergeAmountTolerance: 0.5,
     segmentWeights: [1, 0.82, 0.42, 0.16, 0.04]
   },
   raiseAov: {
@@ -195,14 +190,11 @@ const ACTIVITY_OBJECTIVE_PAY_PROFILES: Record<ActivityDesignObjective, {
     fullThresholdWindow: 5,
     fullThresholdMinGap: 10,
     minFullAmountIncrease: 3,
-    fullAmountRounding: 'nearest',
     fullAmountBasis: 'p75',
     maxFullRuleCount: 6,
     minFullHitCount: 3,
     minNetPayFloor: 2,
     couponScoringMode: 'aggressive',
-    couponMergeThresholdGap: 4,
-    couponMergeAmountTolerance: 0.5,
     segmentWeights: [0.28, 0.82, 1, 0.76, 0.22]
   },
   hotProduct: {
@@ -223,14 +215,11 @@ const ACTIVITY_OBJECTIVE_PAY_PROFILES: Record<ActivityDesignObjective, {
     fullThresholdWindow: 5,
     fullThresholdMinGap: 8,
     minFullAmountIncrease: 2,
-    fullAmountRounding: 'ceil',
     fullAmountBasis: 'p75',
     maxFullRuleCount: 6,
     minFullHitCount: 2,
     minNetPayFloor: 2,
     couponScoringMode: 'aggressive',
-    couponMergeThresholdGap: 4,
-    couponMergeAmountTolerance: 0.5,
     segmentWeights: [1, 0.72, 0.24, 0.08, 0.03]
   },
   highMarginConversion: {
@@ -251,14 +240,11 @@ const ACTIVITY_OBJECTIVE_PAY_PROFILES: Record<ActivityDesignObjective, {
     fullThresholdWindow: 5,
     fullThresholdMinGap: 10,
     minFullAmountIncrease: 3,
-    fullAmountRounding: 'nearest',
     fullAmountBasis: 'average',
     maxFullRuleCount: 6,
     minFullHitCount: 3,
     minNetPayFloor: 2,
     couponScoringMode: 'balanced',
-    couponMergeThresholdGap: 4,
-    couponMergeAmountTolerance: 0.5,
     segmentWeights: [0.68, 1, 0.96, 0.45, 0.12]
   },
   profitRecovery: {
@@ -279,14 +265,11 @@ const ACTIVITY_OBJECTIVE_PAY_PROFILES: Record<ActivityDesignObjective, {
     fullThresholdWindow: 5,
     fullThresholdMinGap: 12,
     minFullAmountIncrease: 3,
-    fullAmountRounding: 'floor',
     fullAmountBasis: 'min',
     maxFullRuleCount: 6,
     minFullHitCount: 4,
     minNetPayFloor: 2,
     couponScoringMode: 'conservative',
-    couponMergeThresholdGap: 3,
-    couponMergeAmountTolerance: 0.5,
     segmentWeights: [0.18, 0.64, 0.92, 1, 0.55]
   }
 };
@@ -305,6 +288,9 @@ type ActivityRouteMetrics = {
   profitRateSpread: number | null;
   payBandAvgSpread: number | null;
   avgFinalPay: number;
+  actualAvgDiscountRate: number | null;
+  actualMinDiscountRate: number | null;
+  actualMaxDiscountRate: number | null;
   lossCount: number;
   lossShare: number;
   maxLossShare: number;
@@ -366,6 +352,10 @@ type ActivityRouteValidationAccumulator = {
   ignoredCount: number;
   lowNetPayIgnoredCount: number;
   finalPaySum: number;
+  discountRateSum: number;
+  discountRateCount: number;
+  minDiscountRate: number | null;
+  maxDiscountRate: number | null;
   businessPayWeightSum: number;
   corePayCount: number;
   mainPayCount: number;
@@ -383,6 +373,11 @@ type ActivityRouteValidationAccumulator = {
   maxCouponAmount: number;
   minCouponThreshold: number;
 };
+
+function representedComboCount(row: { representedComboCount?: number | null }) {
+  if (row.representedComboCount === undefined || row.representedComboCount === null) return 1;
+  return Math.max(0, Math.floor(Number(row.representedComboCount) || 0));
+}
 
 function averageBy<T>(rows: T[], pick: (row: T) => number | null | undefined) {
   let sum = 0;
@@ -432,37 +427,19 @@ function demandQuantileValue(values: Array<{ value: number; weight: number }>, q
   return sorted[sorted.length - 1].value;
 }
 
-function integerAmount(value: number) {
-  return Math.max(0, Math.floor(Number(value) || 0));
-}
-
 function integerThreshold(value: number) {
   return Math.max(0, Math.ceil((Number(value) || 0) - 1e-9));
 }
 
-function roundActivityAmount(value: number, mode: 'floor' | 'nearest' | 'ceil', amountStep = 1) {
-  const safeValue = Math.max(0, Number(value) || 0);
-  const safeStep = Math.max(0.1, Number(amountStep) || 1);
-  const units = safeValue / safeStep;
-  if (mode === 'ceil') return roundMoney(Math.ceil(units - 1e-9) * safeStep);
-  if (mode === 'floor') return roundMoney(Math.floor(units + 1e-9) * safeStep);
-  return roundMoney(Math.round(units) * safeStep);
+function activityMoneyAmount(value: number) {
+  return Math.floor(Math.max(0, Number(value) || 0) * 100 + 1e-9) / 100;
 }
 
-function capActivityAmount(value: number, maxAllowed: number, amountStep = 1) {
-  const amount = roundMoney(Math.max(0, Number(value) || 0));
-  const limit = roundMoney(Math.max(0, Number(maxAllowed) || 0));
-  if (amount <= 0 || limit <= 0) return 0;
-  if (amount <= limit + 1e-9) return amount;
-  const floored = roundActivityAmount(limit, 'floor', amountStep);
-  return floored > 0 ? floored : limit;
-}
-
-function roundPositiveActivityAmount(value: number, maxAllowed: number, mode: 'floor' | 'nearest' | 'ceil', amountStep = 1) {
-  const rawAmount = roundMoney(Math.min(Math.max(0, Number(value) || 0), Math.max(0, Number(maxAllowed) || 0)));
+function cappedActivityMoneyAmount(value: number, maxAllowed: number) {
+  const cap = Number.isFinite(maxAllowed) ? Math.max(0, Number(maxAllowed) || 0) : Number.POSITIVE_INFINITY;
+  const rawAmount = Math.min(Math.max(0, Number(value) || 0), cap);
   if (rawAmount <= 0) return 0;
-  const rounded = roundActivityAmount(rawAmount, mode, amountStep);
-  return capActivityAmount(rounded > 0 ? rounded : rawAmount, maxAllowed, amountStep);
+  return activityMoneyAmount(rawAmount);
 }
 
 function limitedIntegerThresholds(minValue: number, maxValue: number) {
@@ -559,9 +536,6 @@ function activityObjectivePayProfile(settings: ActivityDesignSettings, objective
     fullThresholdWindow: Math.max(1, Number(rawStrategy?.fullThresholdWindow ?? fallback.fullThresholdWindow) || fallback.fullThresholdWindow),
     fullThresholdMinGap: Math.max(1, Number(rawStrategy?.fullThresholdMinGap ?? fallback.fullThresholdMinGap) || fallback.fullThresholdMinGap),
     minFullAmountIncrease: Math.max(0, Number(rawStrategy?.minFullAmountIncrease ?? fallback.minFullAmountIncrease) || fallback.minFullAmountIncrease),
-    fullAmountRounding: rawStrategy?.fullAmountRounding === 'floor' || rawStrategy?.fullAmountRounding === 'nearest' || rawStrategy?.fullAmountRounding === 'ceil'
-      ? rawStrategy.fullAmountRounding
-      : fallback.fullAmountRounding,
     fullAmountBasis: normalizeFullAmountBasis(rawStrategy?.fullAmountBasis, fallback.fullAmountBasis),
     maxFullRuleCount: Math.max(1, Math.floor(Number(rawStrategy?.maxFullRuleCount ?? fallback.maxFullRuleCount) || fallback.maxFullRuleCount)),
     minFullHitCount: Math.max(0, Math.floor(Number(rawStrategy?.minFullHitCount ?? fallback.minFullHitCount) || fallback.minFullHitCount)),
@@ -569,8 +543,6 @@ function activityObjectivePayProfile(settings: ActivityDesignSettings, objective
     couponScoringMode: rawStrategy?.couponScoringMode === 'conservative' || rawStrategy?.couponScoringMode === 'aggressive' || rawStrategy?.couponScoringMode === 'balanced'
       ? rawStrategy.couponScoringMode
       : fallback.couponScoringMode,
-    couponMergeThresholdGap: Math.max(0, Number(rawStrategy?.couponMergeThresholdGap ?? fallback.couponMergeThresholdGap) || fallback.couponMergeThresholdGap),
-    couponMergeAmountTolerance: Math.max(0, Number(rawStrategy?.couponMergeAmountTolerance ?? fallback.couponMergeAmountTolerance) || fallback.couponMergeAmountTolerance),
     label: template?.targetPayLabel || fallback.label,
     segmentWeights: fallback.segmentWeights
   };
@@ -583,9 +555,6 @@ function activityDesignObjectives(settings: ActivityDesignSettings) {
   }
   for (const objective of Object.keys(settings.objectiveStrategies || {})) objectives.add(objective);
   for (const objective of Object.keys(settings.objectivePayTargets || {})) objectives.add(objective);
-  for (const scene of settings.couponSceneTemplates || []) {
-    if (scene.enabled !== false && scene.objective) objectives.add(scene.objective);
-  }
   return objectives.size ? Array.from(objectives) : ACTIVITY_DESIGN_OBJECTIVES;
 }
 
@@ -798,12 +767,14 @@ function priceBandSuggestionFromStats(stats: ActivityPriceBandStats) {
 
 function addPriceBandStats(
   groups: Map<string, ActivityPriceBandStats>,
-  row: ComboEvaluationRow,
+  row: ComboEvaluationRow & { representedComboCount?: number | null },
   size: number,
   basis: 'pay' | 'original',
   options?: { groupByScenario?: boolean }
 ) {
   if (row.ignored) return;
+  const countWeight = representedComboCount(row);
+  if (countWeight <= 0) return;
   const groupByScenario = options?.groupByScenario !== false;
   const value = basis === 'pay' ? row.finalPay : row.originalTotal;
   const band = bandKey(value, size);
@@ -837,24 +808,24 @@ function addPriceBandStats(
     riskCount: 0
   };
 
-  current.comboCount++;
-  current.originalTotalSum += row.originalTotal;
-  current.finalPaySum += row.finalPay;
-  current.netPaySum += row.netPay;
-  current.costSum += row.cost;
-  current.profitSum += row.profit;
-  current.profitSpaceSum += row.profitSpace;
+  current.comboCount += countWeight;
+  current.originalTotalSum += row.originalTotal * countWeight;
+  current.finalPaySum += row.finalPay * countWeight;
+  current.netPaySum += row.netPay * countWeight;
+  current.costSum += row.cost * countWeight;
+  current.profitSum += row.profit * countWeight;
+  current.profitSpaceSum += row.profitSpace * countWeight;
   current.minProfit = current.minProfit === null ? row.profit : Math.min(current.minProfit, row.profit);
   current.maxProfit = current.maxProfit === null ? row.profit : Math.max(current.maxProfit, row.profit);
   const payGrossRate = paymentGrossProfitRate(row);
   if (payGrossRate !== null) {
-    current.profitRateSum += payGrossRate;
-    current.profitRateCount++;
+    current.profitRateSum += payGrossRate * countWeight;
+    current.profitRateCount += countWeight;
     current.minProfitRate = current.minProfitRate === null ? payGrossRate : Math.min(current.minProfitRate, payGrossRate);
     current.maxProfitRate = current.maxProfitRate === null ? payGrossRate : Math.max(current.maxProfitRate, payGrossRate);
   }
-  if (row.profitSpace < -1e-9 || (payGrossRate !== null && payGrossRate + 1e-9 < row.targetPayRate)) current.lowCount++;
-  if (row.risk.hasRisk) current.riskCount++;
+  if (row.profitSpace < -1e-9 || (payGrossRate !== null && payGrossRate + 1e-9 < row.targetPayRate)) current.lowCount += countWeight;
+  if (row.risk.hasRisk) current.riskCount += countWeight;
   groups.set(key, current);
 }
 
@@ -918,6 +889,12 @@ type ActivityScanComboGroup = {
   totalQty: number;
   stapleCount: number;
   comboIds: string[];
+  costSum: number;
+  minCost: number;
+  maxCost: number;
+  minCostComboId: string;
+  maxCostComboId: string;
+  avgCostComboId: string;
 };
 
 function moneyToCents(value: unknown) {
@@ -931,6 +908,41 @@ function centsToMoney(value: unknown) {
 function activityOriginalPriceBucketKey(platform: Platform, originalTotal: number) {
   const bucket = Math.max(0, Math.floor(originalTotal || 0));
   return ['original-price-bucket', platform, bucket].join('::');
+}
+
+function activityRepresentativeComboKey(representative: ActivityOriginalBucketRepresentativeCombo) {
+  return [representative.kind, representative.mainComboId, representative.addOnComboId].join('::');
+}
+
+function mergeActivityBucketRepresentativeCombos(
+  entries: ActivityOriginalPriceBucketEntry[],
+  bucketAvgCost: number
+) {
+  const representatives = new Map<string, ActivityOriginalBucketRepresentativeCombo>();
+  let minRepresentative: ActivityOriginalBucketRepresentativeCombo | null = null;
+  let maxRepresentative: ActivityOriginalBucketRepresentativeCombo | null = null;
+  let avgRepresentative: ActivityOriginalBucketRepresentativeCombo | null = null;
+  for (const entry of entries) {
+    for (const representative of entry.representativeCombos || []) {
+      if (representative.kind === 'minCost' && (!minRepresentative || representative.cost < minRepresentative.cost)) {
+        minRepresentative = representative;
+      }
+      if (representative.kind === 'maxCost' && (!maxRepresentative || representative.cost > maxRepresentative.cost)) {
+        maxRepresentative = representative;
+      }
+      if (
+        !avgRepresentative
+        || Math.abs(representative.cost - bucketAvgCost) < Math.abs(avgRepresentative.cost - bucketAvgCost)
+      ) {
+        avgRepresentative = { ...representative, kind: 'avgCost' };
+      }
+    }
+  }
+  for (const representative of [minRepresentative, maxRepresentative, avgRepresentative]) {
+    if (!representative) continue;
+    representatives.set(activityRepresentativeComboKey(representative), representative);
+  }
+  return Array.from(representatives.values());
 }
 
 function activityOriginalPriceBucketsFromStats(
@@ -950,7 +962,8 @@ function activityOriginalPriceBucketsFromStats(
       return {
         ...bucketRow,
         ...(bucketEntries ? {
-          entries: bucketEntries.get(row.key) || []
+          entries: bucketEntries.get(row.key) || [],
+          representativeCombos: mergeActivityBucketRepresentativeCombos(bucketEntries.get(row.key) || [], row.avgCost)
         } : {}),
         suggestion: activityPriceBucketSuggestion(bucketRow)
       };
@@ -968,7 +981,18 @@ function activityScanComboPoolKey(platform: Platform, pool: 'main' | 'addOn', in
   return ['activity-scan-pool', platform, pool, index].join('::');
 }
 
+function activityScanComboCostTotal(store: ReturnType<typeof currentStoreFrom>, qtys: number[]) {
+  let costTotal = 0;
+  store.products.forEach((product, index) => {
+    const qty = Math.max(0, Number(qtys[index]) || 0);
+    if (qty <= 0) return;
+    costTotal += (Number(product.cost) || 0) * qty;
+  });
+  return roundMoney(costTotal);
+}
+
 function activityScanComboPoolRows(
+  store: ReturnType<typeof currentStoreFrom>,
   platform: Platform,
   pool: 'main' | 'addOn',
   rows: ComboPoolRow[]
@@ -978,6 +1002,7 @@ function activityScanComboPoolRows(
     platform,
     qtys: row.qtys,
     priceCents: moneyToCents(row.originalTotal),
+    costTotal: activityScanComboCostTotal(store, row.qtys),
     totalQty: row.totalQty,
     originalTotal: row.originalTotal,
     stapleCount: row.stapleCount
@@ -986,6 +1011,7 @@ function activityScanComboPoolRows(
 
 function groupActivityScanCombosForOriginalScan(rows: ActivityScanComboPoolRow[], pool: 'main' | 'addOn') {
   const groups = new Map<string, ActivityScanComboGroup>();
+  const costById = new Map(rows.map(row => [row.key, row.costTotal]));
   for (const row of rows) {
     const key = [
       'activity-scan-price-group',
@@ -1002,13 +1028,45 @@ function groupActivityScanCombosForOriginalScan(rows: ActivityScanComboPoolRow[]
       originalTotal: centsToMoney(row.priceCents),
       totalQty: row.totalQty,
       stapleCount: row.stapleCount,
-      comboIds: []
+      comboIds: [],
+      costSum: 0,
+      minCost: Infinity,
+      maxCost: 0,
+      minCostComboId: row.key,
+      maxCostComboId: row.key,
+      avgCostComboId: row.key
     };
     current.comboIds.push(row.key);
+    current.costSum += row.costTotal;
+    if (row.costTotal < current.minCost) {
+      current.minCost = row.costTotal;
+      current.minCostComboId = row.key;
+    }
+    if (row.costTotal > current.maxCost) {
+      current.maxCost = row.costTotal;
+      current.maxCostComboId = row.key;
+    }
     groups.set(key, current);
   }
   return Array.from(groups.values())
-    .map(row => ({ ...row, comboIds: row.comboIds.slice().sort() }))
+    .map(row => {
+      const comboIds = row.comboIds.slice().sort();
+      const avgCost = row.costSum / Math.max(1, comboIds.length);
+      const avgCostComboId = comboIds
+        .slice()
+        .sort((a, b) => {
+          const aCost = costById.get(a) ?? avgCost;
+          const bCost = costById.get(b) ?? avgCost;
+          return Math.abs(aCost - avgCost) - Math.abs(bCost - avgCost) || a.localeCompare(b);
+        })[0] || row.avgCostComboId;
+      return {
+        ...row,
+        comboIds,
+        minCost: Number.isFinite(row.minCost) ? row.minCost : 0,
+        maxCost: Number.isFinite(row.maxCost) ? row.maxCost : 0,
+        avgCostComboId
+      };
+    })
     .sort((a, b) => a.priceCents - b.priceCents || a.totalQty - b.totalQty || a.stapleCount - b.stapleCount || a.key.localeCompare(b.key));
 }
 
@@ -1030,6 +1088,49 @@ function activityOriginalBucketEntryKey(
   ].join('::');
 }
 
+function activityOriginalBucketEntryCostSummary(
+  mainGroup: ActivityScanComboGroup,
+  addOnGroup: ActivityScanComboGroup
+) {
+  const mainCount = Math.max(0, mainGroup.comboIds.length);
+  const addOnCount = Math.max(0, addOnGroup.comboIds.length);
+  const comboCount = mainCount * addOnCount;
+  const mainAvgCost = mainCount > 0 ? mainGroup.costSum / mainCount : 0;
+  const addOnAvgCost = addOnCount > 0 ? addOnGroup.costSum / addOnCount : 0;
+  const costSum = roundMoney(mainGroup.costSum * addOnCount + addOnGroup.costSum * mainCount);
+  const avgCost = comboCount > 0 ? roundMoney(costSum / comboCount) : roundMoney(mainAvgCost + addOnAvgCost);
+  const minCost = roundMoney((Number.isFinite(mainGroup.minCost) ? mainGroup.minCost : 0) + (Number.isFinite(addOnGroup.minCost) ? addOnGroup.minCost : 0));
+  const maxCost = roundMoney((Number.isFinite(mainGroup.maxCost) ? mainGroup.maxCost : 0) + (Number.isFinite(addOnGroup.maxCost) ? addOnGroup.maxCost : 0));
+  const representatives: ActivityOriginalBucketRepresentativeCombo[] = [
+    {
+      kind: 'minCost',
+      mainComboId: mainGroup.minCostComboId,
+      addOnComboId: addOnGroup.minCostComboId,
+      cost: minCost
+    },
+    {
+      kind: 'maxCost',
+      mainComboId: mainGroup.maxCostComboId,
+      addOnComboId: addOnGroup.maxCostComboId,
+      cost: maxCost
+    },
+    {
+      kind: 'avgCost',
+      mainComboId: mainGroup.avgCostComboId,
+      addOnComboId: addOnGroup.avgCostComboId,
+      cost: avgCost
+    }
+  ];
+  return {
+    comboCount,
+    costSum,
+    avgCost,
+    minCost,
+    maxCost,
+    representativeCombos: representatives.filter(row => row.mainComboId && row.addOnComboId)
+  };
+}
+
 function rememberActivityOriginalBucketEntry(
   entriesByBucket: ActivityOriginalBucketEntryMap,
   platform: Platform,
@@ -1040,12 +1141,18 @@ function rememberActivityOriginalBucketEntry(
   const originalTotal = centsToMoney(originalTotalCents);
   const bucketKey = activityOriginalPriceBucketKey(platform, originalTotal);
   const priceBucket = Math.max(0, Math.floor(originalTotal || 0));
+  const costSummary = activityOriginalBucketEntryCostSummary(mainGroup, addOnGroup);
   const entry: ActivityOriginalPriceBucketEntry = {
     key: activityOriginalBucketEntryKey(platform, priceBucket, mainGroup, addOnGroup),
     originalTotalCents,
     mainComboIds: mainGroup.comboIds,
     addOnComboIds: addOnGroup.comboIds,
-    comboCount: mainGroup.comboIds.length * addOnGroup.comboIds.length
+    comboCount: costSummary.comboCount,
+    avgCost: costSummary.avgCost,
+    minCost: costSummary.minCost,
+    maxCost: costSummary.maxCost,
+    costSum: costSummary.costSum,
+    representativeCombos: costSummary.representativeCombos
   };
   const entries = entriesByBucket.get(bucketKey) || [];
   entries.push(entry);
@@ -1060,10 +1167,14 @@ function addActivityOriginalPriceBucketStatsFromScanEntry(
   platformNames: Map<Platform, string>,
   platform: Platform,
   originalTotalCents: number,
-  comboCount: number,
+  entry: ActivityOriginalPriceBucketEntry,
   settings: ActivityDesignSettings
 ) {
   const originalTotal = centsToMoney(originalTotalCents);
+  const comboCount = Math.max(0, Math.floor(Number(entry.comboCount) || 0));
+  const avgCost = roundMoney(Number(entry.avgCost) || 0);
+  const minCost = roundMoney(entry.minCost === undefined || entry.minCost === null ? avgCost : Number(entry.minCost) || 0);
+  const maxCost = roundMoney(entry.maxCost === undefined || entry.maxCost === null ? avgCost : Number(entry.maxCost) || 0);
   if (!platformNames.has(platform)) platformNames.set(platform, PLATFORM_NAMES[platform]);
   const bucket = Math.max(0, Math.floor(originalTotal || 0));
   const key = [platform, bucket].join('::');
@@ -1099,16 +1210,22 @@ function addActivityOriginalPriceBucketStatsFromScanEntry(
   const activitySafeDiscountSpace = activityDesignSpace;
   const scenario = activityBucketScenario(finalPay);
   const lowNetPay = netPay + 1e-9 < activityMinNetPayFloor(settings, targetObjective);
+  const profit = roundMoney(netPay - avgCost);
+  const maxCostProfit = roundMoney(netPay - maxCost);
+  const profitRate = finalPay > 1e-9 ? profit / finalPay : null;
+  const hasCostRisk = maxCostProfit < -1e-9;
   addWeightedComboToBucket(accumulator, {
     comboKey: ['activity-original-price-group', platform, originalTotalCents].join('::'),
     platform,
     count: comboCount,
     originalTotal,
     finalPay,
-    cost: 0,
-    profit: 0,
+    cost: avgCost,
+    minCost,
+    maxCost,
+    profit,
     netPay,
-    profitRate: null,
+    profitRate,
     activityTargetDiscountRate: targetDiscountRate,
     activityTargetPay: targetPay,
     activityTargetPayGap: roundMoney(finalPay - targetPay),
@@ -1119,21 +1236,24 @@ function addActivityOriginalPriceBucketStatsFromScanEntry(
     activityNetPayBoundarySpace,
     activitySafeDiscountSpace,
     weight: comboCount,
-    hasRisk: lowNetPay,
-    isOutlier: lowNetPay || finalPay > ACTIVITY_PAY_MAX_BY_SCENARIO[scenario] + 1e-9
+    hasRisk: lowNetPay || hasCostRisk,
+    isOutlier: lowNetPay || hasCostRisk || finalPay > ACTIVITY_PAY_MAX_BY_SCENARIO[scenario] + 1e-9
   });
   buckets.set(key, accumulator);
 }
 
-function buildActivityScanComboPools(poolsByPlatform: Map<Platform, SeparatedComboPools>): ActivityScanComboPools {
+function buildActivityScanComboPools(
+  store: ReturnType<typeof currentStoreFrom>,
+  poolsByPlatform: Map<Platform, SeparatedComboPools>
+): ActivityScanComboPools {
   const mainCombos: ActivityScanComboPoolRow[] = [];
   const addOnCombos: ActivityScanComboPoolRow[] = [];
   const mainComboCountByPlatform: Partial<Record<Platform, number>> = {};
   const addOnComboCountByPlatform: Partial<Record<Platform, number>> = {};
 
   for (const [platform, pools] of poolsByPlatform.entries()) {
-    const platformMainCombos = activityScanComboPoolRows(platform, 'main', pools.mainCombos);
-    const platformAddOnCombos = activityScanComboPoolRows(platform, 'addOn', pools.addOnCombosByCount.flat());
+    const platformMainCombos = activityScanComboPoolRows(store, platform, 'main', pools.mainCombos);
+    const platformAddOnCombos = activityScanComboPoolRows(store, platform, 'addOn', pools.addOnCombosByCount.flat());
     mainCombos.push(...platformMainCombos);
     addOnCombos.push(...platformAddOnCombos);
     mainComboCountByPlatform[platform] = platformMainCombos.length;
@@ -1176,71 +1296,208 @@ function activityBucketScenarioName(scenario: ComboEvaluationRow['scenario']) {
   return '多人餐';
 }
 
+type ActivityBucketCostVariant = 'avgCost' | 'minCost' | 'maxCost';
+type ActivityScanComboPoolLookup = {
+  mainComboById: Map<string, ActivityScanComboPoolRow>;
+  addOnComboById: Map<string, ActivityScanComboPoolRow>;
+};
+
+function activityBucketAverageCost(bucket: ActivityPriceBucketRow) {
+  const weightedAvgCost = Number(bucket.weightedAvgCost);
+  if (Number.isFinite(weightedAvgCost) && weightedAvgCost > 0) return roundMoney(weightedAvgCost);
+  const avgCost = Number(bucket.avgCost);
+  return Number.isFinite(avgCost) ? roundMoney(avgCost) : 0;
+}
+
+function activityBucketCostValue(bucket: ActivityPriceBucketRow, variant: ActivityBucketCostVariant) {
+  const fallback = activityBucketAverageCost(bucket);
+  const value = variant === 'maxCost'
+    ? bucket.maxCost
+    : variant === 'minCost'
+      ? bucket.minCost
+      : fallback;
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? roundMoney(numeric) : fallback;
+}
+
+function activityBucketProfitFields(finalPay: number, netPay: number, cost: number) {
+  const profit = roundMoney(netPay - cost);
+  return {
+    profit,
+    profitRate: finalPay > 1e-9 ? profit / finalPay : null,
+    netProfitRate: netPay > 1e-9 ? profit / netPay : null,
+    costProfitRate: cost > 1e-9 ? profit / cost : null,
+    profitSpace: profit
+  };
+}
+
+function activityBucketCostVariantLabel(variant: ActivityBucketCostVariant) {
+  if (variant === 'maxCost') return '最高成本';
+  if (variant === 'minCost') return '最低成本';
+  return '平均成本';
+}
+
+function createActivityScanComboPoolLookup(scanComboPools: ActivityScanComboPools | undefined): ActivityScanComboPoolLookup | null {
+  if (!scanComboPools?.mainCombos?.length || !scanComboPools?.addOnCombos?.length) return null;
+  return {
+    mainComboById: new Map(scanComboPools.mainCombos.map(row => [row.key, row])),
+    addOnComboById: new Map(scanComboPools.addOnCombos.map(row => [row.key, row]))
+  };
+}
+
+function mergeActivityScanComboQtys(mainCombo: ActivityScanComboPoolRow, addOnCombo: ActivityScanComboPoolRow) {
+  const length = Math.max(mainCombo.qtys.length, addOnCombo.qtys.length);
+  return Array.from({ length }, (_, index) => (mainCombo.qtys[index] || 0) + (addOnCombo.qtys[index] || 0));
+}
+
+function activityBucketRepresentativeForVariant(
+  bucket: ActivityPriceBucketRow,
+  variant: ActivityBucketCostVariant
+) {
+  const representatives = [
+    ...(bucket.representativeCombos || []),
+    ...(bucket.entries || []).flatMap(entry => entry.representativeCombos || [])
+  ];
+  if (!representatives.length) return null;
+  const exact = representatives.find(row => row.kind === variant);
+  if (exact) return exact;
+  const targetCost = activityBucketCostValue(bucket, variant);
+  const closest = representatives
+    .slice()
+    .sort((a, b) => Math.abs(a.cost - targetCost) - Math.abs(b.cost - targetCost) || activityRepresentativeComboKey(a).localeCompare(activityRepresentativeComboKey(b)))[0];
+  return closest || null;
+}
+
+function activityBucketRepresentativeItems(
+  store: ReturnType<typeof currentStoreFrom>,
+  bucket: ActivityPriceBucketRow,
+  variant: ActivityBucketCostVariant,
+  lookup: ActivityScanComboPoolLookup | null
+): ComboItem[] {
+  if (!lookup) return [];
+  const representative = activityBucketRepresentativeForVariant(bucket, variant);
+  if (!representative) return [];
+  const mainCombo = lookup.mainComboById.get(representative.mainComboId);
+  const addOnCombo = lookup.addOnComboById.get(representative.addOnComboId);
+  if (!mainCombo || !addOnCombo || mainCombo.platform !== bucket.platform || addOnCombo.platform !== bucket.platform) return [];
+  return buildPlatformTotals(store, bucket.platform, mergeActivityScanComboQtys(mainCombo, addOnCombo)).items;
+}
+
+function activityBucketRouteRow(bucket: ActivityPriceBucketRow, costVariant: ActivityBucketCostVariant, items: ComboItem[] = []): ActivityBaseComboRow {
+  const originalTotal = roundMoney(bucket.avgOriginalTotal || bucket.priceBucket);
+  const finalPay = roundMoney(bucket.avgFinalPay ?? bucket.weightedAvgFinalPay ?? 0);
+  const netPay = roundMoney(bucket.avgNetPay ?? bucket.weightedAvgNetPay ?? 0);
+  const cost = activityBucketCostValue(bucket, costVariant);
+  const scenario = activityBucketScenario(finalPay);
+  const activityTargetDiscountAmount = roundMoney(bucket.avgActivityTargetDiscountAmount ?? bucket.weightedAvgActivityTargetDiscountAmount ?? 0);
+  const activityAlreadyDiscountAmount = roundMoney(bucket.avgActivityAlreadyDiscountAmount ?? bucket.weightedAvgActivityAlreadyDiscountAmount ?? Math.max(0, originalTotal - finalPay));
+  const activityRedAddOnAmount = roundMoney(bucket.avgActivityRedAddOnAmount ?? bucket.weightedAvgActivityRedAddOnAmount ?? 0);
+  const activityDesignSpace = roundMoney(bucket.avgActivityDesignSpace ?? bucket.weightedAvgActivityDesignSpace ?? Math.max(0, activityTargetDiscountAmount - activityAlreadyDiscountAmount));
+  const activityNetPayBoundarySpace = roundMoney(bucket.avgActivityNetPayBoundarySpace ?? bucket.weightedAvgActivityNetPayBoundarySpace ?? Math.max(0, netPay - ACTIVITY_MIN_NET_PAY));
+  const activitySafeDiscountSpace = roundMoney(bucket.avgActivitySafeDiscountSpace ?? bucket.weightedAvgActivitySafeDiscountSpace ?? activityDesignSpace);
+  const profitFields = activityBucketProfitFields(finalPay, netPay, cost);
+  const costRisk = profitFields.profit < -1e-9;
+  const bucketRisk = (Number(bucket.riskCount) || 0) > 0;
+  const scenarioName = costVariant === 'avgCost'
+    ? activityBucketScenarioName(scenario)
+    : `${activityBucketScenarioName(scenario)} / ${activityBucketCostVariantLabel(costVariant)}`;
+  const representedCount = costVariant === 'avgCost'
+    ? Math.max(0, Math.floor(Number(bucket.comboCount) || 0))
+    : 0;
+  return {
+    key: `activity-route-bucket::${bucket.key}::${costVariant}`,
+    platform: bucket.platform,
+    platformName: bucket.platformName,
+    items,
+    scenario,
+    scenarioName,
+    originalTotal,
+    afterProductDiscount: originalTotal,
+    finalPay,
+    netPay,
+    cost,
+    activityAmount: Math.max(0, roundMoney(originalTotal - finalPay)),
+    commission: 0,
+    serviceFee: 0,
+    freightSubsidy: 0,
+    profit: profitFields.profit,
+    profitRate: profitFields.profitRate,
+    netProfitRate: profitFields.netProfitRate,
+    costProfitRate: profitFields.costProfitRate,
+    targetPayRate: 0,
+    targetNetRate: 0,
+    requiredPayRate: 0,
+    requiredNetRate: 0,
+    profitSpace: profitFields.profitSpace,
+    profitRateGap: null,
+    productDiscount: 0,
+    full: { enabled: true, threshold: 0, amount: 0 },
+    coupons: [],
+    couponAmount: 0,
+    baseRed: { enabled: true, threshold: 0, min: 0, max: 0, amount: activityAlreadyDiscountAmount },
+    redAddOn: { enabled: true, threshold: 0, amount: activityRedAddOnAmount },
+    ignored: false,
+    ignoreReason: '',
+    risk: {
+      hasRisk: costRisk || bucketRisk,
+      severity: costRisk ? 'high' : bucketRisk ? 'medium' : 'none',
+      severityRank: costRisk ? 3 : bucketRisk ? 2 : 0,
+      reasons: costRisk ? [`${activityBucketCostVariantLabel(costVariant)}高于商家到手价`] : [],
+      target: null,
+      thresholdRate: null,
+      rateGap: null,
+      netThresholdRate: null,
+      netRateGap: null
+    },
+    baseFinalPay: finalPay,
+    baseNetPay: netPay,
+    baseProfitRate: profitFields.profitRate,
+    representedComboCount: representedCount,
+    activityTargetDiscountRate: bucket.avgActivityTargetDiscountRate ?? bucket.weightedAvgActivityTargetDiscountRate ?? undefined,
+    activityTargetPay: bucket.avgActivityTargetPay ?? bucket.weightedAvgActivityTargetPay ?? undefined,
+    activityTargetDiscountAmount,
+    activityAlreadyDiscountAmount,
+    activityRedAddOnAmount,
+    activityDesignSpace,
+    activityNetPayBoundarySpace,
+    activitySafeDiscountSpace,
+    activityTargetPayGap: bucket.avgActivityTargetPayGap ?? bucket.weightedAvgActivityTargetPayGap ?? undefined
+  };
+}
+
 function activityBucketRowsToRouteRows(buckets: ActivityPriceBucketRow[], platforms: Platform[]) {
   const allowedPlatforms = new Set(platforms);
   return buckets
     .filter(bucket => allowedPlatforms.has(bucket.platform) && bucket.comboCount > 0)
-    .map<ActivityBaseComboRow>(bucket => {
-      const originalTotal = roundMoney(bucket.avgOriginalTotal || bucket.priceBucket);
-      const finalPay = roundMoney(bucket.avgFinalPay ?? bucket.weightedAvgFinalPay ?? 0);
-      const netPay = roundMoney(bucket.avgNetPay ?? bucket.weightedAvgNetPay ?? 0);
-      const scenario = activityBucketScenario(finalPay);
-      const activityTargetDiscountAmount = roundMoney(bucket.avgActivityTargetDiscountAmount ?? bucket.weightedAvgActivityTargetDiscountAmount ?? 0);
-      const activityAlreadyDiscountAmount = roundMoney(bucket.avgActivityAlreadyDiscountAmount ?? bucket.weightedAvgActivityAlreadyDiscountAmount ?? Math.max(0, originalTotal - finalPay));
-      const activityRedAddOnAmount = roundMoney(bucket.avgActivityRedAddOnAmount ?? bucket.weightedAvgActivityRedAddOnAmount ?? 0);
-      const activityDesignSpace = roundMoney(bucket.avgActivityDesignSpace ?? bucket.weightedAvgActivityDesignSpace ?? Math.max(0, activityTargetDiscountAmount - activityAlreadyDiscountAmount));
-      const activityNetPayBoundarySpace = roundMoney(bucket.avgActivityNetPayBoundarySpace ?? bucket.weightedAvgActivityNetPayBoundarySpace ?? Math.max(0, netPay - ACTIVITY_MIN_NET_PAY));
-      const activitySafeDiscountSpace = roundMoney(bucket.avgActivitySafeDiscountSpace ?? bucket.weightedAvgActivitySafeDiscountSpace ?? activityDesignSpace);
-      return {
-        key: `activity-route-bucket::${bucket.key}`,
-        platform: bucket.platform,
-        platformName: bucket.platformName,
-        items: [],
-        scenario,
-        scenarioName: activityBucketScenarioName(scenario),
-        originalTotal,
-        afterProductDiscount: originalTotal,
-        finalPay,
-        netPay,
-        cost: 0,
-        activityAmount: Math.max(0, roundMoney(originalTotal - finalPay)),
-        commission: 0,
-        serviceFee: 0,
-        freightSubsidy: 0,
-        profit: netPay,
-        profitRate: null,
-        netProfitRate: null,
-        costProfitRate: null,
-        targetPayRate: 0,
-        targetNetRate: 0,
-        requiredPayRate: 0,
-        requiredNetRate: 0,
-        profitSpace: 0,
-        profitRateGap: null,
-        productDiscount: 0,
-        full: { enabled: true, threshold: 0, amount: 0 },
-        coupons: [],
-        couponAmount: 0,
-        baseRed: { enabled: true, threshold: 0, min: 0, max: 0, amount: activityAlreadyDiscountAmount },
-        redAddOn: { enabled: true, threshold: 0, amount: activityRedAddOnAmount },
-        ignored: false,
-        ignoreReason: '',
-        risk: { hasRisk: false, severity: 'none', severityRank: 0, reasons: [], target: null, thresholdRate: null, rateGap: null, netThresholdRate: null, netRateGap: null },
-        baseFinalPay: finalPay,
-        baseNetPay: netPay,
-        baseProfitRate: null,
-        activityTargetDiscountRate: bucket.avgActivityTargetDiscountRate ?? bucket.weightedAvgActivityTargetDiscountRate ?? undefined,
-        activityTargetPay: bucket.avgActivityTargetPay ?? bucket.weightedAvgActivityTargetPay ?? undefined,
-        activityTargetDiscountAmount,
-        activityAlreadyDiscountAmount,
-        activityRedAddOnAmount,
-        activityDesignSpace,
-        activityNetPayBoundarySpace,
-        activitySafeDiscountSpace,
-        activityTargetPayGap: bucket.avgActivityTargetPayGap ?? bucket.weightedAvgActivityTargetPayGap ?? undefined
-      };
-    })
+    .map(bucket => activityBucketRouteRow(bucket, 'avgCost'))
     .sort(sortActivityBaseRows);
+}
+
+function activityBucketCostSummaryRowsToRouteRows(
+  buckets: ActivityPriceBucketRow[],
+  platforms: Platform[],
+  options: {
+    store?: ReturnType<typeof currentStoreFrom>;
+    scanComboPools?: ActivityScanComboPools;
+  } = {}
+) {
+  const allowedPlatforms = new Set(platforms);
+  const rows: ActivityBaseComboRow[] = [];
+  const variants: ActivityBucketCostVariant[] = ['avgCost', 'maxCost', 'minCost'];
+  const lookup = createActivityScanComboPoolLookup(options.scanComboPools);
+  for (const bucket of buckets) {
+    if (!allowedPlatforms.has(bucket.platform) || bucket.comboCount <= 0) continue;
+    const seenCosts = new Set<string>();
+    for (const variant of variants) {
+      const cost = activityBucketCostValue(bucket, variant);
+      const costKey = roundMoney(cost).toFixed(2);
+      if (seenCosts.has(costKey)) continue;
+      seenCosts.add(costKey);
+      const items = options.store ? activityBucketRepresentativeItems(options.store, bucket, variant, lookup) : [];
+      rows.push(activityBucketRouteRow(bucket, variant, items));
+    }
+  }
+  return rows.sort(sortActivityBaseRows);
 }
 
 function isInOriginalRange(settings: ActivityDesignSettings, originalTotal: number) {
@@ -1630,29 +1887,23 @@ function createBaselineCombo(
   return baseRow;
 }
 
-function stepped(value: number, step: number) {
-  const safeStep = Math.max(0.1, Number(step) || 1);
-  return roundMoney(Math.floor(Math.max(0, value) / safeStep) * safeStep);
+function routeMoneyAmount(value: number) {
+  return roundMoney(Math.max(0, Number(value) || 0));
 }
 
-function steppedNear(value: number, step: number) {
-  const safeStep = Math.max(0.1, Number(step) || 1);
-  const safeValue = Math.max(0, Number(value) || 0);
-  const floorValue = Math.floor(safeValue / safeStep + 1e-9) * safeStep;
-  const remainder = safeValue - floorValue;
-  if (floorValue <= 1e-9 && safeValue + 1e-9 >= safeStep * 0.8) return roundMoney(safeStep);
-  if (remainder + 1e-9 >= safeStep * 0.8) return roundMoney(floorValue + safeStep);
-  return roundMoney(floorValue);
+function routeDiscountRate(originalTotal: number, finalPay: number) {
+  const original = Math.max(0, Number(originalTotal) || 0);
+  if (original <= 0) return null;
+  const rate = Math.max(0, Math.min(1, (original - Math.max(0, Number(finalPay) || 0)) / original));
+  return Math.round(rate * 10000) / 10000;
 }
 
-function allocateSteppedDiscount(
+function allocateRouteDiscount(
   totalSpace: number,
-  amountStep: number,
   shares: { full: number; coupon: number; addOn: number },
   caps: { full: number; coupon: number }
 ) {
-  const step = Math.max(0.1, Number(amountStep) || 1);
-  const total = steppedNear(totalSpace, step);
+  const total = routeMoneyAmount(totalSpace);
   if (total <= 0) return { fullAmount: 0, couponAmount: 0, routeAddOnCostSpace: 0 };
   const parts = [
     { key: 'full' as const, share: Math.max(0, shares.full), cap: Math.max(0, caps.full) },
@@ -1664,12 +1915,12 @@ function allocateSteppedDiscount(
   let used = 0;
   parts.forEach(part => {
     const desired = total * (part.share / shareTotal);
-    const amount = Math.min(part.cap, stepped(desired, step));
+    const amount = Math.min(part.cap, roundMoney(Math.max(0, desired)));
     allocations[part.key] = amount;
     used = roundMoney(used + amount);
   });
   let remaining = roundMoney(total - used);
-  while (remaining >= step - 1e-9) {
+  while (remaining > 1e-9) {
     const next = parts
       .map(part => {
         const desired = total * (part.share / shareTotal);
@@ -1679,11 +1930,12 @@ function allocateSteppedDiscount(
           remainder: desired - allocations[part.key]
         };
       })
-      .filter(item => item.room >= step - 1e-9)
+      .filter(item => item.room > 1e-9)
       .sort((a, b) => b.remainder - a.remainder || b.part.share - a.part.share)[0];
     if (!next) break;
-    allocations[next.part.key] = roundMoney(allocations[next.part.key] + step);
-    remaining = roundMoney(remaining - step);
+    const increment = Math.min(remaining, next.room);
+    allocations[next.part.key] = roundMoney(allocations[next.part.key] + increment);
+    remaining = roundMoney(remaining - increment);
   }
   return {
     fullAmount: allocations.full,
@@ -1828,22 +2080,15 @@ function activityTargetSummaryForRows(
   settings: ActivityDesignSettings,
   objective: ActivityDesignObjective
 ) {
-  if (!rows.length) return { targetDiscountRate: null, targetPayAmount: null, targetPayGap: null };
+  if (!rows.length) return { targetDiscountRate: null };
   let rateSum = 0;
-  let paySum = 0;
-  let gapSum = 0;
   rows.forEach(row => {
     const originalTotal = Math.max(0, Number(row.originalTotal) || 0);
     const targetDiscountRate = activityOriginalDiscountRate(settings, objective, originalTotal);
-    const targetPay = activityTargetPayFromOriginal(settings, objective, originalTotal);
     rateSum += targetDiscountRate;
-    paySum += targetPay;
-    gapSum += (Number(row.baseFinalPay ?? row.finalPay) || 0) - targetPay;
   });
   return {
-    targetDiscountRate: rateSum / rows.length,
-    targetPayAmount: roundMoney(paySum / rows.length),
-    targetPayGap: roundMoney(gapSum / rows.length)
+    targetDiscountRate: rateSum / rows.length
   };
 }
 
@@ -1858,10 +2103,9 @@ function recommendationForBand(
   const initialRedAddOnSpace = configuredRedAddOnSpace(settings);
   if (discountSpace.safeDiscountSpace <= 0.1 && initialRedAddOnSpace <= 0) return null;
 
-  const amountStep = Math.max(0.1, Number(settings.couponDesignAmountStep) || 1);
   const maxFull = settings.couponDesignMaxFullAmount === '' ? Number.POSITIVE_INFINITY : Math.max(0, Number(settings.couponDesignMaxFullAmount) || 0);
   const maxCoupon = settings.couponDesignMaxCouponAmount === '' ? Number.POSITIVE_INFINITY : Math.max(0, Number(settings.couponDesignMaxCouponAmount) || 0);
-  const safeDiscount = steppedNear(discountSpace.safeDiscountSpace, amountStep);
+  const safeDiscount = routeMoneyAmount(discountSpace.safeDiscountSpace);
   const targetProfitRate = 0;
 
   const split = {
@@ -1879,7 +2123,7 @@ function recommendationForBand(
     }[objective] || `${objectiveName(objective, settings)}活动`
   };
 
-  const steppedAllocation = allocateSteppedDiscount(safeDiscount, amountStep, {
+  const routeAllocation = allocateRouteDiscount(safeDiscount, {
     full: split.full,
     coupon: split.coupon,
     addOn: split.addOn
@@ -1887,10 +2131,10 @@ function recommendationForBand(
     full: maxFull,
     coupon: maxCoupon
   });
-  const fullAmount = steppedAllocation.fullAmount;
-  const couponAmount = steppedAllocation.couponAmount;
+  const fullAmount = routeAllocation.fullAmount;
+  const couponAmount = routeAllocation.couponAmount;
   const productDiscountAmount = 0;
-  const routeAddOnCostSpace = steppedAllocation.routeAddOnCostSpace;
+  const routeAddOnCostSpace = routeAllocation.routeAddOnCostSpace;
   const addOnCostSpace = totalRedAddOnSpace(settings, routeAddOnCostSpace);
   const totalDiscount = roundMoney(fullAmount + couponAmount + productDiscountAmount + addOnCostSpace);
   if (totalDiscount <= 0) return null;
@@ -1908,8 +2152,6 @@ function recommendationForBand(
     objective,
     objectiveName: objectiveName(objective, settings),
     targetDiscountRate: targetSummary.targetDiscountRate,
-    targetPayAmount: targetSummary.targetPayAmount,
-    targetPayGap: targetSummary.targetPayGap,
     originalBandKey: band.key,
     originalBandLabel: band.label,
     threshold: band.min,
@@ -1939,7 +2181,7 @@ function recommendationForBand(
 function normalizeFullReductionRoute(recommendations: ActivityRecommendationRow[]): FullReduction[] {
   let highestAmount = 0;
   return recommendations
-    .filter(row => row.fullAmount > 0)
+    .filter(row => row.fullAmount >= ACTIVITY_ROUTE_MIN_FULL_AMOUNT - 1e-9)
     .slice()
     .sort((a, b) => a.threshold - b.threshold || b.fullAmount - a.fullAmount)
     .reduce<FullReduction[]>((rules, row) => {
@@ -2050,14 +2292,14 @@ function routeRecommendationForGroup(
   };
 }
 
-function normalizeScaledFullRules(rules: FullReduction[], scale: number, amountStep: number) {
+function normalizeScaledFullRules(rules: FullReduction[], scale: number) {
   let highestAmount = 0;
   return rules
     .map(rule => ({
       ...rule,
-      amount: stepped(rule.amount * scale, amountStep)
+      amount: routeMoneyAmount(rule.amount * scale)
     }))
-    .filter(rule => rule.enabled && rule.amount > 0)
+    .filter(rule => rule.enabled && rule.amount >= ACTIVITY_ROUTE_MIN_FULL_AMOUNT - 1e-9)
     .sort((a, b) => a.threshold - b.threshold || b.amount - a.amount)
     .reduce<FullReduction[]>((normalized, rule) => {
       if (rule.amount <= highestAmount + 1e-9) return normalized;
@@ -2067,11 +2309,11 @@ function normalizeScaledFullRules(rules: FullReduction[], scale: number, amountS
     }, []);
 }
 
-function normalizeScaledCouponRules(rules: Coupon[], scale: number, amountStep: number) {
+function normalizeScaledCouponRules(rules: Coupon[], scale: number) {
   const bestByThreshold = new Map<number, Coupon>();
   rules.forEach(rule => {
     const threshold = roundMoney(rule.threshold);
-    const amount = stepped(rule.amount * scale, amountStep);
+    const amount = routeMoneyAmount(rule.amount * scale);
     if (amount <= 0) return;
     const current = bestByThreshold.get(threshold);
     if (!current || amount > current.amount + 1e-9) {
@@ -2091,7 +2333,6 @@ function normalizeScaledCouponRules(rules: Coupon[], scale: number, amountStep: 
 }
 
 function routeVariantsForRecommendation(row: ActivityRecommendationRow, settings: ActivityDesignSettings) {
-  const amountStep = Math.max(1, Math.floor(Number(settings.couponDesignAmountStep) || 1));
   const hasScalableDiscount = row.fullReductionRules.length > 0 || row.couponRules.length > 0 || row.routeAddOnCostSpace > 0;
   const variants = hasScalableDiscount
     ? [
@@ -2102,9 +2343,9 @@ function routeVariantsForRecommendation(row: ActivityRecommendationRow, settings
     : [{ key: 'initial', label: '初始路线', scale: 1 }];
   return variants
     .map(variant => {
-      const fullReductionRules = normalizeScaledFullRules(row.fullReductionRules, variant.scale, amountStep);
-      const couponRules = normalizeScaledCouponRules(row.couponRules, variant.scale, amountStep);
-      const routeAddOnCostSpace = stepped(row.routeAddOnCostSpace * variant.scale, amountStep);
+      const fullReductionRules = normalizeScaledFullRules(row.fullReductionRules, variant.scale);
+      const couponRules = normalizeScaledCouponRules(row.couponRules, variant.scale);
+      const routeAddOnCostSpace = routeMoneyAmount(row.routeAddOnCostSpace * variant.scale);
       const addOnCostSpace = totalRedAddOnSpace(settings, routeAddOnCostSpace);
       const maxFullAmount = fullReductionRules.reduce((max, rule) => Math.max(max, rule.amount), 0);
       const maxCouponAmount = couponRules.reduce((max, rule) => Math.max(max, rule.amount), 0);
@@ -2180,11 +2421,16 @@ function simulateRecommendation(
     },
     finalPay
   );
+  const bucketScenarioOverride = row.key.startsWith('activity-route-bucket::')
+    ? { scenario: row.scenario, scenarioName: row.scenarioName }
+    : {};
   return {
     ...simulated,
+    ...bucketScenarioOverride,
     key: `${recommendation.key}:${row.key}`,
     recommendationKey: recommendation.key,
-    recommendationLabel: `${recommendation.objectiveName} / ${recommendation.originalBandLabel}`
+    recommendationLabel: `${recommendation.objectiveName} / ${recommendation.originalBandLabel}`,
+    representedComboCount: row.representedComboCount
   };
 }
 
@@ -2336,14 +2582,6 @@ function maxCouponAmount(settings: ActivityDesignSettings) {
   return settings.couponDesignMaxCouponAmount === ''
     ? Number.POSITIVE_INFINITY
     : roundMoney(Math.max(0, Number(settings.couponDesignMaxCouponAmount) || 0));
-}
-
-function fullReductionAmountStep() {
-  return 1;
-}
-
-function couponRouteAmountStep(settings: ActivityDesignSettings) {
-  return Math.max(0.1, Number(settings.couponDesignAmountStep) || 1);
 }
 
 type ActivityRouteDesignDiscountKind = 'full' | 'coupon';
@@ -2524,7 +2762,7 @@ function normalizeActivityFullRules(rules: FullReduction[], maxRules = ACTIVITY_
       threshold: integerThreshold(rule.threshold),
       amount: roundMoney(Math.max(0, Number(rule.amount) || 0))
     }))
-    .filter(rule => rule.amount > 0)
+    .filter(rule => rule.amount >= ACTIVITY_ROUTE_MIN_FULL_AMOUNT - 1e-9)
     .sort((a, b) => a.threshold - b.threshold || b.amount - a.amount)
     .reduce<FullReduction[]>((normalized, rule) => {
       if (normalized.length >= maxRules) return normalized;
@@ -2556,13 +2794,14 @@ function createActivityRouteRecommendation(
     fullReductionRules,
     activityObjectivePayProfile(settings, objective).maxFullRuleCount || ACTIVITY_ROUTE_MAX_FULL_RULES
   );
-  const normalizedCouponRules = normalizeActivityCouponRules(couponRules).slice(0, ACTIVITY_ROUTE_COUPON_LIMIT);
+  const normalizedCouponRules = normalizeActivityCouponRules(couponRules);
   const routeAddOnCostSpace = 0;
   const addOnCostSpace = totalRedAddOnSpace(settings, routeAddOnCostSpace);
   if (!normalizedFullRules.length && !normalizedCouponRules.length && addOnCostSpace <= 0) return null;
 
   const maxFullAmount = normalizedFullRules.reduce((max, rule) => Math.max(max, rule.amount), 0);
   const maxCoupon = normalizedCouponRules.reduce((max, rule) => Math.max(max, rule.amount), 0);
+  const targetSummary = activityTargetSummaryForRows(rows, settings, objective);
   const primaryThreshold = normalizedFullRules[0]?.threshold ?? normalizedCouponRules[0]?.threshold ?? first.originalTotal;
   const originalBandLabel = normalizedFullRules.length
     ? `满减${roundMoney(primaryThreshold)} / 原价桶${roundMoney(first.originalTotal)}-${roundMoney(last.originalTotal)}`
@@ -2584,9 +2823,7 @@ function createActivityRouteRecommendation(
     routeGroup: activityObjectiveGroup(settings, objective) === 'stable' ? 'stable' : 'marketing',
     userScenarioName,
     targetPayLabel: activityObjectiveTargetLabel(settings, objective),
-    targetDiscountRate: null,
-    targetPayAmount: null,
-    targetPayGap: null,
+    targetDiscountRate: targetSummary.targetDiscountRate,
     objective,
     objectiveName: objectiveName(objective, settings),
     originalBandKey: key,
@@ -2630,6 +2867,10 @@ function evaluateActivityRouteMetrics(
   let corePayCount = 0;
   let mainPayCount = 0;
   let highPayCount = 0;
+  let discountRateSum = 0;
+  let discountRateCount = 0;
+  let minDiscountRate: number | null = null;
+  let maxDiscountRate: number | null = null;
 
   for (const row of rows) {
     const simulation = markActivityPayBoundary(simulateRecommendation(state, store, row, recommendation, settings), settings, recommendation.objective);
@@ -2639,6 +2880,13 @@ function evaluateActivityRouteMetrics(
     }
     activeCount++;
     finalPaySum += simulation.finalPay;
+    const actualDiscountRate = routeDiscountRate(simulation.originalTotal, simulation.finalPay);
+    if (actualDiscountRate !== null) {
+      discountRateSum += actualDiscountRate;
+      discountRateCount++;
+      minDiscountRate = minDiscountRate === null ? actualDiscountRate : Math.min(minDiscountRate, actualDiscountRate);
+      maxDiscountRate = maxDiscountRate === null ? actualDiscountRate : Math.max(maxDiscountRate, actualDiscountRate);
+    }
     businessPayWeightSum += activityExpectedPayWeight(settings, recommendation.objective, simulation.scenario, simulation.finalPay, simulation.originalTotal);
     if (activityPayInCoreRange(settings, recommendation.objective, simulation.finalPay, simulation.originalTotal)) corePayCount++;
     if (activityPayInTargetRange(settings, recommendation.objective, simulation.finalPay, simulation.originalTotal)) mainPayCount++;
@@ -2667,6 +2915,9 @@ function evaluateActivityRouteMetrics(
     profitRateSpread: null,
     payBandAvgSpread: null,
     avgFinalPay: activeCount ? finalPaySum / activeCount : 0,
+    actualAvgDiscountRate: discountRateCount ? Math.round((discountRateSum / discountRateCount) * 10000) / 10000 : null,
+    actualMinDiscountRate: minDiscountRate,
+    actualMaxDiscountRate: maxDiscountRate,
     lossCount: 0,
     lossShare: 0,
     maxLossShare: 0,
@@ -2741,9 +2992,13 @@ function activityRouteScoreBreakdown(recommendation: ActivityRecommendationRow, 
 }
 
 function activityRouteScoreDetails(settings: ActivityDesignSettings, recommendation: ActivityRecommendationRow, metrics: ActivityRouteMetrics) {
+  const discountRateText = metrics.actualAvgDiscountRate === null
+    ? '执行让利率 无有效样本'
+    : `执行让利率 均值${rateShareText(metrics.actualAvgDiscountRate)}，区间${rateShareText(metrics.actualMinDiscountRate ?? metrics.actualAvgDiscountRate)}-${rateShareText(metrics.actualMaxDiscountRate ?? metrics.actualAvgDiscountRate)}`;
   return [
     `主要支付覆盖 ${rateShareText(metrics.mainPayShare)}，要求 ${rateShareText(metrics.targetPayShareFloor)}`,
     `高支付价占比 ${rateShareText(metrics.highPayShare)}，上限 ${rateShareText(metrics.highPayShareLimit)}`,
+    discountRateText,
     `平均支付价 ¥${roundMoney(metrics.avgFinalPay)}`,
     `总优惠 ¥${roundMoney(recommendation.totalDiscount)}`,
     `到手低于¥${roundMoney(activityMinNetPayFloor(settings, recommendation.objective))}忽略 ${metrics.ignoredCount}`
@@ -2799,6 +3054,9 @@ function applyActivityRouteMetrics(
     minProfitAfter: metrics.minProfitRate,
     profitRateSpreadAfter: metrics.payBandAvgSpread ?? metrics.profitRateSpread,
     avgFinalPayAfter: metrics.avgFinalPay,
+    actualAvgDiscountRate: metrics.actualAvgDiscountRate,
+    actualMinDiscountRate: metrics.actualMinDiscountRate,
+    actualMaxDiscountRate: metrics.actualMaxDiscountRate,
     score: metrics.score,
     scoreLevel,
     scoreLabel: activityRouteScoreLabel(scoreLevel),
@@ -2820,241 +3078,222 @@ function scoreActivityRouteRecommendation(
   return applyActivityRouteMetrics(settings, recommendation, metrics, hitCount);
 }
 
-function fullReductionInterleaveThresholds(fullReductionRules: FullReduction[], settings: ActivityDesignSettings) {
-  const rules = fullReductionRules.slice().sort((a, b) => a.threshold - b.threshold);
-  const step = Math.max(3, Math.min(8, Number(settings.originalBandSize) || 5));
-  const thresholds = new Set<number>();
-  for (let index = 0; index < rules.length; index++) {
-    const current = rules[index];
-    const next = rules[index + 1];
-    if (next) {
-      thresholds.add(integerThreshold(Math.max(current.threshold + step, (current.threshold + next.threshold) / 2)));
-      thresholds.add(integerThreshold(Math.max(current.threshold + 1, next.threshold - step)));
-      continue;
-    }
-    thresholds.add(integerThreshold(current.threshold + step));
-    thresholds.add(integerThreshold(current.threshold + step * 2));
-  }
-  return Array.from(thresholds).filter(value => value > 0).sort((a, b) => a - b);
+function recommendedCouponAmount(value: number) {
+  const amount = roundMoney(
+    Math.floor(Math.max(0, Number(value) || 0) / ACTIVITY_COUPON_RECOMMEND_AMOUNT_UNIT + 1e-9)
+    * ACTIVITY_COUPON_RECOMMEND_AMOUNT_UNIT
+  );
+  return amount >= ACTIVITY_ROUTE_MIN_COUPON_AMOUNT - 1e-9 ? amount : 0;
 }
 
-function boundedSceneNumber(value: unknown, fallback: number, min = 0, max = Infinity) {
-  const numberValue = Number(value);
-  const resolved = Number.isFinite(numberValue) ? numberValue : fallback;
-  return Math.max(min, Math.min(max, resolved));
-}
-
-function fallbackCouponSceneForObjective(settings: ActivityDesignSettings, objective: ActivityDesignObjective): ActivityCouponSceneTemplate {
-  const profile = activityObjectivePayProfile(settings, objective);
-  const group = activityObjectiveGroup(settings, objective);
-  const thresholdMode = ({
-    longTerm: 'fullReductionInterleave',
-    orderGrowth: 'lowThresholdOrder',
-    raiseAov: 'addOnCritical',
-    hotProduct: 'lowThresholdOrder',
-    highMarginConversion: 'highMarginGuide',
-    profitRecovery: 'fullReductionInterleave'
-  } as Partial<Record<ActivityDesignObjective, ActivityCouponSceneTemplate['thresholdMode']>>)[objective]
-    || (group === 'stable' ? 'fullReductionInterleave' : 'addOnCritical');
+function activityCouponStrategyName(mode: ReturnType<typeof activityObjectivePayProfile>['couponScoringMode']) {
   return {
-    key: `fallback-${objective}`,
-    enabled: true,
-    name: couponUserScenarioName(objective, settings),
-    channel: objective === 'profitRecovery' || group === 'stable' ? 'inStore' : 'orderReturn',
-    targetUser: 'all',
-    objective,
-    thresholdMode,
-    payMin: profile.min,
-    payMax: profile.max,
-    thresholdMin: Math.max(10, Math.floor(profile.min + 15)),
-    thresholdMax: Math.max(25, Math.ceil(profile.max + 35)),
-    thresholdStep: Math.max(1, Math.floor(Number(settings.couponDesignThresholdStep) || 5)),
-    thresholdWindow: Math.max(4, Number(settings.originalBandSize) || 5),
-    addOnMin: thresholdMode === 'addOnCritical' || thresholdMode === 'highMarginGuide' ? 3 : 0,
-    addOnMax: thresholdMode === 'addOnCritical' || thresholdMode === 'highMarginGuide' ? 10 : 5,
-    fullReductionOffsetMin: -3,
-    fullReductionOffsetMax: 8,
-    couponBudgetShare: Math.round(activityDiscountSharePercent(settings, objective, 'coupon') * 100),
-    maxCouponCount: group === 'stable' || objective === 'profitRecovery' ? 1 : 3,
-    maxCouponAmount: maxCouponAmount(settings),
-    minPayProfitRate: profile.minPayProfitRate * 100,
-    minNetProfitRate: profile.minNetProfitRate * 100,
-    maxLossShare: profile.maxLossShare * 100
-  };
+    aggressive: '激进',
+    balanced: '平稳',
+    conservative: '保守'
+  }[mode] || '平稳';
 }
 
-function normalizedCouponSceneForDesign(
-  scene: Partial<ActivityCouponSceneTemplate> | undefined,
-  fallback: ActivityCouponSceneTemplate
-): ActivityCouponSceneTemplate {
-  const payMin = boundedSceneNumber(scene?.payMin, fallback.payMin);
-  const thresholdMin = boundedSceneNumber(scene?.thresholdMin, fallback.thresholdMin);
-  const addOnMin = boundedSceneNumber(scene?.addOnMin, fallback.addOnMin);
-  const fullReductionOffsetMin = boundedSceneNumber(scene?.fullReductionOffsetMin, fallback.fullReductionOffsetMin, -100, 100);
-  const objective = String(scene?.objective || fallback.objective || '').trim() || fallback.objective;
-  return {
-    key: String(scene?.key || fallback.key),
-    enabled: scene?.enabled !== false,
-    name: String(scene?.name || fallback.name),
-    platforms: Array.isArray(scene?.platforms)
-      ? scene.platforms.filter((item): item is Platform => PLATFORMS.includes(item as Platform))
-      : fallback.platforms,
-    channel: scene?.channel === 'inStore' || scene?.channel === 'orderReturn' || scene?.channel === 'reviewReturn' || scene?.channel === 'pointsReturn' || scene?.channel === 'targeted'
-      ? scene.channel
-      : fallback.channel,
-    targetUser: scene?.targetUser === 'newCustomer' || scene?.targetUser === 'highFrequency' || scene?.targetUser === 'highAov' || scene?.targetUser === 'lostCustomer' || scene?.targetUser === 'specified'
-      ? scene.targetUser
-      : fallback.targetUser,
-    objective,
-    thresholdMode: scene?.thresholdMode === 'lowThresholdOrder' || scene?.thresholdMode === 'fullReductionInterleave' || scene?.thresholdMode === 'addOnCritical' || scene?.thresholdMode === 'highMarginGuide' || scene?.thresholdMode === 'retentionRecall'
-      ? scene.thresholdMode
-      : fallback.thresholdMode,
-    payMin,
-    payMax: Math.max(payMin + 1, boundedSceneNumber(scene?.payMax, fallback.payMax)),
-    thresholdMin,
-    thresholdMax: Math.max(thresholdMin + 1, boundedSceneNumber(scene?.thresholdMax, fallback.thresholdMax)),
-    thresholdStep: Math.max(1, Math.floor(boundedSceneNumber(scene?.thresholdStep, fallback.thresholdStep, 1))),
-    thresholdWindow: Math.max(1, boundedSceneNumber(scene?.thresholdWindow, fallback.thresholdWindow, 1)),
-    addOnMin,
-    addOnMax: Math.max(addOnMin, boundedSceneNumber(scene?.addOnMax, fallback.addOnMax)),
-    fullReductionOffsetMin,
-    fullReductionOffsetMax: Math.max(fullReductionOffsetMin, boundedSceneNumber(scene?.fullReductionOffsetMax, fallback.fullReductionOffsetMax, -100, 100)),
-    couponBudgetShare: boundedSceneNumber(scene?.couponBudgetShare, fallback.couponBudgetShare, 0, 100),
-    maxCouponCount: Math.max(0, Math.floor(boundedSceneNumber(scene?.maxCouponCount, fallback.maxCouponCount, 0, ACTIVITY_ROUTE_COUPON_LIMIT))),
-    maxCouponAmount: boundedSceneNumber(scene?.maxCouponAmount, fallback.maxCouponAmount),
-    minPayProfitRate: boundedSceneNumber(scene?.minPayProfitRate, fallback.minPayProfitRate, -80, 95),
-    minNetProfitRate: boundedSceneNumber(scene?.minNetProfitRate, fallback.minNetProfitRate, -80, 95),
-    maxLossShare: boundedSceneNumber(scene?.maxLossShare, fallback.maxLossShare, 0, 100)
-  };
-}
-
-function activityCouponScenesForObjective(settings: ActivityDesignSettings, objective: ActivityDesignObjective, platform: Platform) {
-  const fallback = fallbackCouponSceneForObjective(settings, objective);
-  const scenes = (Array.isArray(settings.couponSceneTemplates) ? settings.couponSceneTemplates : [])
-    .map(scene => normalizedCouponSceneForDesign(scene, fallback))
-    .filter(scene => (
-      scene.enabled
-      && scene.objective === objective
-      && scene.maxCouponCount > 0
-      && scene.maxCouponAmount > 0
-      && (!scene.platforms?.length || scene.platforms.includes(platform))
-    ));
-  return scenes.length ? scenes : [fallback];
-}
-
-function steppedCouponThreshold(value: number, step: number) {
-  const safeStep = Math.max(1, Math.floor(Number(step) || 1));
-  return integerThreshold(Math.ceil(Math.max(0, value) / safeStep) * safeStep);
-}
-
-function addCouponThresholdCandidate(
-  thresholds: Set<number>,
-  value: number,
-  scene: ActivityCouponSceneTemplate,
-  thresholdMin = scene.thresholdMin,
-  thresholdMax = scene.thresholdMax
-) {
-  const threshold = steppedCouponThreshold(value, scene.thresholdStep);
-  if (threshold + 1e-9 < thresholdMin || threshold > thresholdMax + 1e-9) return;
-  thresholds.add(threshold);
-}
-
-function couponSceneThresholdCandidates(
-  rows: ActivityBaseComboRow[],
+function activityCouponUsageScenario(
+  platform: Platform,
+  objective: ActivityDesignObjective,
+  mode: ReturnType<typeof activityObjectivePayProfile>['couponScoringMode'],
+  coupon: { threshold: number; amount: number },
+  index: number,
+  total: number,
   fullReductionRules: FullReduction[],
-  settings: ActivityDesignSettings,
-  scene: ActivityCouponSceneTemplate
-) {
-  const thresholds = new Set<number>();
-  const minOriginalThreshold = rows.length
-    ? integerThreshold(Math.min(...rows.map(row => row.originalTotal)))
-    : scene.thresholdMin;
-  const maxOriginalThreshold = rows.length
-    ? integerThreshold(Math.max(...rows.map(row => row.originalTotal)))
-    : scene.thresholdMax;
-  const effectiveThresholdMin = minOriginalThreshold;
-  const effectiveThresholdMax = Math.max(scene.thresholdMax, maxOriginalThreshold);
-  const thresholdSpan = Math.max(0, effectiveThresholdMax - effectiveThresholdMin);
-  const rangeStep = Math.max(scene.thresholdStep, Math.ceil(thresholdSpan / Math.max(12, ACTIVITY_ROUTE_THRESHOLD_LIMIT / 4)));
-  for (let value = effectiveThresholdMin; value <= effectiveThresholdMax + 1e-9; value += rangeStep) {
-    addCouponThresholdCandidate(thresholds, value, scene, effectiveThresholdMin, effectiveThresholdMax);
+  redTiers: RedTier[]
+): Pick<Coupon, 'sceneName' | 'channel' | 'targetUser' | 'thresholdMode' | 'usageSuggestion'> {
+  const firstTier = index === 0;
+  const lateTier = total > 1 && index >= Math.max(1, Math.floor(total * 0.6));
+  const redName = platform === 'meituan' ? '神券' : '爆红包';
+  const fullRules = normalizeActivityFullRules(fullReductionRules);
+  const nextFullRule = fullRules.find(rule => rule.threshold > coupon.threshold + 1e-9);
+  const redBasisAfterCoupon = Math.max(0, roundMoney(coupon.threshold - coupon.amount));
+  const normalizedRedTiers = redTiers
+    .filter(row => row.enabled && row.threshold > 0 && row.max > 0)
+    .slice()
+    .sort((a, b) => a.threshold - b.threshold);
+  const nextRedTier = normalizedRedTiers.find(row => row.threshold > redBasisAfterCoupon + 1e-9);
+  const fullTierText = nextFullRule
+    ? `下一满减档满${roundMoney(nextFullRule.threshold)}减${roundMoney(nextFullRule.amount)}`
+    : fullRules.length
+      ? `当前最高满减档满${roundMoney(fullRules[fullRules.length - 1].threshold)}减${roundMoney(fullRules[fullRules.length - 1].amount)}`
+      : '当前未形成满减档';
+  const redTierText = nextRedTier
+    ? `下一${redName}档约满${roundMoney(nextRedTier.threshold)}减${roundMoney(nextRedTier.max)}`
+    : normalizedRedTiers.length
+      ? `当前最高${redName}档约满${roundMoney(normalizedRedTiers[normalizedRedTiers.length - 1].threshold)}减${roundMoney(normalizedRedTiers[normalizedRedTiers.length - 1].max)}`
+      : `当前未配置${redName}档`;
+  const nearFullTier = Boolean(nextFullRule && nextFullRule.threshold - coupon.threshold <= 8 + 1e-9);
+  const nearRedTier = Boolean(nextRedTier && nextRedTier.threshold - redBasisAfterCoupon <= 8 + 1e-9);
+  if (objective === 'profitRecovery' || mode === 'conservative') {
+    return {
+      sceneName: `${redName}补档券`,
+      channel: 'targeted',
+      targetUser: 'highAov',
+      thresholdMode: 'highMarginGuide',
+      usageSuggestion: `意义：围绕${redName}档位做补档，同时控制利润风险。${redTierText}；${redName}按满减/券后的支付基础判断，应用前重点核验是否退档和是否亏损。`
+    };
   }
-  addCouponThresholdCandidate(thresholds, effectiveThresholdMax, scene, effectiveThresholdMin, effectiveThresholdMax);
+  if (nearRedTier && !nearFullTier) {
+    return {
+      sceneName: `${redName}补档券`,
+      channel: 'targeted',
+      targetUser: 'highAov',
+      thresholdMode: 'highMarginGuide',
+      usageSuggestion: `意义：围绕${redName}档位做补档。${redTierText}；该券不是独立业务档位，重点用于引导组合落在更合适的${redName}判断区间，并核验券后是否退档。`
+    };
+  }
+  if (nearFullTier || (!firstTier && fullRules.length)) {
+    return {
+      sceneName: '满减补档券',
+      channel: 'inStore',
+      targetUser: 'highFrequency',
+      thresholdMode: 'fullReductionInterleave',
+      usageSuggestion: `意义：补齐公开满减档位之间的价格带。${fullTierText}；券门槛不是业务档位，只用于承接未被满减覆盖充分的原价桶，并引导自然加购。`
+    };
+  }
+  if (objective === 'raiseAov' || lateTier) {
+    return {
+      sceneName: '加购引导券',
+      channel: 'orderReturn',
+      targetUser: 'highAov',
+      thresholdMode: 'addOnCritical',
+      usageSuggestion: `意义：提高客单价。用于下单返券、加料/小吃/套餐加购引导；不把满${roundMoney(coupon.threshold)}当业务档位，真实档位仍以满减档和${redName}档为准。`
+    };
+  }
+  if (objective === 'highMarginConversion') {
+    return {
+      sceneName: `${redName}补档券`,
+      channel: 'pointsReturn',
+      targetUser: 'highFrequency',
+      thresholdMode: 'highMarginGuide',
+      usageSuggestion: `意义：围绕${redName}档位和高到手组合做补档。${redTierText}；适合高频老客或会员复购，优先核验券后${redName}档位变化。`
+    };
+  }
+  if (objective === 'orderGrowth' || objective === 'hotProduct' || (mode === 'aggressive' && firstTier)) {
+    return {
+      sceneName: '加购引导券',
+      channel: 'inStore',
+      targetUser: 'all',
+      thresholdMode: 'addOnCritical',
+      usageSuggestion: `意义：拉单同时引导轻量加购。适合店内领券或爆品引流，真实业务档位仍以满减档和${redName}档为准。`
+    };
+  }
+  return {
+    sceneName: fullRules.length ? '满减补档券' : `${redName}补档券`,
+    channel: 'inStore',
+    targetUser: 'all',
+    thresholdMode: fullRules.length ? 'fullReductionInterleave' : 'highMarginGuide',
+    usageSuggestion: fullRules.length
+      ? `意义：满减补档。${fullTierText}；用于补齐满减阶梯之间的价格带，券门槛不作为独立业务档位。`
+      : `意义：${redName}补档。${redTierText}；用于围绕平台券档位做承接，并核验券后是否退档。`
+  };
+}
 
-  const sampleStride = Math.max(1, Math.ceil(rows.length / 80));
-  const sampledRows = rows.slice().sort((a, b) => a.originalTotal - b.originalTotal).filter((_, index) => index % sampleStride === 0);
-  for (const row of sampledRows) {
-    if (scene.thresholdMode === 'lowThresholdOrder') {
-      addCouponThresholdCandidate(thresholds, row.originalTotal, scene, effectiveThresholdMin, effectiveThresholdMax);
-      addCouponThresholdCandidate(thresholds, row.originalTotal + Math.max(0, scene.addOnMin), scene, effectiveThresholdMin, effectiveThresholdMax);
+function createStrategyCouponRules(
+  platform: Platform,
+  objective: ActivityDesignObjective,
+  suggestions: ActivityCouponBucketSuggestion[],
+  mode: ReturnType<typeof activityObjectivePayProfile>['couponScoringMode'],
+  fullReductionRules: FullReduction[] = [],
+  redTiers: RedTier[] = []
+) {
+  const sorted = suggestions.slice().sort((a, b) => a.originalBucket - b.originalBucket);
+  if (!sorted.length) return [] as Coupon[];
+
+  const scanStartIndex = mode === 'conservative'
+    ? sorted.reduce((lastIndex, row, index) => (
+      row.amount < ACTIVITY_ROUTE_MIN_COUPON_AMOUNT - 1e-9 ? index : lastIndex
+    ), -1) + 1
+    : 0;
+  const scanRows = sorted.slice(scanStartIndex);
+  if (!scanRows.some(row => recommendedCouponAmount(row.amount) > 0)) return [] as Coupon[];
+
+  const strategyName = activityCouponStrategyName(mode);
+  const strategyKey = ['coupon-strategy', platform, objective, mode].join('::');
+  const couponDrafts: Array<{
+    key: string;
+    threshold: number;
+    amount: number;
+  }> = [];
+  let highestAmount = 0;
+  for (let index = scanStartIndex; index < sorted.length; index++) {
+    const row = sorted[index];
+    const amount = recommendedCouponAmount(row.amount);
+    if (amount <= highestAmount + 1e-9) continue;
+    const threshold = couponDrafts.length === 0 && mode === 'aggressive'
+      ? scanRows[0].originalBucket
+      : row.originalBucket;
+    if (couponDrafts.length && threshold <= couponDrafts[couponDrafts.length - 1].threshold + 1e-9) {
+      couponDrafts[couponDrafts.length - 1].amount = amount;
+      highestAmount = amount;
       continue;
     }
-    addCouponThresholdCandidate(thresholds, row.originalTotal + scene.addOnMin, scene, effectiveThresholdMin, effectiveThresholdMax);
-    addCouponThresholdCandidate(thresholds, row.originalTotal + (scene.addOnMin + scene.addOnMax) / 2, scene, effectiveThresholdMin, effectiveThresholdMax);
-    addCouponThresholdCandidate(thresholds, row.originalTotal + scene.addOnMax, scene, effectiveThresholdMin, effectiveThresholdMax);
+    couponDrafts.push({
+      key: [strategyKey, threshold, amount].join('::'),
+      threshold,
+      amount
+    });
+    highestAmount = amount;
   }
 
-  if (scene.thresholdMode === 'fullReductionInterleave') {
-    for (const threshold of fullReductionInterleaveThresholds(fullReductionRules, settings)) {
-      addCouponThresholdCandidate(thresholds, threshold, scene, effectiveThresholdMin, effectiveThresholdMax);
-    }
-    for (const rule of fullReductionRules) {
-      addCouponThresholdCandidate(thresholds, rule.threshold + scene.fullReductionOffsetMin, scene, effectiveThresholdMin, effectiveThresholdMax);
-      addCouponThresholdCandidate(thresholds, rule.threshold + scene.fullReductionOffsetMax, scene, effectiveThresholdMin, effectiveThresholdMax);
-      addCouponThresholdCandidate(thresholds, rule.threshold + (scene.fullReductionOffsetMin + scene.fullReductionOffsetMax) / 2, scene, effectiveThresholdMin, effectiveThresholdMax);
-    }
-  }
-
-  return Array.from(thresholds).sort((a, b) => a - b).slice(0, ACTIVITY_ROUTE_THRESHOLD_LIMIT);
-}
-
-function couponSceneScore(
-  scene: ActivityCouponSceneTemplate,
-  suggestion: Pick<ActivityCouponBucketSuggestion, 'threshold' | 'remainingSpace' | 'boundarySpace'>,
-  fullReductionRules: FullReduction[]
-) {
-  const threshold = suggestion.threshold;
-  const spaceBoost = Math.min(12, suggestion.remainingSpace);
-  if (scene.thresholdMode === 'lowThresholdOrder') {
-    return threshold <= scene.thresholdMax + 1e-9 ? 18 : 8;
-  }
-  if (scene.thresholdMode === 'fullReductionInterleave') {
-    const hit = fullReductionRules.some(rule => (
-      threshold + 1e-9 >= rule.threshold + scene.fullReductionOffsetMin
-      && threshold <= rule.threshold + scene.fullReductionOffsetMax + 1e-9
+  for (let index = 0; index < couponDrafts.length; index++) {
+    const coupon = couponDrafts[index];
+    const nextCoupon = couponDrafts[index + 1];
+    const coveredRows = sorted.filter(row => (
+      row.originalBucket + 1e-9 >= coupon.threshold
+      && (!nextCoupon || row.originalBucket < nextCoupon.threshold - 1e-9)
     ));
-    return hit ? 22 : 10;
+    const minCoveredBucket = coveredRows.length
+      ? Math.min(...coveredRows.map(row => row.originalBucket))
+      : coupon.threshold;
+    const maxCoveredBucket = coveredRows.length
+      ? Math.max(...coveredRows.map(row => row.originalBucket))
+      : coupon.threshold;
+    const thresholdSuggestion = sorted.find(row => Math.abs(row.originalBucket - coupon.threshold) < 1e-9) || coveredRows[0];
+    if (!thresholdSuggestion) continue;
+    thresholdSuggestion.selected = true;
+    thresholdSuggestion.recommendedCouponKey = coupon.key;
+    thresholdSuggestion.recommendedThreshold = coupon.threshold;
+    thresholdSuggestion.recommendedAmount = coupon.amount;
+    thresholdSuggestion.minCoveredBucket = minCoveredBucket;
+    thresholdSuggestion.maxCoveredBucket = maxCoveredBucket;
+    thresholdSuggestion.coveredBucketCount = coveredRows.length;
+    thresholdSuggestion.diagnosis = `${thresholdSuggestion.diagnosis}；作为最终推荐券门槛桶，参考覆盖原价桶${roundMoney(minCoveredBucket)}-${roundMoney(maxCoveredBucket)}共${coveredRows.length}桶`;
   }
-  if (scene.thresholdMode === 'addOnCritical') {
-    return threshold >= scene.thresholdMin + scene.addOnMin - 1e-9 ? 18 : 9;
-  }
-  if (scene.thresholdMode === 'highMarginGuide') {
-    return 8 + spaceBoost;
-  }
-  return threshold >= scene.thresholdMin + scene.addOnMin - 1e-9 ? 18 : 10;
-}
 
-function couponAmountScore(amount: number, remainingSpace: number, mode: ReturnType<typeof activityObjectivePayProfile>['couponScoringMode']) {
-  if (remainingSpace <= 1e-9) return 0;
-  const ratio = amount / remainingSpace;
-  if (mode === 'conservative') {
-    return ratio + 1e-9 >= 1 ? 100 : Math.max(0, ratio * 85);
+  for (const suggestion of sorted) {
+    const matchedCoupon = couponDrafts
+      .filter(coupon => suggestion.originalBucket + 1e-9 >= coupon.threshold)
+      .sort((a, b) => b.amount - a.amount || b.threshold - a.threshold)[0];
+    if (!matchedCoupon) continue;
+    const overSpace = roundMoney(matchedCoupon.amount - suggestion.amount);
+    if (overSpace <= 1e-9) continue;
+    suggestion.diagnosis = `${suggestion.diagnosis}；命中推荐券满${roundMoney(matchedCoupon.threshold)}减${roundMoney(matchedCoupon.amount)}，但本桶券空间仅¥${roundMoney(suggestion.amount)}，超出¥${overSpace}，建议在活动校验明细查看具体组合是否亏损`;
   }
-  if (mode === 'aggressive') {
-    if (ratio + 1e-9 >= 1) return 100;
-    return Math.max(0, 45 + ratio * 50);
-  }
-  return Math.max(0, 100 - Math.abs(1 - ratio) * 70);
-}
 
-function selectCouponScene(
-  scenes: ActivityCouponSceneTemplate[],
-  suggestion: Pick<ActivityCouponBucketSuggestion, 'threshold' | 'remainingSpace' | 'boundarySpace'>,
-  fullReductionRules: FullReduction[]
-) {
-  return scenes
-    .map(scene => ({ scene, score: couponSceneScore(scene, suggestion, fullReductionRules) }))
-    .sort((a, b) => b.score - a.score || a.scene.thresholdMin - b.scene.thresholdMin)[0];
+  return couponDrafts.map((coupon, index) => {
+    const usage = activityCouponUsageScenario(
+      platform,
+      objective,
+      mode,
+      coupon,
+      index,
+      couponDrafts.length,
+      fullReductionRules,
+      redTiers
+    );
+    return {
+      enabled: true,
+      name: `${usage.sceneName || strategyName}满${coupon.threshold}减${coupon.amount}`,
+      threshold: coupon.threshold,
+      amount: coupon.amount,
+      sceneKey: [strategyKey, usage.channel, usage.thresholdMode].join('::'),
+      ...usage
+    };
+  });
 }
 
 function buildCouponRouteRules(
@@ -3068,10 +3307,7 @@ function buildCouponRouteRules(
 ) {
   const maxAmount = maxCouponAmount(settings);
   if (!rows.length || maxAmount <= 0) return { couponRules: [] as Coupon[], couponBucketSuggestions: [] as ActivityCouponBucketSuggestion[] };
-  const scenes = activityCouponScenesForObjective(settings, objective, platform);
-  if (!scenes.length) return { couponRules: [] as Coupon[], couponBucketSuggestions: [] as ActivityCouponBucketSuggestion[] };
   const payProfile = activityObjectivePayProfile(settings, objective);
-  const amountStep = couponRouteAmountStep(settings);
 
   const rowsByBucket = new Map<number, ActivityBaseComboRow[]>();
   for (const row of rows) {
@@ -3100,12 +3336,9 @@ function buildCouponRouteRules(
         [],
         'coupon'
       );
-      const targetSpace = routeSpace.targetSpace;
-      const boundarySpace = routeSpace.boundarySpace;
-      if (targetSpace < ACTIVITY_ROUTE_MIN_DESIGN_SPACE - 1e-9) continue;
       simulatedRows.push({
-        targetSpace,
-        boundarySpace,
+        targetSpace: routeSpace.targetSpace,
+        boundarySpace: routeSpace.boundarySpace,
         demandWeight: routeSpace.demandWeight,
         fullAmount: routeSpace.currentFullAmount
       });
@@ -3113,23 +3346,11 @@ function buildCouponRouteRules(
     if (!simulatedRows.length) continue;
     const remainingSpace = targetSpaceMetric(simulatedRows, payProfile.fullAmountBasis);
     const boundarySpace = netPayBoundaryReferenceMetric(simulatedRows);
-    const sceneSelection = selectCouponScene(scenes, { threshold: bucket, remainingSpace, boundarySpace }, fullReductionRules);
-    if (!sceneSelection) continue;
-    const sceneMaxAmount = Math.min(maxAmount, Math.max(0, Number(sceneSelection.scene.maxCouponAmount) || 0));
-    const maxAllowedAmount = sceneMaxAmount;
-    const amount = roundPositiveActivityAmount(
+    const maxAllowedAmount = maxAmount;
+    const amount = cappedActivityMoneyAmount(
       Math.min(remainingSpace, maxAllowedAmount),
-      maxAllowedAmount,
-      payProfile.fullAmountRounding,
-      amountStep
+      maxAllowedAmount
     );
-    if (amount < ACTIVITY_ROUTE_MIN_DESIGN_SPACE - 1e-9) continue;
-    const thresholdScore = payProfile.couponScoringMode === 'aggressive'
-      ? Math.min(100, 60 + bucket)
-      : payProfile.couponScoringMode === 'conservative'
-        ? Math.max(20, 100 - bucket)
-        : 80;
-    const amountScore = couponAmountScore(amount, remainingSpace, payProfile.couponScoringMode);
     const fullDiscountAmount = demandAverageValue(simulatedRows.map(row => ({ value: row.fullAmount, weight: row.demandWeight }))) ?? 0;
     bucketSuggestions.push({
       key: ['coupon-bucket', platform, objective, bucket, amount].join('::'),
@@ -3143,96 +3364,24 @@ function buildCouponRouteRules(
       minCoveredBucket: bucket,
       maxCoveredBucket: bucket,
       coveredBucketCount: 1,
-      thresholdScore: roundMoney(thresholdScore),
-      amountScore: roundMoney(amountScore),
-      similarityScore: 0,
-      sceneScore: roundMoney(sceneSelection.score),
-      totalScore: roundMoney(thresholdScore * 0.25 + amountScore * 0.5 + sceneSelection.score * 0.25),
       scoringMode: payProfile.couponScoringMode,
-      sceneKey: sceneSelection.scene.key,
-      sceneName: sceneSelection.scene.name,
-      diagnosis: `原价桶${bucket}在满减后仍需约¥${roundMoney(remainingSpace)}券优惠，到手参考空间¥${roundMoney(boundarySpace)}`
+      diagnosis: amount >= ACTIVITY_ROUTE_MIN_COUPON_AMOUNT - 1e-9
+        ? `原价桶${bucket}满减后券空间约¥${roundMoney(remainingSpace)}，桶级券按小数保留为满${bucket}减${roundMoney(amount)}`
+        : `原价桶${bucket}满减后券空间低于¥${roundMoney(ACTIVITY_ROUTE_MIN_COUPON_AMOUNT)}，不单独推荐，仅作为策略断点参考`
     });
   }
 
-  const mergeGap = Math.max(0, Number(payProfile.couponMergeThresholdGap) || 0);
-  const amountTolerance = Math.max(0, Number(payProfile.couponMergeAmountTolerance) || amountStep / 2);
-  const suggestionGroups = bucketSuggestions
-    .sort((a, b) => a.threshold - b.threshold || a.amount - b.amount)
-    .reduce<ActivityCouponBucketSuggestion[][]>((groups, suggestion) => {
-      const current = groups[groups.length - 1];
-      const previous = current?.[current.length - 1];
-      if (
-        current
-        && previous
-        && suggestion.threshold - previous.threshold <= mergeGap + 1e-9
-        && Math.abs(suggestion.amount - previous.amount) <= amountTolerance + 1e-9
-      ) {
-        current.push(suggestion);
-        return groups;
-      }
-      groups.push([suggestion]);
-      return groups;
-    }, []);
-
-  const selectedSceneCounts = new Map<string, number>();
-  const selected = suggestionGroups
-    .map(group => {
-      const ordered = group.slice().sort((a, b) => a.threshold - b.threshold);
-      const selectedSuggestion = payProfile.couponScoringMode === 'aggressive'
-        ? ordered[ordered.length - 1]
-        : ordered[0];
-      const minCoveredBucket = Math.min(...ordered.map(row => row.originalBucket));
-      const maxCoveredBucket = Math.max(...ordered.map(row => row.originalBucket));
-      const similarityScore = Math.min(100, 55 + ordered.length * 12);
-      return {
-        ...selectedSuggestion,
-        minCoveredBucket,
-        maxCoveredBucket,
-        coveredBucketCount: ordered.length,
-        similarityScore,
-        totalScore: roundMoney(selectedSuggestion.totalScore + similarityScore * 0.2),
-        diagnosis: `覆盖原价桶${minCoveredBucket}-${maxCoveredBucket}，由${ordered.length}条桶级建议合并`
-      };
-    })
-    .sort((a, b) => b.totalScore - a.totalScore || a.threshold - b.threshold || b.amount - a.amount)
-    .reduce<Coupon[]>((coupons, row) => {
-      if (coupons.length >= ACTIVITY_ROUTE_COUPON_LIMIT) return coupons;
-      const scene = scenes.find(item => item.key === row.sceneKey) || scenes[0];
-      const currentSceneCount = selectedSceneCounts.get(scene.key) || 0;
-      if (currentSceneCount >= scene.maxCouponCount) return coupons;
-      selectedSceneCounts.set(scene.key, currentSceneCount + 1);
-      const couponKey = ['coupon', platform, objective, row.threshold, row.amount, scene.key].join('::');
-      for (const suggestion of bucketSuggestions) {
-        if (
-          suggestion.originalBucket + 1e-9 >= row.minCoveredBucket
-          && suggestion.originalBucket <= row.maxCoveredBucket + 1e-9
-          && Math.abs(suggestion.amount - row.amount) <= amountTolerance + 1e-9
-        ) {
-          suggestion.selected = true;
-          suggestion.mergedCouponKey = couponKey;
-          suggestion.minCoveredBucket = row.minCoveredBucket;
-          suggestion.maxCoveredBucket = row.maxCoveredBucket;
-          suggestion.coveredBucketCount = row.coveredBucketCount;
-          suggestion.similarityScore = row.similarityScore;
-        }
-      }
-      coupons.push({
-        enabled: true,
-        name: `${scene.name}满${row.threshold}减${row.amount}`,
-        threshold: row.threshold,
-        amount: row.amount,
-        sceneKey: scene.key,
-        sceneName: scene.name,
-        channel: scene.channel,
-        targetUser: scene.targetUser,
-        thresholdMode: scene.thresholdMode
-      });
-      return coupons;
-    }, []);
+  const selected = createStrategyCouponRules(
+    platform,
+    objective,
+    bucketSuggestions,
+    payProfile.couponScoringMode,
+    fullReductionRules,
+    state.platformRules.redTiers[platform] || []
+  );
   return {
-    couponRules: normalizeActivityCouponRules(selected).slice(0, ACTIVITY_ROUTE_COUPON_LIMIT),
-    couponBucketSuggestions: bucketSuggestions.sort((a, b) => a.originalBucket - b.originalBucket || b.totalScore - a.totalScore)
+    couponRules: normalizeActivityCouponRules(selected),
+    couponBucketSuggestions: bucketSuggestions.sort((a, b) => a.originalBucket - b.originalBucket)
   };
 }
 
@@ -3268,15 +3417,15 @@ function buildFullReductionRouteRules(
   };
   if (!rows.length) return finishWithoutRules('没有可用于满减设计的原价桶样本');
   if (maxAmount <= 0) return finishWithoutRules(`满减最大减额为${roundMoney(maxAmount)}，无法生成有效满减`);
+  if (maxAmount + 1e-9 < ACTIVITY_ROUTE_MIN_FULL_AMOUNT) return finishWithoutRules(`满减最大减额${roundMoney(maxAmount)}低于¥${roundMoney(ACTIVITY_ROUTE_MIN_FULL_AMOUNT)}，不生成满减`);
 
   const payProfile = activityObjectivePayProfile(settings, objective);
-  const amountStep = fullReductionAmountStep();
   const fullDiscountRatio = activityDiscountSharePercent(settings, objective, 'full');
   const maxRuleCount = payProfile.maxFullRuleCount || ACTIVITY_ROUTE_MAX_FULL_RULES;
   const thresholdGap = Math.max(1, Number(payProfile.fullThresholdMinGap) || 10);
   const bucketWindowSize = Math.max(1, Math.floor(Number(payProfile.fullThresholdWindow) || 5));
   const minIncrease = Math.max(0, Number(payProfile.minFullAmountIncrease) || 0);
-  const minimumNextAmountIncrease = Math.max(amountStep, minIncrease || amountStep);
+  const minimumNextAmountIncrease = minIncrease > 0 ? minIncrease : ACTIVITY_MONEY_AMOUNT_UNIT;
   const basisRows: FullReductionBasisRow[] = [];
   for (const row of rows) {
     const fullTargetSpace = activityRouteDesignDiscountSpace(
@@ -3314,7 +3463,7 @@ function buildFullReductionRouteRules(
     basisRows.filter(row => row.basis + 1e-9 >= minThreshold && row.targetSpace >= ACTIVITY_ROUTE_MIN_DESIGN_SPACE - 1e-9)
   );
   noteDiagnostic(
-    `参数：样本${rows.length}，可计算样本${basisRows.length}，有效原价桶${buckets.length}，满减上限${maxAmountText}，满减占比${roundMoney(fullDiscountRatio * 100)}%，固定加码${roundMoney(configuredRedAddOnSpace(settings))}，窗口桶数${bucketWindowSize}，梯度间距${roundMoney(thresholdGap)}，最小减额增量${roundMoney(minimumNextAmountIncrease)}，金额口径${payProfile.fullAmountBasis}，取整${payProfile.fullAmountRounding}`,
+    `参数：样本${rows.length}，可计算样本${basisRows.length}，有效原价桶${buckets.length}，满减上限${maxAmountText}，满减占比${roundMoney(fullDiscountRatio * 100)}%，固定加码${roundMoney(configuredRedAddOnSpace(settings))}，窗口桶数${bucketWindowSize}，梯度间距${roundMoney(thresholdGap)}，最小减额增量${roundMoney(minimumNextAmountIncrease)}，金额口径${payProfile.fullAmountBasis}，金额保留到分`,
     true
   );
   if (!buckets.length) return finishWithoutRules(`没有路线活动空间达到¥${roundMoney(ACTIVITY_ROUTE_MIN_DESIGN_SPACE)}的有效原价桶；最小门槛${roundMoney(minThreshold)}，样本路线空间范围${roundMoney(Math.min(...basisRows.map(row => row.targetSpace)))}-${roundMoney(Math.max(...basisRows.map(row => row.targetSpace)))}`);
@@ -3331,7 +3480,7 @@ function buildFullReductionRouteRules(
     if (amount > highestAmount + 1e-9) {
       return amount;
     }
-    const nextStepAmount = highestAmount + amountStep;
+    const nextStepAmount = highestAmount + ACTIVITY_MONEY_AMOUNT_UNIT;
     if (nextStepAmount <= maxAllowedAmount + 1e-9 && nextStepAmount <= maxAmount) return roundMoney(nextStepAmount);
     if (maxAllowedAmount > highestAmount + 1e-9) return roundMoney(Math.min(maxAllowedAmount, maxAmount));
     return amount;
@@ -3342,8 +3491,8 @@ function buildFullReductionRouteRules(
       noteDiagnostic(`拒绝满${threshold}：距上一档${roundMoney(threshold - previousThreshold)}元，小于梯度间距${roundMoney(thresholdGap)}元；${context}`);
       return false;
     }
-    if (amount + 1e-9 < amountStep) {
-      noteDiagnostic(`拒绝满${threshold}：路线满减目标不足${roundMoney(amountStep)}元；${context}`);
+    if (amount + 1e-9 < ACTIVITY_ROUTE_MIN_FULL_AMOUNT) {
+      noteDiagnostic(`拒绝满${threshold}：满减减额低于¥${roundMoney(ACTIVITY_ROUTE_MIN_FULL_AMOUNT)}，不保留；${context}`);
       return false;
     }
     if (previousThreshold !== undefined && amount + 1e-9 < highestAmount + minimumNextAmountIncrease) {
@@ -3417,21 +3566,19 @@ function buildFullReductionRouteRules(
       payProfile.fullAmountBasis
     );
     const targetAmount = roundMoney(currentFullAmount + targetSpace * fullDiscountRatio);
-    let amount = targetAmount + 1e-9 < amountStep
+    let amount = targetAmount + 1e-9 < ACTIVITY_ROUTE_MIN_FULL_AMOUNT
       ? 0
-      : roundPositiveActivityAmount(
+      : cappedActivityMoneyAmount(
         Math.min(targetAmount, maxAmount),
-        maxAmount,
-        payProfile.fullAmountRounding,
-        amountStep
+        maxAmount
       );
-    if (amount >= amountStep - 1e-9) {
+    if (amount >= ACTIVITY_ROUTE_MIN_FULL_AMOUNT - 1e-9) {
       amount = liftAmountForNextTier(amount, maxAmount);
     }
     const maxAmountText = Number.isFinite(maxAmount)
       ? `，满减上限${roundMoney(maxAmount)}，距上限${roundMoney(Math.max(0, maxAmount - amount))}`
       : '';
-    const minimumAmountText = targetAmount + 1e-9 < amountStep ? `，路线满减目标小于${roundMoney(amountStep)}` : '';
+    const minimumAmountText = targetAmount + 1e-9 < ACTIVITY_ROUTE_MIN_FULL_AMOUNT ? `，路线满减目标小于${roundMoney(ACTIVITY_ROUTE_MIN_FULL_AMOUNT)}` : '';
     const context = `窗口原价桶${roundMoney(thresholdBucket.price)}-${roundMoney(lastBucket.price)}，桶数${windowBuckets.length}，有效空间桶${windowRows.length}，让利率${roundMoney(targetDiscountRate * 100)}%，当前满减${roundMoney(currentFullAmount)}，加码前空间${roundMoney(rawTargetSpace)}，加码占用${roundMoney(addOnDiscount)}，降档回补${roundMoney(downgradeLoss)}，路线剩余空间${roundMoney(targetSpace)}，满减目标${roundMoney(targetAmount)}${minimumAmountText}${maxAmountText}，到手参考空间${roundMoney(boundarySpace)}`;
     return { threshold, amount, context };
   };
@@ -3491,11 +3638,11 @@ function designActivityRouteRecommendation(
   const couponDesign = buildCouponRouteRules(state, store, platform, sampleRows, settings, objective, fullReductionRules);
   const couponRules = couponDesign.couponRules;
   const actionType = fullReductionRules.length && couponRules.length
-    ? '阶梯满减+多张券+加码'
+    ? '阶梯满减+推荐券+加码'
     : fullReductionRules.length
       ? '满减校准+加码'
     : couponRules.length
-        ? '多张券+加码'
+        ? '推荐券+加码'
         : '神券/爆红包加码';
   const recommendation = createActivityRouteRecommendation(
     platform,
@@ -3505,7 +3652,7 @@ function designActivityRouteRecommendation(
     fullReductionRules,
     couponRules,
     actionType,
-    `已按原价桶活动空间生成满减，并由原价桶券列表合并最终推荐券，待支付价校验${fullReductionGenerationLogText(fullDiagnostics)}`,
+    `已按原价桶活动空间生成满减，并由原价桶券列表生成最终推荐券，待支付价校验${fullReductionGenerationLogText(fullDiagnostics)}`,
     undefined,
     undefined,
     couponDesign.couponBucketSuggestions
@@ -3637,6 +3784,10 @@ function createActivityRouteValidationAccumulator(
     ignoredCount: 0,
     lowNetPayIgnoredCount: 0,
     finalPaySum: 0,
+    discountRateSum: 0,
+    discountRateCount: 0,
+    minDiscountRate: null,
+    maxDiscountRate: null,
     businessPayWeightSum: 0,
     corePayCount: 0,
     mainPayCount: 0,
@@ -3669,25 +3820,33 @@ function appendActivityHitRow(
 }
 
 function consumeActivityRouteValidationRow(accumulator: ActivityRouteValidationAccumulator, row: ActivityComboSimulationRow) {
+  const countWeight = representedComboCount(row);
   if (row.ignored) {
-    accumulator.ignoredCount++;
-    if (row.netPay + 1e-9 < activityMinNetPayFloor(accumulator.settings, accumulator.recommendation.objective)) accumulator.lowNetPayIgnoredCount++;
+    accumulator.ignoredCount += countWeight;
+    if (row.netPay + 1e-9 < activityMinNetPayFloor(accumulator.settings, accumulator.recommendation.objective)) accumulator.lowNetPayIgnoredCount += countWeight;
     return;
   }
 
   const tolerance = activityLossTolerance(accumulator.settings, accumulator.recommendation.objective);
-  accumulator.activeCount++;
-  accumulator.finalPaySum += row.finalPay;
-  accumulator.businessPayWeightSum += activityExpectedPayWeight(accumulator.settings, accumulator.recommendation.objective, row.scenario, row.finalPay, row.originalTotal);
-  if (activityPayInCoreRange(accumulator.settings, accumulator.recommendation.objective, row.finalPay, row.originalTotal)) accumulator.corePayCount++;
-  if (activityPayInTargetRange(accumulator.settings, accumulator.recommendation.objective, row.finalPay, row.originalTotal)) accumulator.mainPayCount++;
-  if (activityPayAboveTargetCeiling(accumulator.settings, accumulator.recommendation.objective, row.finalPay, row.originalTotal)) accumulator.highPayCount++;
-  if (row.profit < -1e-9 || (row.netProfitRate !== null && row.netProfitRate < -1e-9)) accumulator.lossCount++;
-  if (row.netProfitRate === null || row.netProfitRate < tolerance.minNetProfitRate - 1e-9) accumulator.lossOutOfToleranceCount++;
+  accumulator.activeCount += countWeight;
+  accumulator.finalPaySum += row.finalPay * countWeight;
+  const actualDiscountRate = routeDiscountRate(row.originalTotal, row.finalPay);
+  if (actualDiscountRate !== null) {
+    accumulator.discountRateSum += actualDiscountRate * countWeight;
+    accumulator.discountRateCount += countWeight;
+    accumulator.minDiscountRate = accumulator.minDiscountRate === null ? actualDiscountRate : Math.min(accumulator.minDiscountRate, actualDiscountRate);
+    accumulator.maxDiscountRate = accumulator.maxDiscountRate === null ? actualDiscountRate : Math.max(accumulator.maxDiscountRate, actualDiscountRate);
+  }
+  accumulator.businessPayWeightSum += activityExpectedPayWeight(accumulator.settings, accumulator.recommendation.objective, row.scenario, row.finalPay, row.originalTotal) * countWeight;
+  if (activityPayInCoreRange(accumulator.settings, accumulator.recommendation.objective, row.finalPay, row.originalTotal)) accumulator.corePayCount += countWeight;
+  if (activityPayInTargetRange(accumulator.settings, accumulator.recommendation.objective, row.finalPay, row.originalTotal)) accumulator.mainPayCount += countWeight;
+  if (activityPayAboveTargetCeiling(accumulator.settings, accumulator.recommendation.objective, row.finalPay, row.originalTotal)) accumulator.highPayCount += countWeight;
+  if (row.profit < -1e-9 || (row.netProfitRate !== null && row.netProfitRate < -1e-9)) accumulator.lossCount += countWeight;
+  if (row.netProfitRate === null || row.netProfitRate < tolerance.minNetProfitRate - 1e-9) accumulator.lossOutOfToleranceCount += countWeight;
   const payGrossRate = paymentGrossProfitRate(row);
   if (payGrossRate !== null) {
-    accumulator.profitRateSum += payGrossRate;
-    accumulator.profitRateCount++;
+    accumulator.profitRateSum += payGrossRate * countWeight;
+    accumulator.profitRateCount += countWeight;
     accumulator.minProfitRate = accumulator.minProfitRate === null ? payGrossRate : Math.min(accumulator.minProfitRate, payGrossRate);
     accumulator.maxProfitRate = accumulator.maxProfitRate === null ? payGrossRate : Math.max(accumulator.maxProfitRate, payGrossRate);
   }
@@ -3760,6 +3919,9 @@ function activityRouteMetricsFromAccumulator(accumulator: ActivityRouteValidatio
     profitRateSpread,
     payBandAvgSpread,
     avgFinalPay: accumulator.activeCount ? accumulator.finalPaySum / accumulator.activeCount : 0,
+    actualAvgDiscountRate: accumulator.discountRateCount ? Math.round((accumulator.discountRateSum / accumulator.discountRateCount) * 10000) / 10000 : null,
+    actualMinDiscountRate: accumulator.minDiscountRate,
+    actualMaxDiscountRate: accumulator.maxDiscountRate,
     lossCount: accumulator.lossCount,
     lossShare,
     maxLossShare: tolerance.maxLossShare,
@@ -3840,6 +4002,10 @@ function finalizeRecommendations(
     let profitRateSum = 0;
     let profitRateCount = 0;
     let finalPaySum = 0;
+    let discountRateSum = 0;
+    let discountRateCount = 0;
+    let minDiscountRate: number | null = null;
+    let maxDiscountRate: number | null = null;
     let businessPayWeightSum = 0;
     let corePayCount = 0;
     let mainPayCount = 0;
@@ -3850,6 +4016,13 @@ function finalizeRecommendations(
     let maxProfitAfter: number | null = null;
     for (const item of rows) {
       finalPaySum += item.finalPay;
+      const actualDiscountRate = routeDiscountRate(item.originalTotal, item.finalPay);
+      if (actualDiscountRate !== null) {
+        discountRateSum += actualDiscountRate;
+        discountRateCount++;
+        minDiscountRate = minDiscountRate === null ? actualDiscountRate : Math.min(minDiscountRate, actualDiscountRate);
+        maxDiscountRate = maxDiscountRate === null ? actualDiscountRate : Math.max(maxDiscountRate, actualDiscountRate);
+      }
       businessPayWeightSum += activityExpectedPayWeight(settings, row.objective, item.scenario, item.finalPay, item.originalTotal);
       if (activityPayInCoreRange(settings, row.objective, item.finalPay, item.originalTotal)) corePayCount++;
       if (activityPayInTargetRange(settings, row.objective, item.finalPay, item.originalTotal)) mainPayCount++;
@@ -3904,6 +4077,9 @@ function finalizeRecommendations(
       profitRateSpread: spread,
       payBandAvgSpread,
       avgFinalPay: rows.length ? finalPaySum / rows.length : 0,
+      actualAvgDiscountRate: discountRateCount ? Math.round((discountRateSum / discountRateCount) * 10000) / 10000 : null,
+      actualMinDiscountRate: minDiscountRate,
+      actualMaxDiscountRate: maxDiscountRate,
       lossCount,
       lossShare,
       maxLossShare: tolerance.maxLossShare,
@@ -4072,6 +4248,51 @@ async function runSelectedActivityRouteValidationCalculation(
   const originalBandSize = Math.max(1, Number(settings.originalBandSize) || 5);
   const originalBandStats = new Map<string, ActivityPriceBandStats>();
   const accumulator = createActivityRouteValidationAccumulator(selectedRecommendation, settings);
+  const originalPriceBucketsSnapshot = settings.originalPriceBucketsSnapshot || [];
+  if (originalPriceBucketsSnapshot.length) {
+    const originalBands = settings.originalBandsSnapshot || [];
+    const selectedBuckets = originalPriceBucketsSnapshot.filter(bucket => bucket.platform === selectedRecommendation.platform && bucket.comboCount > 0);
+    const selectedRouteRows = activityBucketCostSummaryRowsToRouteRows(selectedBuckets, [selectedRecommendation.platform], {
+      store,
+      scanComboPools: settings.scanComboPoolsSnapshot
+    });
+    const selectedBucketComboCount = selectedBuckets.reduce((sum, bucket) => sum + Math.max(0, Number(bucket.comboCount) || 0), 0);
+    const missingCostSummaryCount = selectedBuckets.filter(bucket => (
+      bucket.minCost === undefined
+      && bucket.maxCost === undefined
+      && !(Number(bucket.avgCost) > 0)
+      && !(Number(bucket.weightedAvgCost) > 0)
+    )).length;
+    const missingRepresentativeItemCount = selectedRouteRows.filter(row => !row.items.length).length;
+    const validation = validateSelectedActivityRoute(state, store, settings, selectedRecommendation, selectedRouteRows, warnings);
+    warnings.push(`本次活动校验基于原价整数桶成本摘要完成，${selectedBuckets.length}个原价桶共代表${selectedBucketComboCount}个组合，生成${selectedRouteRows.length}条平均/最高/最低成本口径校验行，并按桶内代表组合回填商品明细。`);
+    if (missingCostSummaryCount > 0) {
+      warnings.push(`有${missingCostSummaryCount}个原价桶缺少成本摘要，请重新执行原价整数扫描后再做支付价核验。`);
+    }
+    if (missingRepresentativeItemCount > 0) {
+      warnings.push(`有${missingRepresentativeItemCount}条校验行缺少可还原的代表组合，请重新执行原价整数扫描后再做支付价核验。`);
+    }
+    return {
+      originalBands,
+      originalPriceBuckets: originalPriceBucketsSnapshot,
+      originalComboRows: [],
+      routeSourceRows: selectedRouteRows,
+      fullRoutes: [],
+      couponRoutes: [],
+      recommendations: [validation.finalizedSelectedRecommendation],
+      payBands: validation.payBands,
+      hitRows: validation.hitRows,
+      comboRows: validation.comboRows,
+      warnings,
+      summary: {
+        resultCount: 1,
+        comboCount: selectedBucketComboCount || selectedRouteRows.length,
+        validComboCount: selectedBucketComboCount || selectedRouteRows.length,
+        elapsedTime: Math.round(calculationNow() - startedAt)
+      }
+    };
+  }
+
   let checked = 0;
   let validCombos = 0;
   let stopped = false;
@@ -4248,8 +4469,8 @@ export async function runActivityDesignCalculation(
 
     const rangeMinCents = moneyToCents(poolBuild.range.min);
     const rangeMaxCents = Number.isFinite(poolBuild.range.max) ? moneyToCents(poolBuild.range.max) : Infinity;
-    const platformMainRows = activityScanComboPoolRows(platform, 'main', poolBuild.pools.mainCombos);
-    const platformAddOnRows = activityScanComboPoolRows(platform, 'addOn', poolBuild.pools.addOnCombosByCount.flat());
+    const platformMainRows = activityScanComboPoolRows(store, platform, 'main', poolBuild.pools.mainCombos);
+    const platformAddOnRows = activityScanComboPoolRows(store, platform, 'addOn', poolBuild.pools.addOnCombosByCount.flat());
     const mainGroups = groupActivityScanCombosForOriginalScan(platformMainRows, 'main');
     const addOnGroups = groupActivityScanCombosForOriginalScan(platformAddOnRows, 'addOn');
     let visitedPairs = 0;
@@ -4297,7 +4518,7 @@ export async function runActivityDesignCalculation(
           originalBucketPlatformNames,
           platform,
           originalTotalCents,
-          entry.comboCount,
+          entry,
           settings
         );
       }
@@ -4315,7 +4536,7 @@ export async function runActivityDesignCalculation(
 
   const originalBands: PriceBandRow[] = [];
   const originalPriceBuckets = activityOriginalPriceBucketsFromStats(originalBucketStats, originalBucketPlatformNames, originalBucketEntries);
-  const scanComboPools = buildActivityScanComboPools(scanPoolsByPlatform);
+  const scanComboPools = buildActivityScanComboPools(store, scanPoolsByPlatform);
   const bucketRouteRows = activityBucketRowsToRouteRows(originalPriceBuckets, platforms);
   const routeSourceRows = bucketRouteRows;
   const routeSourceRowsByPlatform = activityRouteRowsByPlatform(routeSourceRows, platforms);

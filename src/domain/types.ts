@@ -5,7 +5,6 @@ export type StapleScenario = 'single' | 'double' | 'multi';
 export type ActivityDesignObjective = string;
 export type ActivityDesignCalculationMode = 'priceScan' | 'routeDesign' | 'payValidation';
 export type ActivityObjectiveGroup = 'stable' | 'marketing';
-export type ActivityAmountRoundingMode = 'floor' | 'nearest' | 'ceil';
 export type ActivityFullAmountBasis = 'average' | 'p75' | 'min' | 'max';
 export type ActivityCouponScoringMode = 'conservative' | 'balanced' | 'aggressive';
 export type ActivityCouponThresholdMode = 'lowThresholdOrder' | 'fullReductionInterleave' | 'addOnCritical' | 'highMarginGuide' | 'retentionRecall';
@@ -70,6 +69,7 @@ export type Coupon = {
   channel?: ActivityCouponChannel;
   targetUser?: ActivityCouponTargetUser;
   thresholdMode?: ActivityCouponThresholdMode;
+  usageSuggestion?: string;
 };
 
 export type RedAddOn = {
@@ -225,49 +225,17 @@ export type ActivityObjectiveStrategy = Partial<ActivityObjectivePayTarget> & {
   fullThresholdWindow: number;
   fullThresholdMinGap: number;
   minFullAmountIncrease: number;
-  fullAmountRounding: ActivityAmountRoundingMode;
   fullAmountBasis: ActivityFullAmountBasis;
   maxFullRuleCount: number;
   minFullHitCount: number;
   minNetPayFloor: number;
   couponScoringMode: ActivityCouponScoringMode;
-  couponMergeThresholdGap: number;
-  couponMergeAmountTolerance: number;
-};
-
-export type ActivityCouponSceneTemplate = {
-  key: string;
-  enabled: boolean;
-  name: string;
-  platforms?: Platform[];
-  channel: ActivityCouponChannel;
-  targetUser: ActivityCouponTargetUser;
-  objective: ActivityDesignObjective;
-  thresholdMode: ActivityCouponThresholdMode;
-  payMin: number;
-  payMax: number;
-  thresholdMin: number;
-  thresholdMax: number;
-  thresholdStep: number;
-  thresholdWindow: number;
-  addOnMin: number;
-  addOnMax: number;
-  fullReductionOffsetMin: number;
-  fullReductionOffsetMax: number;
-  couponBudgetShare: number;
-  maxCouponCount: number;
-  maxCouponAmount: number;
-  minPayProfitRate: number;
-  minNetProfitRate: number;
-  maxLossShare: number;
 };
 
 export type ActivityStrategySettings = {
   baseOriginalDiscountRate: number;
   objectiveTemplates?: ActivityObjectiveTemplate[];
   objectiveStrategies: Partial<Record<ActivityDesignObjective, ActivityObjectiveStrategy>>;
-  couponSceneTemplates: ActivityCouponSceneTemplate[];
-  platformCouponSceneKeys: Record<Platform, string[]>;
 };
 
 export type PricingEvaluationSettings = ComboRangeSettings & {
@@ -282,6 +250,7 @@ export type ActivityDesignSettings = ComboRangeSettings & {
   calculationMode?: ActivityDesignCalculationMode;
   originalBandsSnapshot?: PriceBandRow[];
   originalPriceBucketsSnapshot?: ActivityPriceBucketRow[];
+  scanComboPoolsSnapshot?: ActivityScanComboPools;
   stapleMaxCount?: number;
   addOnMaxCount?: number | '';
   selectedRecommendationKey?: string;
@@ -290,7 +259,6 @@ export type ActivityDesignSettings = ComboRangeSettings & {
   couponProfitDrop: number;
   couponDesignBasis: 'original' | 'pay';
   couponDesignThresholdStep: number;
-  couponDesignAmountStep: number;
   couponDesignMaxFullAmount: number | '';
   couponDesignMaxCouponAmount: number | '';
   designMode: 'auto' | 'full' | 'coupon' | 'stacked';
@@ -299,9 +267,6 @@ export type ActivityDesignSettings = ComboRangeSettings & {
   objectivePayTargets?: Partial<Record<ActivityDesignObjective, ActivityObjectivePayTarget>>;
   objectiveStrategies?: Partial<Record<ActivityDesignObjective, Partial<ActivityObjectiveStrategy>>>;
   objectiveTemplates?: ActivityObjectiveTemplate[];
-  usePlatformCouponScenes?: boolean;
-  enabledCouponSceneKeys?: string[];
-  couponSceneTemplates?: ActivityCouponSceneTemplate[];
   minProfitRate?: number;
   originalBandSize?: number;
   payBandSize?: number;
@@ -451,6 +416,7 @@ export type ActivityBaseComboRow = ComboEvaluationRow & {
   baseFinalPay: number;
   baseNetPay: number;
   baseProfitRate: number | null;
+  representedComboCount?: number;
   activityTargetObjective?: ActivityDesignObjective;
   activityTargetObjectiveName?: string;
   activityTargetDiscountRate?: number;
@@ -464,11 +430,19 @@ export type ActivityBaseComboRow = ComboEvaluationRow & {
   activityTargetPayGap?: number;
 };
 
+export type ActivityOriginalBucketRepresentativeCombo = {
+  kind: 'minCost' | 'maxCost' | 'avgCost';
+  mainComboId: string;
+  addOnComboId: string;
+  cost: number;
+};
+
 export type ActivityScanComboPoolRow = {
   key: string;
   platform: Platform;
   qtys: number[];
   priceCents: number;
+  costTotal: number;
   totalQty: number;
   originalTotal: number;
   stapleCount: number;
@@ -480,6 +454,11 @@ export type ActivityOriginalPriceBucketEntry = {
   mainComboIds: string[];
   addOnComboIds: string[];
   comboCount: number;
+  avgCost?: number;
+  minCost?: number;
+  maxCost?: number;
+  costSum?: number;
+  representativeCombos?: ActivityOriginalBucketRepresentativeCombo[];
 };
 
 export type ActivityScanComboPools = {
@@ -506,6 +485,9 @@ export type ActivityPriceBucketRow = {
   avgFinalPay: number;
   avgNetPay: number;
   avgCost: number;
+  minCost?: number | null;
+  maxCost?: number | null;
+  costSpread?: number | null;
   avgProfit: number;
   weightedAvgFinalPay: number;
   weightedAvgNetPay: number;
@@ -537,6 +519,7 @@ export type ActivityPriceBucketRow = {
   riskCount: number;
   outlierCount: number;
   entries?: ActivityOriginalPriceBucketEntry[];
+  representativeCombos?: ActivityOriginalBucketRepresentativeCombo[];
   sampleRows?: ActivityBaseComboRow[];
   suggestion: string;
 };
@@ -553,16 +536,11 @@ export type ActivityCouponBucketSuggestion = {
   minCoveredBucket: number;
   maxCoveredBucket: number;
   coveredBucketCount: number;
-  thresholdScore: number;
-  amountScore: number;
-  similarityScore: number;
-  sceneScore: number;
-  totalScore: number;
   scoringMode: ActivityCouponScoringMode;
-  sceneKey?: string;
-  sceneName?: string;
+  recommendedThreshold?: number;
+  recommendedAmount?: number;
+  recommendedCouponKey?: string;
   selected?: boolean;
-  mergedCouponKey?: string;
   diagnosis: string;
 };
 
@@ -606,8 +584,9 @@ export type ActivityRecommendationRow = {
   targetPayMin?: number;
   targetPayMax?: number;
   targetDiscountRate?: number | null;
-  targetPayAmount?: number | null;
-  targetPayGap?: number | null;
+  actualAvgDiscountRate?: number | null;
+  actualMinDiscountRate?: number | null;
+  actualMaxDiscountRate?: number | null;
   sourceRouteKeys?: string[];
   objective: ActivityDesignObjective;
   objectiveName: string;
@@ -644,6 +623,7 @@ export type ActivityRecommendationRow = {
 export type ActivityComboSimulationRow = ComboEvaluationRow & {
   recommendationKey: string;
   recommendationLabel: string;
+  representedComboCount?: number;
   detailReasons?: string[];
 };
 
