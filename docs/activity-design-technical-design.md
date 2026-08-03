@@ -16,7 +16,7 @@
 核心约束：
 
 - 活动路线生成不读取成本、利润、支付毛利率或到手利润率。
-- 活动路线只使用原价、基准用户实付、基准商家到手价、基准目标总让利率、原价阶梯覆盖让利率和活动策略占比。
+- 活动路线只使用原价、基准用户实付、基准商家到手价、基准目标总让利率、原价阶梯覆盖让利率、活动策略占比、券推荐策略和券场景配置。
 - 商家到手价最低边界从经营目标策略读取，系统默认 2 元。
 - 测算和定价评估缓存可以保留成本字段；原价扫描缓存不得保存成本/利润计算结果，活动设计路线算法也不得使用这些字段。
 - 原价扫描任务只生成扫描快照，不生成路线。
@@ -65,7 +65,7 @@ DEFAULT_ACTIVITY_STRATEGY_SETTINGS
 
 - 展示态显示“使用门店通用规则”或“门店自定义规则”。
 - 编辑态默认勾选“使用门店通用规则”，经营目标表格只读展示通用规则。
-- 取消勾选后，以当前通用规则为底稿生成门店自定义配置，再允许编辑全路线基准让利率、阶梯覆盖、满减占比、券占比和最大满减阶梯数。
+- 取消勾选后，以当前通用规则为底稿生成门店自定义配置，再允许编辑全路线基准让利率、阶梯覆盖、满减占比、券占比、券推荐策略和最大满减阶梯数。
 - 重新勾选后，门店级经营目标覆盖被忽略，后续路线设计重新跟随通用规则。
 
 历史字段兼容：
@@ -309,9 +309,7 @@ type ActivityObjectiveStrategy = {
   minNetPayFloor: number;
   fullBoundaryMode: 'conservative' | 'balanced' | 'aggressive';
   couponBoundaryMode: 'conservative' | 'balanced' | 'aggressive';
-  couponScoringMode: 'conservative' | 'balanced' | 'aggressive';
-  couponMergeThresholdGap: number;
-  couponMergeAmountTolerance: number;
+  couponRecommendationPolicy: ActivityCouponRecommendationPolicy;
 };
 
 type ActivityOriginalDiscountTier = {
@@ -319,7 +317,21 @@ type ActivityOriginalDiscountTier = {
   originalMax: number;
   discountRate: number;
 };
+
+type ActivityCouponRecommendationPolicy = {
+  mode: 'conservative' | 'balanced' | 'aggressive';
+  amountStep: number;                 // 默认 0.5
+  minCouponAmount: number;            // 默认 1
+  nearThresholdGap: number;           // 近档门槛距离
+  farThresholdGap: number;            // 远档门槛距离
+  nearAmountMergeTolerance: number;   // 默认 0.5，近档券额差在该范围内合并
+  farAmountSkipTolerance: number;     // 默认 1，远档券额差在该范围内跳过
+  maxOverBucketSpace: number;         // 最终券命中桶级建议时允许超出的最大金额
+  representativeMode: 'lowestThreshold' | 'balanced' | 'highestThreshold';
+};
 ```
+
+历史字段 `couponScoringMode` 可以继续兼容读取，但必须映射为 `couponRecommendationPolicy.mode`，不再表示券评分。券推荐阶段不计算分数，只计算是否推荐、合并原因和风险。
 
 ### 3.3 ActivityCouponBucketSuggestion
 
@@ -338,16 +350,15 @@ type ActivityCouponBucketSuggestion = {
   minCoveredBucket: number;
   maxCoveredBucket: number;
   coveredBucketCount: number;
-  thresholdScore: number;
-  amountScore: number;
-  similarityScore: number;
-  sceneScore: number;
-  totalScore: number;
-  scoringMode: 'conservative' | 'balanced' | 'aggressive';
+  recommendationMode: 'conservative' | 'balanced' | 'aggressive';
+  riskLevel: 'safe' | 'watch' | 'risk';
+  riskReasons: string[];
   sceneKey?: string;
   sceneName?: string;
   selected?: boolean;
-  mergedCouponKey?: string;
+  recommendedCouponKey?: string;
+  recommendedThreshold?: number;
+  recommendedAmount?: number;
   diagnosis: string;
 };
 ```
@@ -363,19 +374,26 @@ type ActivityCouponSceneTemplate = {
   key: string;
   enabled: boolean;
   name: string;
+  priority: number;
   platforms?: Platform[];
   channel: ActivityCouponChannel;
   targetUser: ActivityCouponTargetUser;
-  objective: ActivityDesignObjective;
+  objectiveKeys: ActivityDesignObjective[];
   thresholdMode: ActivityCouponThresholdMode;
   thresholdMin: number;
   thresholdMax: number;
-  thresholdStep: number;
-  thresholdWindow: number;
+  amountMin: number;
+  amountMax: number;
+  couponIndexRatioMin: number;
+  couponIndexRatioMax: number;
+  requireNearFullReduction: boolean;
+  maxFullReductionDistance: number;
+  requireNearRedTier: boolean;
+  maxRedTierDistance: number;
   addOnMin: number;
   addOnMax: number;
-  fullReductionOffsetMin: number;
-  fullReductionOffsetMax: number;
+  requireBoundarySafe: boolean;
+  maxOverBucketSpace: number;
   couponBudgetShare: number;
   maxCouponCount: number;
   maxCouponAmount: number;
@@ -383,6 +401,38 @@ type ActivityCouponSceneTemplate = {
 ```
 
 `highMarginGuide` 是历史枚举值，页面展示为“高到手引导”。
+
+券场景匹配只读取这些结构化字段，不通过 `name`、`usageSuggestion` 或其他文案做判断。系统内置场景也必须以同一结构保存，例如“提高客单价加购券”应表达为：
+
+```ts
+{
+  key: 'raiseAov.addOnCritical',
+  enabled: true,
+  name: '加购引导券',
+  priority: 30,
+  channel: 'orderReturn',
+  targetUser: 'highAov',
+  objectiveKeys: ['raiseAov'],
+  thresholdMode: 'addOnCritical',
+  thresholdMin: 0,
+  thresholdMax: 999,
+  amountMin: 1,
+  amountMax: 999,
+  couponIndexRatioMin: 0,
+  couponIndexRatioMax: 1,
+  requireNearFullReduction: false,
+  maxFullReductionDistance: 8,
+  requireNearRedTier: false,
+  maxRedTierDistance: 8,
+  addOnMin: 1,
+  addOnMax: 8,
+  requireBoundarySafe: false,
+  maxOverBucketSpace: 0.5,
+  couponBudgetShare: 100,
+  maxCouponCount: 6,
+  maxCouponAmount: 999
+}
+```
 
 ### 3.5 ActivityRecommendationRow
 
@@ -581,7 +631,7 @@ fullAmount > previousFullAmount
 
 ### 4.4 优惠券规则生成
 
-券规则不再先由场景铺大量候选门槛，而是在当前满减确定后，先生成“原价桶券列表”，再合并为“最终推荐券表”。
+券规则不再先由场景铺大量候选门槛，而是在当前满减确定后，先生成“原价桶券列表”，再按券推荐策略合并为“最终推荐券表”。券场景只参与最终推荐券的场景归类、代表券选择和风险标记，不反向修改原价桶券建议的门槛和金额。
 
 原价桶券建议：
 
@@ -590,7 +640,7 @@ bucket = floor(originalTotal)
 fullOnlyRow = simulate(fullReductionRules, noCoupons, bucketRows)
 remainingSpace = safeDiscountSpace(fullOnlyRow, objective)
 boundarySpace = netPayFloorSpace(fullOnlyRow, objective.minNetPayFloor)
-couponAmount = round(min(remainingSpace, boundarySpace, scene.maxCouponAmount), fullAmountRounding)
+couponAmount = min(remainingSpace, objectiveMaxCouponAmount)
 couponThreshold = bucket
 ```
 
@@ -599,39 +649,109 @@ couponThreshold = bucket
 - 原价桶是整数桶，不处理 26.9 这类商品小数价。
 - `couponThreshold` 默认等于当前原价桶。
 - `remainingSpace` 表示在既定满减后，该桶还需要由券补足的活动空间。
-- `boundarySpace` 由 `couponBoundaryMode` 决定，保守看最低命中桶，平稳看均值或分位，激进允许看高位桶。
-- 券场景只参与场景分和最终券元数据，不再覆盖原价桶券建议的核心门槛和金额。
+- `boundarySpace` 只用于风险判断和诊断展示；是否因为到手边界不足阻断推荐，由最终推荐券的风险策略决定。
+- 原价桶券建议不计算门槛分、金额分、场景分或总分。
 
-原价桶券建议评分：
-
-```text
-thresholdScore = f(couponScoringMode, bucket)
-amountScore = f(couponAmount / remainingSpace, couponScoringMode)
-sceneScore = f(scene.thresholdMode, bucket, fullReductionRules)
-totalScore = thresholdScore * 0.25 + amountScore * 0.5 + sceneScore * 0.25
-```
-
-三种模式：
-
-- 保守：最低桶也应达到目标优惠，优先低门槛覆盖。
-- 平稳：覆盖桶平均达到目标，最低桶允许轻微不足，适合长期券。
-- 激进：允许最低桶明显不足，优先更高门槛或下一阶梯前的高位桶。
-
-最终推荐券合并：
+最终推荐券生成：
 
 ```text
-sort bucketSuggestions by threshold
-if thresholdGap <= couponMergeThresholdGap
-and amountDiff <= couponMergeAmountTolerance
-then merge into one coupon group
+sort bucketSuggestions by originalBucket asc
+highestRecommendedAmount = 0
+
+for each bucketSuggestion:
+  normalizedAmount = floor(bucketSuggestion.amount / amountStep) * amountStep
+  if normalizedAmount < minCouponAmount:
+    skip
+  if normalizedAmount <= highestRecommendedAmount:
+    skip
+
+  if lastRecommended is empty:
+    create recommendation group from bucketSuggestion
+    highestRecommendedAmount = normalizedAmount
+    continue
+
+  thresholdGap = bucketSuggestion.threshold - lastRecommended.threshold
+  amountDiff = normalizedAmount - lastRecommended.amount
+
+  if thresholdGap <= nearThresholdGap
+  and amountDiff <= nearAmountMergeTolerance:
+    merge into last recommendation group
+    continue
+
+  if thresholdGap >= farThresholdGap
+  and amountDiff <= farAmountSkipTolerance:
+    skip as similar far-tier coupon
+    continue
+
+  create recommendation group from bucketSuggestion
+  highestRecommendedAmount = normalizedAmount
 ```
 
-合并后选择代表券：
+默认金额规则：
 
-- 保守/平稳：选择组内较低门槛，保证长期覆盖。
-- 激进：选择组内较高门槛，用于提门槛、促加购或定向推品。
+- `amountStep=0.5`，最终推荐券金额向下贴近到 0.5 元粒度。
+- `minCouponAmount=1`，低于 1 元不生成最终推荐券。
+- 金额阶梯仍然单调递增；只有桶级券额高于历史最高推荐券额时，才进入新增推荐券判断。
+- 近档默认指门槛距离小于等于 `nearThresholdGap`；近档券额差 0.5 元以内合并为一张。
+- 远档默认指门槛距离大于等于 `farThresholdGap`；远档券额差 1 元以内可以按策略跳过，避免在很远门槛上生成几乎一样的券。
 
-最终活动应用只使用 `couponRules`。`couponBucketSuggestions` 保存在路线对象里，用于诊断、定向发券和人工选择，不直接写入门店活动。活动路线表只展示券列表摘要；二级弹框展示全量 `couponBucketSuggestions`，用 `selected` 标识是否进入最终推荐券表，并展示对应 `sceneName`、覆盖原价桶范围和评分明细。券推荐诊断只出现在券列表弹框顶部，用 `couponRules` 和 `couponBucketSuggestions` 汇总最终推荐券数量、推荐覆盖桶、主推荐场景、未合并桶和桶级满减后缺口。
+三种推荐策略：
+
+| 策略 | 代表券选择 | 合并倾向 | 风险容忍 |
+| --- | --- | --- | --- |
+| 保守 | 组内最低门槛，券额不超过低桶可承受空间 | 只合并近档小差异，优先低门槛覆盖 | `maxOverBucketSpace=0` |
+| 平稳 | 组内较低或中位门槛，券额贴近组内主流空间 | 合并近档 0.5 元差异，远档跳过 1 元以内差异 | `maxOverBucketSpace=0.5` |
+| 激进 | 组内较高门槛，券额取更高阶梯 | 更积极合并近档，并允许更高门槛用于加购或定向 | `maxOverBucketSpace=1` |
+
+风险判断：
+
+```text
+overBucketSpace = max(0, recommendedAmount - bucketSuggestion.amount)
+boundaryOverflow = max(0, recommendedAmount - bucketSuggestion.boundarySpace)
+riskLevel =
+  boundaryOverflow > 0 ? 'risk'
+  : overBucketSpace > maxOverBucketSpace ? 'watch'
+  : 'safe'
+```
+
+风险只影响推荐状态、诊断和核验提示，不形成券评分。命中最终推荐券但超出桶级券空间或到手边界的原价桶，必须在 `couponBucketSuggestions.riskReasons` 和券列表弹框中展示。
+
+场景匹配：
+
+```text
+couponContext = {
+  platform,
+  objective,
+  couponIndex,
+  couponCount,
+  threshold,
+  amount,
+  nearFullReduction,
+  fullReductionDistance,
+  nearRedTier,
+  redTierDistance,
+  addOnDistance,
+  riskLevel
+}
+
+enabledScenes = couponSceneTemplates
+  .filter(enabled)
+  .filter(platform matches)
+  .filter(objective in scene.objectiveKeys)
+  .filter(threshold and amount in configured range)
+  .filter(couponIndexRatio in configured range)
+  .filter(nearFullReduction condition)
+  .filter(nearRedTier condition)
+  .filter(addOnDistance in configured range)
+  .filter(boundary risk condition)
+  .sort(priority asc)
+
+scene = enabledScenes[0] ?? defaultFallbackScene
+```
+
+场景匹配必须基于结构化配置字段，不允许通过场景名称、诊断文案或 `usageSuggestion` 文本判断。匹配出的场景写入最终推荐券的 `sceneKey`、`sceneName`、`channel`、`targetUser`、`thresholdMode` 和 `usageSuggestion`。
+
+最终活动应用只使用 `couponRules`。`couponBucketSuggestions` 保存在路线对象里，用于诊断、定向发券和人工选择，不直接写入门店活动。活动路线表只展示券列表摘要；二级弹框展示全量 `couponBucketSuggestions`，用 `selected` 标识是否进入最终推荐券表，并展示对应 `sceneName`、覆盖原价桶范围、风险等级和风险原因。券推荐诊断只出现在券列表弹框顶部，用 `couponRules` 和 `couponBucketSuggestions` 汇总最终推荐券数量、推荐覆盖桶、主推荐场景、未合并桶、桶级满减后缺口和风险原因。
 
 路线诊断 `ActivityRecommendationRow.diagnosis` 只描述满减底盘，不描述券推荐：包含满减档数、首档门槛、最高档、主要支付覆盖、高支付价和到手边界。需要说明券为什么推荐、哪些桶被合并、哪些桶未进入最终推荐时，只读取 `couponBucketSuggestions` 在券列表弹框展示。
 
@@ -907,13 +1027,14 @@ type PersistedActivityPriceScanRecord = {
 
 ### 7.1 activity_strategy_settings
 
-保存系统默认经营目标和券场景引用。
+保存系统默认经营目标、券推荐策略、券场景模板和平台启用场景引用。
 
 关键字段：
 
 - `id`
 - `objective_templates`
 - `objective_strategies`
+- `coupon_scene_templates`
 - `platform_coupon_scene_keys`
 - `created_at`
 - `updated_at`

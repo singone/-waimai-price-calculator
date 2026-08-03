@@ -49,6 +49,12 @@ import { isCalculationAbortError, runCalculationTask } from './workers/calculati
 import type {
   ActivityDesignObjective as RedesignedActivityDesignObjective,
   ActivityCouponBucketSuggestion,
+  ActivityCouponChannel,
+  ActivityCouponRecommendationMode,
+  ActivityCouponRecommendationPolicy,
+  ActivityCouponSceneTemplate,
+  ActivityCouponTargetUser,
+  ActivityCouponThresholdMode,
   ActivityObjectiveTemplate,
   ActivityObjectivePayTarget,
   ActivityObjectiveStrategy,
@@ -248,7 +254,8 @@ type ProductDiscountSuggestion = {
   actionLabel: string;
   unitPrice: number;
   avgUnitCost: number;
-  avgTargetCost: number;
+  avgReasonableCost: number;
+  reasonablePriceFromCost: number | null;
   avgCostGap: number;
   minCostGap: number | null;
   maxCostGap: number | null;
@@ -323,6 +330,12 @@ type Coupon = {
   name: string;
   threshold: number;
   amount: number;
+  sceneKey?: string;
+  sceneName?: string;
+  channel?: ActivityCouponChannel;
+  targetUser?: ActivityCouponTargetUser;
+  thresholdMode?: ActivityCouponThresholdMode;
+  usageSuggestion?: string;
 };
 
 type RedAddOn = {
@@ -632,6 +645,8 @@ type ActivityDesignSettings = ComboRangeSettings & {
   objectivePayTargets?: Partial<Record<RedesignedActivityDesignObjective, ActivityObjectivePayTarget>>;
   objectiveStrategies?: Partial<Record<RedesignedActivityDesignObjective, Partial<ActivityObjectiveStrategy>>>;
   objectiveTemplates?: ActivityObjectiveTemplate[];
+  couponSceneTemplates?: ActivityCouponSceneTemplate[];
+  platformCouponSceneKeys?: Partial<Record<Platform, string[]>>;
   minProfitRate?: number;
   originalBandSize?: number;
   payBandSize?: number;
@@ -776,11 +791,187 @@ const ACTIVITY_FULL_AMOUNT_BASIS_OPTIONS: Array<{ value: ActivityObjectiveStrate
   { value: 'min', label: '最小值' },
   { value: 'max', label: '最大值' }
 ];
-const ACTIVITY_COUPON_SCORING_MODE_OPTIONS: Array<{ value: ActivityObjectiveStrategy['couponScoringMode']; label: string }> = [
+const ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS: Array<{ value: ActivityCouponRecommendationMode; label: string }> = [
   { value: 'conservative', label: '保守' },
   { value: 'balanced', label: '平稳' },
   { value: 'aggressive', label: '激进' }
 ];
+const ACTIVITY_COUPON_RECOMMENDATION_POLICY_DEFAULTS: Record<ActivityCouponRecommendationMode, ActivityCouponRecommendationPolicy> = {
+  conservative: {
+    mode: 'conservative',
+    amountStep: 0.5,
+    minCouponAmount: 1,
+    nearThresholdGap: 4,
+    farThresholdGap: 12,
+    nearAmountMergeTolerance: 0.5,
+    farAmountSkipTolerance: 1,
+    maxOverBucketSpace: 0,
+    representativeMode: 'lowestThreshold'
+  },
+  balanced: {
+    mode: 'balanced',
+    amountStep: 0.5,
+    minCouponAmount: 1,
+    nearThresholdGap: 5,
+    farThresholdGap: 10,
+    nearAmountMergeTolerance: 0.5,
+    farAmountSkipTolerance: 1,
+    maxOverBucketSpace: 0.5,
+    representativeMode: 'balanced'
+  },
+  aggressive: {
+    mode: 'aggressive',
+    amountStep: 0.5,
+    minCouponAmount: 1,
+    nearThresholdGap: 8,
+    farThresholdGap: 12,
+    nearAmountMergeTolerance: 0.5,
+    farAmountSkipTolerance: 1,
+    maxOverBucketSpace: 1,
+    representativeMode: 'highestThreshold'
+  }
+};
+const DEFAULT_ACTIVITY_COUPON_SCENE_TEMPLATES: ActivityCouponSceneTemplate[] = [
+  {
+    key: 'raiseAov.addOnCritical',
+    enabled: true,
+    name: '加购引导券',
+    priority: 30,
+    channel: 'orderReturn',
+    targetUser: 'highAov',
+    objectiveKeys: ['raiseAov'],
+    thresholdMode: 'addOnCritical',
+    thresholdMin: 0,
+    thresholdMax: 999,
+    amountMin: 1,
+    amountMax: 999,
+    couponIndexRatioMin: 0,
+    couponIndexRatioMax: 1,
+    requireNearFullReduction: false,
+    maxFullReductionDistance: 8,
+    requireNearRedTier: false,
+    maxRedTierDistance: 8,
+    addOnMin: 0,
+    addOnMax: 8,
+    requireBoundarySafe: false,
+    maxOverBucketSpace: 0.5,
+    couponBudgetShare: 100,
+    maxCouponCount: 6,
+    maxCouponAmount: 999
+  },
+  {
+    key: 'orderGrowth.addOnCritical',
+    enabled: true,
+    name: '加购引导券',
+    priority: 35,
+    channel: 'inStore',
+    targetUser: 'all',
+    objectiveKeys: ['orderGrowth', 'hotProduct'],
+    thresholdMode: 'addOnCritical',
+    thresholdMin: 0,
+    thresholdMax: 999,
+    amountMin: 1,
+    amountMax: 999,
+    couponIndexRatioMin: 0,
+    couponIndexRatioMax: 0.4,
+    requireNearFullReduction: false,
+    maxFullReductionDistance: 8,
+    requireNearRedTier: false,
+    maxRedTierDistance: 8,
+    addOnMin: 0,
+    addOnMax: 8,
+    requireBoundarySafe: false,
+    maxOverBucketSpace: 1,
+    couponBudgetShare: 100,
+    maxCouponCount: 6,
+    maxCouponAmount: 999
+  },
+  {
+    key: 'fullReduction.interleave',
+    enabled: true,
+    name: '满减补档券',
+    priority: 40,
+    channel: 'inStore',
+    targetUser: 'highFrequency',
+    objectiveKeys: [],
+    thresholdMode: 'fullReductionInterleave',
+    thresholdMin: 0,
+    thresholdMax: 999,
+    amountMin: 1,
+    amountMax: 999,
+    couponIndexRatioMin: 0,
+    couponIndexRatioMax: 1,
+    requireNearFullReduction: true,
+    maxFullReductionDistance: 8,
+    requireNearRedTier: false,
+    maxRedTierDistance: 8,
+    addOnMin: 0,
+    addOnMax: 999,
+    requireBoundarySafe: false,
+    maxOverBucketSpace: 0.5,
+    couponBudgetShare: 100,
+    maxCouponCount: 6,
+    maxCouponAmount: 999
+  },
+  {
+    key: 'redTier.highMarginGuide',
+    enabled: true,
+    name: '高到手补档券',
+    priority: 50,
+    channel: 'targeted',
+    targetUser: 'highAov',
+    objectiveKeys: ['highMarginConversion', 'profitRecovery'],
+    thresholdMode: 'highMarginGuide',
+    thresholdMin: 0,
+    thresholdMax: 999,
+    amountMin: 1,
+    amountMax: 999,
+    couponIndexRatioMin: 0,
+    couponIndexRatioMax: 1,
+    requireNearFullReduction: false,
+    maxFullReductionDistance: 8,
+    requireNearRedTier: true,
+    maxRedTierDistance: 8,
+    addOnMin: 0,
+    addOnMax: 999,
+    requireBoundarySafe: true,
+    maxOverBucketSpace: 0,
+    couponBudgetShare: 100,
+    maxCouponCount: 6,
+    maxCouponAmount: 999
+  },
+  {
+    key: 'retention.recall',
+    enabled: true,
+    name: '定向唤回券',
+    priority: 60,
+    channel: 'targeted',
+    targetUser: 'lostCustomer',
+    objectiveKeys: ['raiseAov', 'highMarginConversion'],
+    thresholdMode: 'retentionRecall',
+    thresholdMin: 0,
+    thresholdMax: 999,
+    amountMin: 1,
+    amountMax: 999,
+    couponIndexRatioMin: 0.6,
+    couponIndexRatioMax: 1,
+    requireNearFullReduction: false,
+    maxFullReductionDistance: 8,
+    requireNearRedTier: false,
+    maxRedTierDistance: 8,
+    addOnMin: 0,
+    addOnMax: 999,
+    requireBoundarySafe: false,
+    maxOverBucketSpace: 0.5,
+    couponBudgetShare: 100,
+    maxCouponCount: 6,
+    maxCouponAmount: 999
+  }
+];
+const DEFAULT_ACTIVITY_PLATFORM_COUPON_SCENE_KEYS: Partial<Record<Platform, string[]>> = {
+  meituan: DEFAULT_ACTIVITY_COUPON_SCENE_TEMPLATES.map(template => template.key),
+  eleme: DEFAULT_ACTIVITY_COUPON_SCENE_TEMPLATES.map(template => template.key)
+};
 const ACTIVITY_OBJECTIVE_TARGET_DEFAULTS: Record<string, {
   targetOffset: number;
   minOffset: number;
@@ -833,6 +1024,10 @@ function defaultActivityObjectivePayTargets(
 
 const DEFAULT_ACTIVITY_OBJECTIVE_PAY_TARGETS = defaultActivityObjectivePayTargets();
 
+function defaultActivityCouponRecommendationPolicy(mode: ActivityCouponRecommendationMode = 'balanced'): ActivityCouponRecommendationPolicy {
+  return { ...ACTIVITY_COUPON_RECOMMENDATION_POLICY_DEFAULTS[mode] };
+}
+
 function defaultActivityObjectiveStrategies(
   baseTargetProfitRate = 35,
   objectiveOptions: ActivityObjectiveOption[] = ACTIVITY_OBJECTIVE_OPTIONS
@@ -853,6 +1048,7 @@ function defaultActivityObjectiveStrategies(
       maxFullRuleCount: defaults.maxFullRuleCount,
       minFullHitCount: defaults.minFullHitCount,
       minNetPayFloor: defaults.minNetPayFloor,
+      couponRecommendationPolicy: defaultActivityCouponRecommendationPolicy(defaults.couponScoringMode),
       couponScoringMode: defaults.couponScoringMode
     };
     return strategies;
@@ -862,7 +1058,9 @@ function defaultActivityObjectiveStrategies(
 const DEFAULT_ACTIVITY_STRATEGY_SETTINGS: ActivityStrategySettings = {
   baseOriginalDiscountRate: 50,
   objectiveTemplates: DEFAULT_ACTIVITY_OBJECTIVE_TEMPLATES,
-  objectiveStrategies: defaultActivityObjectiveStrategies()
+  objectiveStrategies: defaultActivityObjectiveStrategies(),
+  couponSceneTemplates: DEFAULT_ACTIVITY_COUPON_SCENE_TEMPLATES,
+  platformCouponSceneKeys: DEFAULT_ACTIVITY_PLATFORM_COUPON_SCENE_KEYS
 };
 const STAPLE_SCENARIOS: StapleScenario[] = ['single', 'double', 'multi'];
 const ACTIVITY_PAY_MAX_BY_SCENARIO: Record<StapleScenario, number> = { single: 40, double: 80, multi: 150 };
@@ -964,6 +1162,8 @@ const DEFAULT_ACTIVITY_DESIGN_SETTINGS: ActivityDesignSettings = {
   objectivePayTargets: DEFAULT_ACTIVITY_OBJECTIVE_PAY_TARGETS,
   objectiveStrategies: DEFAULT_ACTIVITY_STRATEGY_SETTINGS.objectiveStrategies,
   objectiveTemplates: DEFAULT_ACTIVITY_OBJECTIVE_TEMPLATES,
+  couponSceneTemplates: DEFAULT_ACTIVITY_COUPON_SCENE_TEMPLATES,
+  platformCouponSceneKeys: DEFAULT_ACTIVITY_PLATFORM_COUPON_SCENE_KEYS,
   minProfitRate: 0,
   originalBandSize: 5,
   payBandSize: 5
@@ -1445,6 +1645,7 @@ function activityPriceScanSettingsSignatureInput(settings: ActivityDesignSetting
     maxFullRuleCount: strategy?.maxFullRuleCount,
     minFullHitCount: strategy?.minFullHitCount,
     minNetPayFloor: strategy?.minNetPayFloor,
+    couponRecommendationPolicy: strategy?.couponRecommendationPolicy,
     couponScoringMode: strategy?.couponScoringMode
   }]));
   return {
@@ -1701,7 +1902,9 @@ function effectiveActivityDesignSettingsFromStore(
     baseOriginalDiscountRate,
     useDefaultObjectiveStrategies,
     objectiveStrategies: mergedStrategies,
-    objectiveTemplates: mergedObjectiveTemplates
+    objectiveTemplates: mergedObjectiveTemplates,
+    couponSceneTemplates: normalizedStrategy.couponSceneTemplates,
+    platformCouponSceneKeys: normalizedStrategy.platformCouponSceneKeys
   });
 }
 
@@ -2233,7 +2436,7 @@ function normalizedTargetProfitRate(value: unknown) {
   return clamp(normalized, 0, 0.95);
 }
 
-function comboTargetCostLimit(row: ComboEvaluationRow) {
+function comboReasonableCostLimit(row: ComboEvaluationRow) {
   const candidates: number[] = [];
   const cost = Math.max(0, Number(row.cost) || 0);
   const netPay = Math.max(0, Number(row.netPay) || 0);
@@ -2300,7 +2503,7 @@ function buildProductDiscountSuggestions(
     qtySum: number;
     unitPriceSum: number;
     unitCostSum: number;
-    targetCostSum: number;
+    reasonableCostSum: number;
     costGapSum: number;
     allocatedNetPaySum: number;
     allocatedNetPayQty: number;
@@ -2329,7 +2532,7 @@ function buildProductDiscountSuggestions(
       qtySum: 0,
       unitPriceSum: 0,
       unitCostSum: 0,
-      targetCostSum: 0,
+      reasonableCostSum: 0,
       costGapSum: 0,
       allocatedNetPaySum: 0,
       allocatedNetPayQty: 0,
@@ -2348,7 +2551,7 @@ function buildProductDiscountSuggestions(
     row: ComboEvaluationRow,
     item: ComboItem,
     role: ProductDiscountSuggestionRole,
-    targetCostPerUnit: number,
+    reasonableCostPerUnit: number,
     allocatedNetPayPerUnit: number | null
   ) => {
     if (options.productId && item.productId !== options.productId) return;
@@ -2357,14 +2560,14 @@ function buildProductDiscountSuggestions(
     if (qty <= 0 || unitPrice <= 0) return;
     const current = ensureCandidate(row, item, role);
     const unitCost = comboItemUnitCost(item);
-    const costGap = roundMoney(targetCostPerUnit - unitCost);
+    const costGap = roundMoney(reasonableCostPerUnit - unitCost);
     current.rowKeys.add(row.key);
     if (costGap >= 1) current.opportunityRowKeys.add(row.key);
     if (costGap < -0.5) current.riskRowKeys.add(row.key);
     current.qtySum += qty;
     current.unitPriceSum += unitPrice * qty;
     current.unitCostSum += unitCost * qty;
-    current.targetCostSum += Math.max(0, targetCostPerUnit) * qty;
+    current.reasonableCostSum += Math.max(0, reasonableCostPerUnit) * qty;
     current.costGapSum += costGap * qty;
     current.profitSpaceSum += (Number.isFinite(Number(row.profitSpace)) ? Number(row.profitSpace) : 0) * qty;
     if (allocatedNetPayPerUnit !== null) {
@@ -2379,8 +2582,8 @@ function buildProductDiscountSuggestions(
   };
 
   for (const row of analysisRows) {
-    const targetCostLimit = comboTargetCostLimit(row);
-    if (targetCostLimit === null) continue;
+    const reasonableCostLimit = comboReasonableCostLimit(row);
+    if (reasonableCostLimit === null) continue;
     const items = row.items.filter(item => Math.max(0, Number(item.qty) || 0) > 0 && Math.max(0, Number(item.price) || 0) > 0);
     if (!items.length) continue;
     const totalOriginal = Math.max(
@@ -2392,7 +2595,7 @@ function buildProductDiscountSuggestions(
     const mainItems = items.filter(item => !isAddOnDiscountItem(item));
     const mainOriginal = mainItems.reduce((sum, item) => sum + comboItemOriginalAmount(item), 0);
     const addOnCost = addOnItems.reduce((sum, item) => sum + comboItemUnitCost(item) * Math.max(0, Number(item.qty) || 0), 0);
-    const mainTargetCost = Math.max(0, targetCostLimit - addOnCost);
+    const mainReasonableCost = Math.max(0, reasonableCostLimit - addOnCost);
 
     for (const item of addOnItems) {
       const qty = Math.max(0, Number(item.qty) || 0);
@@ -2404,19 +2607,19 @@ function buildProductDiscountSuggestions(
 
     for (const item of mainItems) {
       const qty = Math.max(0, Number(item.qty) || 0);
-      const targetCostPerUnit = qty > 0 && mainOriginal > 0
-        ? (mainTargetCost * (comboItemOriginalAmount(item) / mainOriginal)) / qty
+      const reasonableCostPerUnit = qty > 0 && mainOriginal > 0
+        ? (mainReasonableCost * (comboItemOriginalAmount(item) / mainOriginal)) / qty
         : 0;
-      addContribution(row, item, 'main', targetCostPerUnit, null);
+      addContribution(row, item, 'main', reasonableCostPerUnit, null);
     }
 
     if (!mainItems.length && !addOnItems.length) {
       for (const item of items) {
         const qty = Math.max(0, Number(item.qty) || 0);
-        const targetCostPerUnit = qty > 0
-          ? (targetCostLimit * (comboItemOriginalAmount(item) / totalOriginal)) / qty
+        const reasonableCostPerUnit = qty > 0
+          ? (reasonableCostLimit * (comboItemOriginalAmount(item) / totalOriginal)) / qty
           : 0;
-        addContribution(row, item, 'main', targetCostPerUnit, null);
+        addContribution(row, item, 'main', reasonableCostPerUnit, null);
       }
     }
   }
@@ -2431,7 +2634,7 @@ function buildProductDiscountSuggestions(
     if (unitPrice <= 0) return null;
 
     const avgUnitCost = candidate.unitCostSum / candidate.qtySum;
-    const avgTargetCost = candidate.targetCostSum / candidate.qtySum;
+    const avgReasonableCost = candidate.reasonableCostSum / candidate.qtySum;
     const avgCostGap = candidate.costGapSum / candidate.qtySum;
     const avgProfitSpace = candidate.profitSpaceSum / candidate.qtySum;
     const avgAllocatedNetPay = candidate.allocatedNetPayQty > 0
@@ -2488,12 +2691,12 @@ function buildProductDiscountSuggestions(
     const actionLabel = productDiscountActionLabel(actionType);
     const roleLabel = productDiscountRoleLabel(role);
     const reason = actionType === 'discount'
-      ? `${productDiscountSourceName(source)}按商品维度反推目标成本：${roleLabel}当前成本 ¥${money(avgUnitCost)}，目标成本 ¥${money(avgTargetCost)}，单件空间 ¥${money(avgCostGap)}；建议按商品维度给 ¥${money(discountAmountPerUnit)} 左右折扣。`
+      ? `${productDiscountSourceName(source)}按商品维度反推活动合理成本：${roleLabel}当前成本 ¥${money(avgUnitCost)}，活动合理成本 ¥${money(avgReasonableCost)}，单件空间 ¥${money(avgCostGap)}；建议按商品维度给 ¥${money(discountAmountPerUnit)} 左右折扣。`
       : actionType === 'raisePrice'
-        ? `${productDiscountSourceName(source)}按商品维度反推目标成本：当前成本 ¥${money(avgUnitCost)} 高于目标成本 ¥${money(avgTargetCost)}，平均缺口 ¥${money(Math.abs(avgCostGap))}；不建议继续做商品折扣，优先涨价、收紧活动或排除该商品。`
+        ? `${productDiscountSourceName(source)}按商品维度反推活动合理成本：当前成本 ¥${money(avgUnitCost)} 高于活动合理成本 ¥${money(avgReasonableCost)}，平均缺口 ¥${money(Math.abs(avgCostGap))}；不建议继续做商品折扣，优先涨价、收紧活动或排除该商品。`
         : actionType === 'watch'
-          ? `${productDiscountSourceName(source)}按凑单品分摊到手校验：分摊到手均值 ¥${money(avgAllocatedNetPay ?? avgTargetCost)}，当前成本 ¥${money(avgUnitCost)}，有 ${candidate.riskRowKeys.size} 个组合可能打穿，建议查看具体亏损组合。`
-          : `${productDiscountSourceName(source)}按商品维度反推目标成本：当前成本 ¥${money(avgUnitCost)}，目标成本 ¥${money(avgTargetCost)}，成本差 ¥${money(avgCostGap)}；暂不需要商品折扣或调价处理。`;
+          ? `${productDiscountSourceName(source)}按凑单品分摊到手校验：分摊到手均值 ¥${money(avgAllocatedNetPay ?? avgReasonableCost)}，当前成本 ¥${money(avgUnitCost)}，有 ${candidate.riskRowKeys.size} 个组合可能打穿，建议查看具体亏损组合。`
+          : `${productDiscountSourceName(source)}按商品维度反推活动合理成本：当前成本 ¥${money(avgUnitCost)}，活动合理成本 ¥${money(avgReasonableCost)}，合理空间 ¥${money(avgCostGap)}；暂不需要商品折扣或调价处理。`;
     const suggestion: ProductDiscountSuggestion = {
       key: `${source}-${candidate.platform}-${candidate.productId}-${actionType}`,
       source,
@@ -2508,7 +2711,8 @@ function buildProductDiscountSuggestions(
       actionLabel,
       unitPrice: roundMoney(unitPrice),
       avgUnitCost: roundMoney(avgUnitCost),
-      avgTargetCost: roundMoney(avgTargetCost),
+      avgReasonableCost: roundMoney(avgReasonableCost),
+      reasonablePriceFromCost: avgReasonableCost > 1e-9 ? roundMoney(unitPrice * (avgUnitCost / avgReasonableCost)) : null,
       avgCostGap: roundMoney(avgCostGap),
       minCostGap: candidate.minCostGap,
       maxCostGap: candidate.maxCostGap,
@@ -3034,7 +3238,13 @@ function normalizeActivities(data: Partial<Activities> | undefined, platformName
       enabled: parseBoolean(row.enabled, true),
       name: String(row.name || '订单优惠券'),
       threshold: toMoneyNumber(row.threshold, 0),
-      amount: toMoneyNumber(row.amount, 0)
+      amount: toMoneyNumber(row.amount, 0),
+      sceneKey: row.sceneKey ? String(row.sceneKey) : undefined,
+      sceneName: row.sceneName ? String(row.sceneName) : undefined,
+      channel: row.channel,
+      targetUser: row.targetUser,
+      thresholdMode: row.thresholdMode,
+      usageSuggestion: row.usageSuggestion ? String(row.usageSuggestion) : undefined
     })) : fallback.coupons,
     redAddOns: Array.isArray(data?.redAddOns) ? data.redAddOns.map(row => ({
       enabled: parseBoolean(row.enabled, true),
@@ -3159,10 +3369,98 @@ function normalizeActivityObjectivePayTargets(
   }, {} as Record<RedesignedActivityDesignObjective, ActivityObjectivePayTarget>);
 }
 
-function normalizeActivityCouponScoringMode(value: unknown, fallback: ActivityObjectiveStrategy['couponScoringMode']): ActivityObjectiveStrategy['couponScoringMode'] {
+function normalizeActivityCouponRecommendationMode(value: unknown, fallback: ActivityCouponRecommendationMode = 'balanced'): ActivityCouponRecommendationMode {
   return value === 'conservative' || value === 'balanced' || value === 'aggressive'
     ? value
     : fallback;
+}
+
+function normalizeActivityCouponRepresentativeMode(value: unknown, fallback: ActivityCouponRecommendationPolicy['representativeMode']): ActivityCouponRecommendationPolicy['representativeMode'] {
+  return value === 'lowestThreshold' || value === 'balanced' || value === 'highestThreshold'
+    ? value
+    : fallback;
+}
+
+function normalizeActivityCouponRecommendationPolicy(
+  value: Partial<ActivityCouponRecommendationPolicy> | undefined,
+  fallback: ActivityCouponRecommendationPolicy = defaultActivityCouponRecommendationPolicy('balanced')
+): ActivityCouponRecommendationPolicy {
+  const mode = normalizeActivityCouponRecommendationMode(value?.mode, fallback.mode);
+  const modeFallback = defaultActivityCouponRecommendationPolicy(mode);
+  return {
+    mode,
+    amountStep: Math.max(0.01, toMoneyNumber(value?.amountStep, fallback.amountStep || modeFallback.amountStep)),
+    minCouponAmount: Math.max(0, toMoneyNumber(value?.minCouponAmount, fallback.minCouponAmount || modeFallback.minCouponAmount)),
+    nearThresholdGap: Math.max(0, toMoneyNumber(value?.nearThresholdGap, fallback.nearThresholdGap || modeFallback.nearThresholdGap)),
+    farThresholdGap: Math.max(0, toMoneyNumber(value?.farThresholdGap, fallback.farThresholdGap || modeFallback.farThresholdGap)),
+    nearAmountMergeTolerance: Math.max(0, toMoneyNumber(value?.nearAmountMergeTolerance, fallback.nearAmountMergeTolerance || modeFallback.nearAmountMergeTolerance)),
+    farAmountSkipTolerance: Math.max(0, toMoneyNumber(value?.farAmountSkipTolerance, fallback.farAmountSkipTolerance || modeFallback.farAmountSkipTolerance)),
+    maxOverBucketSpace: Math.max(0, toMoneyNumber(value?.maxOverBucketSpace, fallback.maxOverBucketSpace || modeFallback.maxOverBucketSpace)),
+    representativeMode: normalizeActivityCouponRepresentativeMode(value?.representativeMode, fallback.representativeMode || modeFallback.representativeMode)
+  };
+}
+
+function normalizeActivityCouponSceneTemplate(row: Partial<ActivityCouponSceneTemplate> | undefined, fallback: ActivityCouponSceneTemplate): ActivityCouponSceneTemplate {
+  const thresholdMin = Math.max(0, toMoneyNumber(row?.thresholdMin, fallback.thresholdMin));
+  const amountMin = Math.max(0, toMoneyNumber(row?.amountMin, fallback.amountMin));
+  const couponIndexRatioMin = Math.max(0, Math.min(1, toNumber(row?.couponIndexRatioMin, fallback.couponIndexRatioMin)));
+  const objectiveKeys = Array.isArray(row?.objectiveKeys)
+    ? row.objectiveKeys.map(key => String(key || '')).filter(Boolean)
+    : [];
+  const legacyObjective = (row as { objective?: unknown } | undefined)?.objective;
+  return {
+    key: String(row?.key || fallback.key),
+    enabled: row?.enabled !== false,
+    name: String(row?.name || fallback.name),
+    priority: Math.floor(toNumber(row?.priority, fallback.priority)),
+    platforms: Array.isArray(row?.platforms)
+      ? row.platforms.filter((item): item is Platform => item === 'meituan' || item === 'eleme')
+      : fallback.platforms,
+    channel: row?.channel === 'inStore' || row?.channel === 'orderReturn' || row?.channel === 'reviewReturn' || row?.channel === 'pointsReturn' || row?.channel === 'targeted' ? row.channel : fallback.channel,
+    targetUser: row?.targetUser === 'all' || row?.targetUser === 'newCustomer' || row?.targetUser === 'highFrequency' || row?.targetUser === 'highAov' || row?.targetUser === 'lostCustomer' || row?.targetUser === 'specified' ? row.targetUser : fallback.targetUser,
+    objectiveKeys: objectiveKeys.length ? objectiveKeys : legacyObjective ? [String(legacyObjective)] : fallback.objectiveKeys.slice(),
+    thresholdMode: row?.thresholdMode === 'lowThresholdOrder' || row?.thresholdMode === 'fullReductionInterleave' || row?.thresholdMode === 'addOnCritical' || row?.thresholdMode === 'highMarginGuide' || row?.thresholdMode === 'retentionRecall' ? row.thresholdMode : fallback.thresholdMode,
+    thresholdMin,
+    thresholdMax: Math.max(thresholdMin, toMoneyNumber(row?.thresholdMax, fallback.thresholdMax)),
+    amountMin,
+    amountMax: Math.max(amountMin, toMoneyNumber(row?.amountMax, fallback.amountMax)),
+    couponIndexRatioMin,
+    couponIndexRatioMax: Math.max(couponIndexRatioMin, Math.min(1, toNumber(row?.couponIndexRatioMax, fallback.couponIndexRatioMax))),
+    requireNearFullReduction: parseBoolean(row?.requireNearFullReduction, fallback.requireNearFullReduction),
+    maxFullReductionDistance: Math.max(0, toMoneyNumber(row?.maxFullReductionDistance, fallback.maxFullReductionDistance)),
+    requireNearRedTier: parseBoolean(row?.requireNearRedTier, fallback.requireNearRedTier),
+    maxRedTierDistance: Math.max(0, toMoneyNumber(row?.maxRedTierDistance, fallback.maxRedTierDistance)),
+    addOnMin: Math.max(0, toMoneyNumber(row?.addOnMin, fallback.addOnMin)),
+    addOnMax: Math.max(0, toMoneyNumber(row?.addOnMax, fallback.addOnMax)),
+    requireBoundarySafe: parseBoolean(row?.requireBoundarySafe, fallback.requireBoundarySafe),
+    maxOverBucketSpace: Math.max(0, toMoneyNumber(row?.maxOverBucketSpace, fallback.maxOverBucketSpace)),
+    couponBudgetShare: Math.max(0, Math.min(100, toMoneyNumber(row?.couponBudgetShare, fallback.couponBudgetShare))),
+    maxCouponCount: Math.max(1, Math.floor(toNumber(row?.maxCouponCount, fallback.maxCouponCount))),
+    maxCouponAmount: Math.max(0, toMoneyNumber(row?.maxCouponAmount, fallback.maxCouponAmount))
+  };
+}
+
+function normalizeActivityCouponSceneTemplates(value: unknown): ActivityCouponSceneTemplate[] {
+  const fallbackByKey = new Map(DEFAULT_ACTIVITY_COUPON_SCENE_TEMPLATES.map(template => [template.key, template]));
+  const rows = Array.isArray(value) ? value as Partial<ActivityCouponSceneTemplate>[] : DEFAULT_ACTIVITY_COUPON_SCENE_TEMPLATES;
+  const normalized = rows
+    .map(row => normalizeActivityCouponSceneTemplate(row, fallbackByKey.get(String(row?.key || '')) || DEFAULT_ACTIVITY_COUPON_SCENE_TEMPLATES[0]))
+    .filter((row, index, list) => row.key && list.findIndex(item => item.key === row.key) === index)
+    .sort((a, b) => a.priority - b.priority || a.key.localeCompare(b.key));
+  return normalized.length ? normalized : DEFAULT_ACTIVITY_COUPON_SCENE_TEMPLATES.map(template => normalizeActivityCouponSceneTemplate(template, template));
+}
+
+function normalizePlatformCouponSceneKeys(value: Partial<Record<Platform, string[]>> | undefined, templates: ActivityCouponSceneTemplate[]) {
+  const templateKeys = templates.map(template => template.key);
+  const normalizeKeys = (keys: unknown) => {
+    const rows = Array.isArray(keys) ? keys.map(key => String(key || '')).filter(Boolean) : templateKeys;
+    const allowed = rows.filter((key, index, list) => templateKeys.includes(key) && list.indexOf(key) === index);
+    return allowed.length ? allowed : templateKeys;
+  };
+  return {
+    meituan: normalizeKeys(value?.meituan),
+    eleme: normalizeKeys(value?.eleme)
+  };
 }
 
 function normalizeActivityFullAmountBasis(value: unknown, fallback: ActivityObjectiveStrategy['fullAmountBasis']): ActivityObjectiveStrategy['fullAmountBasis'] {
@@ -3262,6 +3560,14 @@ function normalizeActivityObjectiveStrategies(
     const fallback = fallbacks[option.value];
     const raw = value?.[option.value];
     const payTarget = legacyTargets[option.value];
+    const fallbackMode = normalizeActivityCouponRecommendationMode(fallback.couponRecommendationPolicy?.mode || fallback.couponScoringMode, 'balanced');
+    const rawMode = normalizeActivityCouponRecommendationMode(raw?.couponRecommendationPolicy?.mode || raw?.couponScoringMode, fallbackMode);
+    const couponRecommendationPolicy = normalizeActivityCouponRecommendationPolicy(
+      raw?.couponRecommendationPolicy,
+      raw?.couponRecommendationPolicy
+        ? { ...defaultActivityCouponRecommendationPolicy(rawMode), ...raw.couponRecommendationPolicy, mode: rawMode }
+        : defaultActivityCouponRecommendationPolicy(rawMode)
+    );
     strategies[option.value] = {
       ...fallback,
       ...payTarget,
@@ -3276,7 +3582,8 @@ function normalizeActivityObjectiveStrategies(
       maxFullRuleCount: Math.max(1, Math.floor(toNumber(raw?.maxFullRuleCount, fallback.maxFullRuleCount))),
       minFullHitCount: Math.max(0, Math.floor(toNumber(raw?.minFullHitCount, fallback.minFullHitCount))),
       minNetPayFloor: Math.max(0, toMoneyNumber(raw?.minNetPayFloor, fallback.minNetPayFloor)),
-      couponScoringMode: normalizeActivityCouponScoringMode(raw?.couponScoringMode, fallback.couponScoringMode)
+      couponRecommendationPolicy,
+      couponScoringMode: couponRecommendationPolicy.mode
     };
     return strategies;
   }, {} as Record<RedesignedActivityDesignObjective, ActivityObjectiveStrategy>);
@@ -3286,10 +3593,13 @@ function normalizeActivityStrategySettings(value: Partial<ActivityStrategySettin
   const objectiveTemplates = normalizeActivityObjectiveTemplates(value?.objectiveTemplates);
   const objectiveOptions = activityObjectiveOptionsFromTemplates(objectiveTemplates);
   const objectiveStrategies = normalizeActivityObjectiveStrategies(value?.objectiveStrategies, DEFAULT_ACTIVITY_DESIGN_SETTINGS.targetProfitRate, objectiveOptions);
+  const couponSceneTemplates = normalizeActivityCouponSceneTemplates(value?.couponSceneTemplates);
   return {
     baseOriginalDiscountRate: Math.max(0, Math.min(95, toMoneyNumber(value?.baseOriginalDiscountRate, DEFAULT_ACTIVITY_STRATEGY_SETTINGS.baseOriginalDiscountRate))),
     objectiveTemplates,
-    objectiveStrategies
+    objectiveStrategies,
+    couponSceneTemplates,
+    platformCouponSceneKeys: normalizePlatformCouponSceneKeys(value?.platformCouponSceneKeys, couponSceneTemplates)
   };
 }
 
@@ -3380,6 +3690,8 @@ function normalizeActivityDesignSettings(settings: Partial<ActivityDesignSetting
     objectivePayTargets: normalizeActivityObjectivePayTargets(raw.objectivePayTargets, targetProfitRate, objectiveOptions),
     objectiveStrategies: normalizeActivityObjectiveStrategies(rawObjectiveStrategies, targetProfitRate, objectiveOptions),
     objectiveTemplates,
+    couponSceneTemplates: normalizeActivityCouponSceneTemplates(raw.couponSceneTemplates || fallback.couponSceneTemplates),
+    platformCouponSceneKeys: normalizePlatformCouponSceneKeys(raw.platformCouponSceneKeys || fallback.platformCouponSceneKeys, normalizeActivityCouponSceneTemplates(raw.couponSceneTemplates || fallback.couponSceneTemplates)),
     minProfitRate: Math.max(0, toMoneyNumber(raw.minProfitRate, fallback.minProfitRate || 0)),
     originalBandSize: Math.max(1, Math.floor(toNumber(raw.originalBandSize, fallback.originalBandSize || 5))),
     payBandSize: Math.max(1, Math.floor(toNumber(raw.payBandSize, fallback.payBandSize || 5)))
@@ -8384,7 +8696,13 @@ function WaimaiCalculatorInner() {
       enabled: true,
       name: rule.name || `建议订单券满${money(rule.threshold)}减${money(rule.amount)}`,
       threshold: Math.max(0, Number(rule.threshold) || 0),
-      amount: Math.max(0, Number(rule.amount) || 0)
+      amount: Math.max(0, Number(rule.amount) || 0),
+      sceneKey: rule.sceneKey,
+      sceneName: rule.sceneName,
+      channel: rule.channel,
+      targetUser: rule.targetUser,
+      thresholdMode: rule.thresholdMode,
+      usageSuggestion: rule.usageSuggestion
     }));
     if (!fullReductions.length && !coupons.length) {
       message.warning('当前路线没有可应用的满减或优惠券规则。');
@@ -8577,8 +8895,9 @@ function WaimaiCalculatorInner() {
       { title: '结论', dataIndex: 'actionLabel', width: 120, render: (_, row) => <Tag color={productDiscountRiskColor(row.riskLevel)}>{row.actionLabel}</Tag> },
       { title: '售价', dataIndex: 'unitPrice', width: 90, render: value => `¥${money(value)}`, sorter: (a, b) => a.unitPrice - b.unitPrice },
       { title: '当前成本', dataIndex: 'avgUnitCost', width: 105, render: value => `¥${money(value)}`, sorter: (a, b) => a.avgUnitCost - b.avgUnitCost },
-      { title: '目标成本', dataIndex: 'avgTargetCost', width: 105, render: value => `¥${money(value)}`, sorter: (a, b) => a.avgTargetCost - b.avgTargetCost },
-      { title: '成本差', dataIndex: 'avgCostGap', width: 105, render: value => <Text type={Number(value) < 0 ? 'danger' : 'success'}>¥{money(value)}</Text>, sorter: (a, b) => a.avgCostGap - b.avgCostGap },
+      { title: '活动合理成本', dataIndex: 'avgReasonableCost', width: 125, render: value => `¥${money(value)}`, sorter: (a, b) => a.avgReasonableCost - b.avgReasonableCost },
+      { title: '合理空间', dataIndex: 'avgCostGap', width: 105, render: value => <Text type={Number(value) < 0 ? 'danger' : 'success'}>¥{money(value)}</Text>, sorter: (a, b) => a.avgCostGap - b.avgCostGap },
+      { title: '合理标价', dataIndex: 'reasonablePriceFromCost', width: 105, render: value => value === null ? '-' : `¥${money(value)}`, sorter: (a, b) => (a.reasonablePriceFromCost || 0) - (b.reasonablePriceFromCost || 0) },
       { title: '差值范围', width: 130, render: (_, row) => row.minCostGap === null ? '-' : `${money(row.minCostGap)} ~ ${money(row.maxCostGap)}` },
       { title: '建议折扣', width: 115, render: (_, row) => row.actionType === 'discount' ? `${money(row.discountRate)}折 / ¥${money(row.discountAmountPerUnit)}` : '-' },
       { title: '影响组合', width: 115, render: (_, row) => `${row.affectedComboCount} 条`, sorter: (a, b) => a.affectedComboCount - b.affectedComboCount },
@@ -8594,9 +8913,9 @@ function WaimaiCalculatorInner() {
       }
     ];
     return (
-      <Card size="small" title={options.title || '商品维度目标成本结论'}>
+      <Card size="small" title={options.title || '商品维度活动合理成本结论'}>
         <Space direction="vertical" style={{ width: '100%' }} size="small">
-          <Text type="secondary">{options.description || '商品结论按目标活动下的目标成本反推；主商品比较目标成本和当前成本，凑单品只判断分摊到手是否覆盖成本。'}</Text>
+          <Text type="secondary">{options.description || '商品结论按当前活动路线下的合理成本反推；主商品比较活动合理成本和当前成本，凑单品只判断分摊到手是否覆盖成本。'}</Text>
           {suggestions.length ? (
             <Table
               rowKey="key"
@@ -8604,7 +8923,7 @@ function WaimaiCalculatorInner() {
               columns={columns}
               dataSource={suggestions}
               pagination={false}
-              scroll={{ x: 1815 }}
+              scroll={{ x: 1925 }}
               tableLayout="fixed"
             />
           ) : (
@@ -9313,7 +9632,8 @@ function WaimaiCalculatorInner() {
     const baseOriginalDiscountRate = strategy?.baseOriginalDiscountRate ?? storeActivityDesignSettings.baseOriginalDiscountRate ?? 50;
     const tierText = formatActivityOriginalDiscountTiers(strategy?.originalDiscountTiers || []);
     const fullAmountBasisLabel = ACTIVITY_FULL_AMOUNT_BASIS_OPTIONS.find(option => option.value === strategy?.fullAmountBasis)?.label || strategy?.fullAmountBasis || '-';
-    const couponStrategyLabel = ACTIVITY_COUPON_SCORING_MODE_OPTIONS.find(option => option.value === (strategy?.couponScoringMode || 'balanced'))?.label || strategy?.couponScoringMode || '平稳';
+    const couponStrategyMode = strategy?.couponRecommendationPolicy?.mode || strategy?.couponScoringMode || 'balanced';
+    const couponStrategyLabel = ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS.find(option => option.value === couponStrategyMode)?.label || couponStrategyMode || '平稳';
     const averageTargetRate = row.targetDiscountRate === null || row.targetDiscountRate === undefined
       ? '-'
       : rateText(row.targetDiscountRate);
@@ -9608,9 +9928,12 @@ function WaimaiCalculatorInner() {
         : optionText(ACTIVITY_FULL_AMOUNT_BASIS_OPTIONS, row.strategy.fullAmountBasis)
       },
       { title: strategyTitle('到手核验线', '不参与路线生成；仅在路线评分和支付价核验中标记低到手风险。'), width: 115, render: (_, row) => isSystemStrategyEditing ? <InputNumber min={0} precision={2} value={row.strategy.minNetPayFloor} onChange={value => updateObjectiveStrategy(row.value, { minNetPayFloor: Number(value) || 0 })} /> : `¥${money(row.strategy.minNetPayFloor)}` },
-      { title: strategyTitle('券策略', '按桶级券金额向上生成阶梯券；激进从最低桶起步，平稳从达到金额档的桶起步，保守从最后一个低于1元断点之后起步。'), width: 115, render: (_, row) => isSystemStrategyEditing
-        ? <Select style={{ width: 100 }} value={row.strategy.couponScoringMode} options={ACTIVITY_COUPON_SCORING_MODE_OPTIONS} onChange={value => updateObjectiveStrategy(row.value, { couponScoringMode: value })} />
-        : optionText(ACTIVITY_COUPON_SCORING_MODE_OPTIONS, row.strategy.couponScoringMode) },
+      { title: strategyTitle('券策略', '只决定最终建议券的稀疏度、代表门槛和风险容忍；桶级券空间仍按原逻辑生成。'), width: 115, render: (_, row) => {
+        const mode = row.strategy.couponRecommendationPolicy?.mode || row.strategy.couponScoringMode;
+        return isSystemStrategyEditing
+          ? <Select style={{ width: 100 }} value={mode} options={ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS} onChange={value => updateObjectiveStrategy(row.value, { couponRecommendationPolicy: defaultActivityCouponRecommendationPolicy(value), couponScoringMode: value })} />
+          : optionText(ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS, mode);
+      } },
       { title: strategyTitle('最大阶梯', '当前经营目标最多生成多少档满减。'), width: 95, render: (_, row) => isSystemStrategyEditing ? <InputNumber min={1} max={10} precision={0} value={row.strategy.maxFullRuleCount} onChange={value => updateObjectiveStrategy(row.value, { maxFullRuleCount: Math.max(1, Math.floor(Number(value) || 1)) })} /> : row.strategy.maxFullRuleCount },
       { title: strategyTitle('最小命中', '分段样本不足时会扩大附近桶取样，避免极少数组合决定满减金额。'), width: 95, render: (_, row) => isSystemStrategyEditing ? <InputNumber min={0} precision={0} value={row.strategy.minFullHitCount} onChange={value => updateObjectiveStrategy(row.value, { minFullHitCount: Math.max(0, Math.floor(Number(value) || 0)) })} /> : row.strategy.minFullHitCount }
     ];
@@ -9841,12 +10164,13 @@ function WaimaiCalculatorInner() {
         width: 170,
         render: (_, row) => {
           const target = effectiveObjectiveStrategies[row.value];
+          const couponMode = target.couponRecommendationPolicy?.mode || target.couponScoringMode;
           return canEditStoreObjectiveModel ? (
             <Space.Compact>
               <InputNumber style={{ width: 80 }} min={0} precision={2} value={target.minNetPayFloor} onChange={value => updateStoreObjectiveStrategy(row.value, { minNetPayFloor: Number(value) || 0 })} />
-              <Select style={{ width: 90 }} value={target.couponScoringMode} options={ACTIVITY_COUPON_SCORING_MODE_OPTIONS} onChange={value => updateStoreObjectiveStrategy(row.value, { couponScoringMode: value })} />
+              <Select style={{ width: 90 }} value={couponMode} options={ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS} onChange={value => updateStoreObjectiveStrategy(row.value, { couponRecommendationPolicy: defaultActivityCouponRecommendationPolicy(value), couponScoringMode: value })} />
             </Space.Compact>
-          ) : `到手核验¥${money(target.minNetPayFloor)} / 券策略${optionText(ACTIVITY_COUPON_SCORING_MODE_OPTIONS, target.couponScoringMode)}`;
+          ) : `到手核验¥${money(target.minNetPayFloor)} / 券策略${optionText(ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS, couponMode)}`;
         }
       }
     ];
@@ -10700,19 +11024,41 @@ function WaimaiCalculatorInner() {
         couponThresholdModeLabel(coupon.thresholdMode)
       ].filter(item => item && item !== '-').join(' / ');
     };
-    const activityCouponScoringModeLabel = (mode: ActivityCouponBucketSuggestion['scoringMode']) => ({
-      conservative: '保守',
-      balanced: '平稳',
-      aggressive: '激进'
-    }[mode] || String(mode || '-'));
+    const activityCouponRecommendationModeLabel = (mode: ActivityCouponBucketSuggestion['recommendationMode'] | ActivityCouponBucketSuggestion['scoringMode']) => {
+      const normalizedMode = normalizeActivityCouponRecommendationMode(mode, 'balanced');
+      return {
+        conservative: '保守',
+        balanced: '平稳',
+        aggressive: '激进'
+      }[normalizedMode];
+    };
+    const activityCouponRiskLevelLabel = (level: ActivityCouponBucketSuggestion['riskLevel'] | undefined) => ({
+      safe: '安全',
+      watch: '关注',
+      risk: '风险'
+    }[level || 'safe'] || '-');
+    const activityCouponRiskColor = (level: ActivityCouponBucketSuggestion['riskLevel'] | undefined) => ({
+      safe: 'green',
+      watch: 'orange',
+      risk: 'red'
+    }[level || 'safe'] || 'default');
     const activityCouponBucketRisk = (row: ActivityCouponBucketSuggestion) => {
+      if (row.riskLevel && row.riskLevel !== 'safe') {
+        return {
+          level: row.riskLevel,
+          reasons: row.riskReasons || []
+        };
+      }
       const coupon = selectedActivityFinalCouponRules
         .filter(rule => row.originalBucket + 1e-9 >= rule.threshold)
         .sort((a, b) => b.amount - a.amount || b.threshold - a.threshold)[0];
       if (!coupon) return null;
       const overSpace = roundMoney(coupon.amount - row.amount);
       if (overSpace <= 1e-9) return null;
-      return { coupon, overSpace };
+      return {
+        level: 'watch' as const,
+        reasons: [`命中满${money(coupon.threshold)}减${money(coupon.amount)} / 超¥${money(overSpace)}`]
+      };
     };
     const selectedActivityCouponRecommendationDiagnosis = (() => {
       if (!selectedActivityCouponRoute) return [] as string[];
@@ -10722,7 +11068,7 @@ function WaimaiCalculatorInner() {
       }
       const averageRemainingSpace = selectedActivityCouponBucketRows.reduce((sum, row) => sum + row.remainingSpace, 0) / selectedActivityCouponBucketRows.length;
       const strategyLabel = selectedRows[0]
-        ? activityCouponScoringModeLabel(selectedRows[0].scoringMode)
+        ? activityCouponRecommendationModeLabel(selectedRows[0].recommendationMode || selectedRows[0].scoringMode)
         : selectedActivityCouponRoute.couponRules[0]?.name?.replace(/策略券.*/, '') || '-';
       const finalCouponText = selectedActivityFinalCouponRules.length
         ? selectedActivityFinalCouponRules.map(rule => `${rule.sceneName || '推荐券'}：满${money(rule.threshold)}减${money(rule.amount)}`).join('，')
@@ -10730,7 +11076,7 @@ function WaimaiCalculatorInner() {
       return [
         `原价桶券建议 ${selectedActivityCouponBucketRows.length} 条，最终推荐券 ${selectedActivityFinalCouponRules.length} 张，当前券策略：${strategyLabel}。`,
         `推荐券：${finalCouponText}。`,
-        `桶级满减后平均缺口约 ¥${money(averageRemainingSpace)}；最终推荐券按0.5元向下贴近，后续桶达到更高金额档会继续生成下一张。`
+        `桶级满减后平均缺口约 ¥${money(averageRemainingSpace)}；最终推荐券按0.5元向下贴近，并按策略合并近档或跳过远档小差额券。`
       ];
     })();
     const selectedActivityCouponColumns: TableColumnsType<ActivityCouponBucketSuggestion & { rowIndex: number }> = [
@@ -10766,17 +11112,17 @@ function WaimaiCalculatorInner() {
       },
       {
         title: '券策略',
-        dataIndex: 'scoringMode',
+        dataIndex: 'recommendationMode',
         width: 95,
-        render: value => <Tag color="blue">{activityCouponScoringModeLabel(value as ActivityCouponBucketSuggestion['scoringMode'])}</Tag>
+        render: (_, row) => <Tag color="blue">{activityCouponRecommendationModeLabel(row.recommendationMode || row.scoringMode)}</Tag>
       },
       {
         title: '券风险',
-        width: 165,
+        width: 210,
         render: (_, row) => {
           const risk = activityCouponBucketRisk(row);
           return risk
-            ? <Tag color="orange">命中满{money(risk.coupon.threshold)}减{money(risk.coupon.amount)} / 超¥{money(risk.overSpace)}</Tag>
+            ? <Tag color={activityCouponRiskColor(risk.level)}>{activityCouponRiskLevelLabel(risk.level)}{risk.reasons.length ? ` / ${risk.reasons.join('，')}` : ''}</Tag>
             : <Text type="secondary">-</Text>;
         }
       },
@@ -10866,6 +11212,65 @@ function WaimaiCalculatorInner() {
         || allPayBands.length > 0
       );
       const isSelectedRouteValidating = selectedRouteInPlatform && isActivityDesignLoading && !allPayBands.length;
+      const selectedValidationRoute = routePackages.find(row => row.key === selectedActivityDesignRouteKey)
+        || recommendations.find(row => row.key === selectedActivityDesignRouteKey)
+        || null;
+      const selectedRouteComboRows = selectedActivityDesignRouteKey
+        ? comboRows.filter(row => row.recommendationKey === selectedActivityDesignRouteKey)
+        : comboRows;
+      const validationComboRows = selectedRouteComboRows.length ? selectedRouteComboRows : comboRows;
+      const validationNetProfitRates = validationComboRows.map(row => row.netProfitRate).filter(finiteRate);
+      const validationPayProfitRates = validationComboRows.map(row => row.profitRate).filter(finiteRate);
+      const validationAvgOriginal = average(validationComboRows.map(row => row.originalTotal)) || 0;
+      const validationAvgFinalPay = average(validationComboRows.map(row => row.finalPay)) || 0;
+      const validationAvgNetPay = average(validationComboRows.map(row => row.netPay)) || 0;
+      const validationAvgCost = average(validationComboRows.map(row => row.cost)) || 0;
+      const validationAvgNetProfitRate = average(validationNetProfitRates);
+      const validationAvgPayProfitRate = average(validationPayProfitRates);
+      const validationMinNetProfitRate = validationNetProfitRates.length ? Math.min(...validationNetProfitRates) : null;
+      const validationMaxNetProfitRate = validationNetProfitRates.length ? Math.max(...validationNetProfitRates) : null;
+      const validationLossCount = validationComboRows.filter(row => row.profit < -1e-9).length;
+      const validationRiskCount = validationComboRows.filter(row => row.ignored || row.risk?.hasRisk).length;
+      const routeFullReductionText = selectedValidationRoute?.fullReductionRules.length
+        ? selectedValidationRoute.fullReductionRules.map(rule => `满${money(rule.threshold)}减${money(rule.amount)}`).join('，')
+        : '无';
+      const routeCouponText = selectedValidationRoute?.couponRules.length
+        ? selectedValidationRoute.couponRules.map(rule => `满${money(rule.threshold)}减${money(rule.amount)}`).join('，')
+        : '无';
+      const routeAddOnSpace = selectedValidationRoute ? activityRecommendationRedAddOnSpace(selectedValidationRoute) : null;
+      const activityRouteValidationOverview = (
+        <Card size="small" title="当前核验路线与合理成本口径">
+          <Space direction="vertical" style={{ width: '100%' }} size="small">
+            <Space wrap size={[6, 6]}>
+              <Tag color="blue">{selectedValidationRoute?.objectiveName || '当前路线'}</Tag>
+              <Tag color={selectedValidationRoute?.routeGroup === 'stable' ? 'blue' : 'purple'}>{selectedValidationRoute ? activityRouteTypeLabel(selectedValidationRoute) : '-'}</Tag>
+              {selectedValidationRoute?.targetPayLabel ? <Tag color="cyan">{selectedValidationRoute.targetPayLabel}</Tag> : null}
+              <Tag>目标让利 {selectedValidationRoute?.targetDiscountRate === null || selectedValidationRoute?.targetDiscountRate === undefined ? '-' : rateText(selectedValidationRoute.targetDiscountRate)}</Tag>
+              <Tag>执行均值 {selectedValidationRoute?.actualAvgDiscountRate === null || selectedValidationRoute?.actualAvgDiscountRate === undefined ? '-' : rateText(selectedValidationRoute.actualAvgDiscountRate)}</Tag>
+            </Space>
+            <Text type="secondary" className="table-text-wrap">
+              满减：{routeFullReductionText}；券：{routeCouponText}；加码空间：{routeAddOnSpace ? `配置¥${money(routeAddOnSpace.configuredSpace)} / 路线¥${money(routeAddOnSpace.routeSpace)}` : '-'}。
+            </Text>
+            <Space wrap size={[6, 6]}>
+              <Tag>核验组合 {validationComboRows.length}</Tag>
+              <Tag>平均原价 ¥{money(validationAvgOriginal)}</Tag>
+              <Tag>平均支付 ¥{money(validationAvgFinalPay)}</Tag>
+              <Tag>平均到手 ¥{money(validationAvgNetPay)}</Tag>
+              <Tag>平均成本 ¥{money(validationAvgCost)}</Tag>
+            </Space>
+            <Space wrap size={[6, 6]}>
+              <Tag color="green">平均到手利润率 {rateText(validationAvgNetProfitRate)}</Tag>
+              <Tag color="blue">平均实付利润率 {rateText(validationAvgPayProfitRate)}</Tag>
+              <Tag color={validationMinNetProfitRate !== null && validationMinNetProfitRate < 0 ? 'red' : 'default'}>到手利润率范围 {validationMinNetProfitRate === null ? '-' : `${rateText(validationMinNetProfitRate)}-${rateText(validationMaxNetProfitRate)}`}</Tag>
+              <Tag color={validationLossCount ? 'red' : 'green'}>亏损组合 {validationLossCount}</Tag>
+              <Tag color={validationRiskCount ? 'orange' : 'green'}>风险组合 {validationRiskCount}</Tag>
+            </Space>
+            <Text type="secondary" className="table-text-wrap">
+              活动合理成本表示当前售价在这条活动路线和利润率要求下可承受的成本上限；合理标价按“当前售价 × 当前成本 / 活动合理成本”估算，用于判断当前成本下售价是否偏低或偏高。
+            </Text>
+          </Space>
+        </Card>
+      );
       const routeInfoColumns = activityPlatformRecommendationColumns.filter(column => column.title !== '操作');
       const routePackageColumns: TableColumnsType<ActivityRecommendationRow> = [
         ...routeInfoColumns,
@@ -10933,12 +11338,13 @@ function WaimaiCalculatorInner() {
         </Card>
       ) : selectedRouteInPlatform ? (
         <>
-          {renderProductDiscountSuggestionPanel(comboRows, {
+          {activityRouteValidationOverview}
+          {renderProductDiscountSuggestionPanel(validationComboRows, {
             source: 'activityValidation',
-            title: '活动路线商品维度目标成本结论',
+            title: '活动路线商品维度合理成本结论',
             limit: 80,
             includeNeutral: true,
-            description: '商品结论按当前路线当前平台的全部支付价核验组合计算；支付价区间只用于查看明细，不再决定商品处理结论。主商品比较目标成本和当前成本，凑单品只判断分摊到手是否覆盖成本。'
+            description: '商品结论按当前路线当前平台的全部支付价核验组合计算；支付价区间只用于查看明细，不再决定商品处理结论。主商品比较活动合理成本和当前成本，凑单品只判断分摊到手是否覆盖成本。'
           })}
           <PayBandAnalysisPanel
             title="活动后支付价校验"
@@ -11357,10 +11763,10 @@ function WaimaiCalculatorInner() {
           />
           {renderProductDiscountSuggestionPanel(view.platformRows, {
             source: 'measurementResult',
-            title: '商品维度目标成本结论',
+            title: '商品维度合理成本结论',
             limit: 50,
             includeNeutral: true,
-            description: '商品结论按当前平台全部测算组合计算：主商品用目标成本和当前成本比较判断降价或涨价空间；凑单品只校验按原价占比分摊的到手价是否覆盖成本。'
+            description: '商品结论按当前平台全部测算组合计算：主商品用活动合理成本和当前成本比较判断降价或涨价空间；凑单品只校验按原价占比分摊的到手价是否覆盖成本。'
           })}
           <Card title="旧版最优活动建议">
             <Table loading={isOptimizationLoading} rowKey="key" size="small" columns={optimizationColumns} dataSource={platformOptimizations} pagination={tablePagination(20)} scroll={{ x: 1280 }} />
@@ -11533,11 +11939,11 @@ function WaimaiCalculatorInner() {
               </Row>
               {renderProductDiscountSuggestionPanel(selectedResultProductFilteredRows, {
                 source: 'measurementResult',
-                title: '当前商品目标成本结论',
+                title: '当前商品合理成本结论',
                 productId: selectedResultProduct.productId,
                 limit: 1,
                 includeNeutral: true,
-                description: '这里只展示当前商品在已筛选相关组合中的目标成本结论，用于追溯全局商品结论。'
+                description: '这里只展示当前商品在已筛选相关组合中的活动合理成本结论，用于追溯全局商品结论。'
               })}
               {selectedResultProductChartRows.length ? (
                 <div className="chart-frame">

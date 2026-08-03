@@ -2,6 +2,10 @@ import type {
   ActivityBaseComboRow,
   ActivityComboSimulationRow,
   ActivityCouponBucketSuggestion,
+  ActivityCouponRecommendationMode,
+  ActivityCouponRecommendationPolicy,
+  ActivityCouponRiskLevel,
+  ActivityCouponSceneTemplate,
   ActivityDesignObjective,
   ActivityDesignResult,
   ActivityDesignSettings,
@@ -97,6 +101,178 @@ const ACTIVITY_BUSINESS_PAY_SEGMENTS = [
   { min: 25, max: 30, label: '25-30', orderShare: 0.06, weight: 0.35 },
   { min: 30, max: Infinity, label: '30+', orderShare: 0.04, weight: 0.08 }
 ] as const;
+const ACTIVITY_COUPON_RECOMMENDATION_POLICY_DEFAULTS: Record<ActivityCouponRecommendationMode, ActivityCouponRecommendationPolicy> = {
+  conservative: {
+    mode: 'conservative',
+    amountStep: ACTIVITY_COUPON_RECOMMEND_AMOUNT_UNIT,
+    minCouponAmount: ACTIVITY_ROUTE_MIN_COUPON_AMOUNT,
+    nearThresholdGap: 4,
+    farThresholdGap: 12,
+    nearAmountMergeTolerance: 0.5,
+    farAmountSkipTolerance: 1,
+    maxOverBucketSpace: 0,
+    representativeMode: 'lowestThreshold'
+  },
+  balanced: {
+    mode: 'balanced',
+    amountStep: ACTIVITY_COUPON_RECOMMEND_AMOUNT_UNIT,
+    minCouponAmount: ACTIVITY_ROUTE_MIN_COUPON_AMOUNT,
+    nearThresholdGap: 5,
+    farThresholdGap: 10,
+    nearAmountMergeTolerance: 0.5,
+    farAmountSkipTolerance: 1,
+    maxOverBucketSpace: 0.5,
+    representativeMode: 'balanced'
+  },
+  aggressive: {
+    mode: 'aggressive',
+    amountStep: ACTIVITY_COUPON_RECOMMEND_AMOUNT_UNIT,
+    minCouponAmount: ACTIVITY_ROUTE_MIN_COUPON_AMOUNT,
+    nearThresholdGap: 8,
+    farThresholdGap: 12,
+    nearAmountMergeTolerance: 0.5,
+    farAmountSkipTolerance: 1,
+    maxOverBucketSpace: 1,
+    representativeMode: 'highestThreshold'
+  }
+};
+const DEFAULT_ACTIVITY_COUPON_SCENE_TEMPLATES: ActivityCouponSceneTemplate[] = [
+  {
+    key: 'raiseAov.addOnCritical',
+    enabled: true,
+    name: '加购引导券',
+    priority: 30,
+    channel: 'orderReturn',
+    targetUser: 'highAov',
+    objectiveKeys: ['raiseAov'],
+    thresholdMode: 'addOnCritical',
+    thresholdMin: 0,
+    thresholdMax: 999,
+    amountMin: 1,
+    amountMax: 999,
+    couponIndexRatioMin: 0,
+    couponIndexRatioMax: 1,
+    requireNearFullReduction: false,
+    maxFullReductionDistance: 8,
+    requireNearRedTier: false,
+    maxRedTierDistance: 8,
+    addOnMin: 0,
+    addOnMax: 8,
+    requireBoundarySafe: false,
+    maxOverBucketSpace: 0.5,
+    couponBudgetShare: 100,
+    maxCouponCount: 6,
+    maxCouponAmount: 999
+  },
+  {
+    key: 'orderGrowth.addOnCritical',
+    enabled: true,
+    name: '加购引导券',
+    priority: 35,
+    channel: 'inStore',
+    targetUser: 'all',
+    objectiveKeys: ['orderGrowth', 'hotProduct'],
+    thresholdMode: 'addOnCritical',
+    thresholdMin: 0,
+    thresholdMax: 999,
+    amountMin: 1,
+    amountMax: 999,
+    couponIndexRatioMin: 0,
+    couponIndexRatioMax: 0.4,
+    requireNearFullReduction: false,
+    maxFullReductionDistance: 8,
+    requireNearRedTier: false,
+    maxRedTierDistance: 8,
+    addOnMin: 0,
+    addOnMax: 8,
+    requireBoundarySafe: false,
+    maxOverBucketSpace: 1,
+    couponBudgetShare: 100,
+    maxCouponCount: 6,
+    maxCouponAmount: 999
+  },
+  {
+    key: 'fullReduction.interleave',
+    enabled: true,
+    name: '满减补档券',
+    priority: 40,
+    channel: 'inStore',
+    targetUser: 'highFrequency',
+    objectiveKeys: [],
+    thresholdMode: 'fullReductionInterleave',
+    thresholdMin: 0,
+    thresholdMax: 999,
+    amountMin: 1,
+    amountMax: 999,
+    couponIndexRatioMin: 0,
+    couponIndexRatioMax: 1,
+    requireNearFullReduction: true,
+    maxFullReductionDistance: 8,
+    requireNearRedTier: false,
+    maxRedTierDistance: 8,
+    addOnMin: 0,
+    addOnMax: 999,
+    requireBoundarySafe: false,
+    maxOverBucketSpace: 0.5,
+    couponBudgetShare: 100,
+    maxCouponCount: 6,
+    maxCouponAmount: 999
+  },
+  {
+    key: 'redTier.highMarginGuide',
+    enabled: true,
+    name: '神券/爆红包补档券',
+    priority: 45,
+    channel: 'targeted',
+    targetUser: 'highAov',
+    objectiveKeys: ['highMarginConversion', 'profitRecovery'],
+    thresholdMode: 'highMarginGuide',
+    thresholdMin: 0,
+    thresholdMax: 999,
+    amountMin: 1,
+    amountMax: 999,
+    couponIndexRatioMin: 0,
+    couponIndexRatioMax: 1,
+    requireNearFullReduction: false,
+    maxFullReductionDistance: 8,
+    requireNearRedTier: true,
+    maxRedTierDistance: 8,
+    addOnMin: 0,
+    addOnMax: 999,
+    requireBoundarySafe: true,
+    maxOverBucketSpace: 0.5,
+    couponBudgetShare: 100,
+    maxCouponCount: 6,
+    maxCouponAmount: 999
+  },
+  {
+    key: 'retention.recall',
+    enabled: true,
+    name: '定向唤回券',
+    priority: 60,
+    channel: 'targeted',
+    targetUser: 'lostCustomer',
+    objectiveKeys: ['raiseAov', 'highMarginConversion'],
+    thresholdMode: 'retentionRecall',
+    thresholdMin: 0,
+    thresholdMax: 999,
+    amountMin: 1,
+    amountMax: 999,
+    couponIndexRatioMin: 0.6,
+    couponIndexRatioMax: 1,
+    requireNearFullReduction: false,
+    maxFullReductionDistance: 8,
+    requireNearRedTier: false,
+    maxRedTierDistance: 8,
+    addOnMin: 0,
+    addOnMax: 999,
+    requireBoundarySafe: false,
+    maxOverBucketSpace: 1,
+    couponBudgetShare: 100,
+    maxCouponCount: 4,
+    maxCouponAmount: 999
+  }
+];
 const ACTIVITY_OBJECTIVE_PAY_PROFILES: Record<ActivityDesignObjective, {
   label: string;
   min: number;
@@ -119,6 +295,7 @@ const ACTIVITY_OBJECTIVE_PAY_PROFILES: Record<ActivityDesignObjective, {
   maxFullRuleCount: number;
   minFullHitCount: number;
   minNetPayFloor: number;
+  couponRecommendationPolicy: ActivityCouponRecommendationPolicy;
   couponScoringMode: 'conservative' | 'balanced' | 'aggressive';
   segmentWeights: number[];
 }> = {
@@ -144,6 +321,7 @@ const ACTIVITY_OBJECTIVE_PAY_PROFILES: Record<ActivityDesignObjective, {
     maxFullRuleCount: 6,
     minFullHitCount: 3,
     minNetPayFloor: 2,
+    couponRecommendationPolicy: ACTIVITY_COUPON_RECOMMENDATION_POLICY_DEFAULTS.balanced,
     couponScoringMode: 'balanced',
     segmentWeights: [0.92, 1, 0.9, 0.38, 0.1]
   },
@@ -169,6 +347,7 @@ const ACTIVITY_OBJECTIVE_PAY_PROFILES: Record<ActivityDesignObjective, {
     maxFullRuleCount: 6,
     minFullHitCount: 2,
     minNetPayFloor: 2,
+    couponRecommendationPolicy: ACTIVITY_COUPON_RECOMMENDATION_POLICY_DEFAULTS.aggressive,
     couponScoringMode: 'aggressive',
     segmentWeights: [1, 0.82, 0.42, 0.16, 0.04]
   },
@@ -194,6 +373,7 @@ const ACTIVITY_OBJECTIVE_PAY_PROFILES: Record<ActivityDesignObjective, {
     maxFullRuleCount: 6,
     minFullHitCount: 3,
     minNetPayFloor: 2,
+    couponRecommendationPolicy: ACTIVITY_COUPON_RECOMMENDATION_POLICY_DEFAULTS.aggressive,
     couponScoringMode: 'aggressive',
     segmentWeights: [0.28, 0.82, 1, 0.76, 0.22]
   },
@@ -219,6 +399,7 @@ const ACTIVITY_OBJECTIVE_PAY_PROFILES: Record<ActivityDesignObjective, {
     maxFullRuleCount: 6,
     minFullHitCount: 2,
     minNetPayFloor: 2,
+    couponRecommendationPolicy: ACTIVITY_COUPON_RECOMMENDATION_POLICY_DEFAULTS.aggressive,
     couponScoringMode: 'aggressive',
     segmentWeights: [1, 0.72, 0.24, 0.08, 0.03]
   },
@@ -244,6 +425,7 @@ const ACTIVITY_OBJECTIVE_PAY_PROFILES: Record<ActivityDesignObjective, {
     maxFullRuleCount: 6,
     minFullHitCount: 3,
     minNetPayFloor: 2,
+    couponRecommendationPolicy: ACTIVITY_COUPON_RECOMMENDATION_POLICY_DEFAULTS.balanced,
     couponScoringMode: 'balanced',
     segmentWeights: [0.68, 1, 0.96, 0.45, 0.12]
   },
@@ -269,6 +451,7 @@ const ACTIVITY_OBJECTIVE_PAY_PROFILES: Record<ActivityDesignObjective, {
     maxFullRuleCount: 6,
     minFullHitCount: 4,
     minNetPayFloor: 2,
+    couponRecommendationPolicy: ACTIVITY_COUPON_RECOMMENDATION_POLICY_DEFAULTS.conservative,
     couponScoringMode: 'conservative',
     segmentWeights: [0.18, 0.64, 0.92, 1, 0.55]
   }
@@ -509,6 +692,43 @@ function normalizeFullAmountBasis(value: unknown, fallback: ActivityFullAmountBa
   return fallback;
 }
 
+function normalizeCouponRecommendationMode(value: unknown, fallback: ActivityCouponRecommendationMode): ActivityCouponRecommendationMode {
+  return value === 'conservative' || value === 'balanced' || value === 'aggressive'
+    ? value
+    : fallback;
+}
+
+function normalizeCouponRepresentativeMode(value: unknown, fallback: ActivityCouponRecommendationPolicy['representativeMode']) {
+  return value === 'lowestThreshold' || value === 'balanced' || value === 'highestThreshold'
+    ? value
+    : fallback;
+}
+
+function defaultCouponRecommendationPolicy(mode: ActivityCouponRecommendationMode) {
+  return { ...ACTIVITY_COUPON_RECOMMENDATION_POLICY_DEFAULTS[mode] };
+}
+
+function normalizeCouponRecommendationPolicy(value: unknown, fallback: ActivityCouponRecommendationPolicy): ActivityCouponRecommendationPolicy {
+  const raw = value && typeof value === 'object' ? value as Partial<ActivityCouponRecommendationPolicy> : {};
+  const mode = normalizeCouponRecommendationMode(raw.mode, fallback.mode);
+  const modeFallback = ACTIVITY_COUPON_RECOMMENDATION_POLICY_DEFAULTS[mode] || fallback;
+  const amountStep = Math.max(ACTIVITY_MONEY_AMOUNT_UNIT, Number(raw.amountStep ?? fallback.amountStep ?? modeFallback.amountStep) || modeFallback.amountStep);
+  const minCouponAmount = Math.max(0, Number(raw.minCouponAmount ?? fallback.minCouponAmount ?? modeFallback.minCouponAmount) || modeFallback.minCouponAmount);
+  const nearThresholdGap = Math.max(0, Number(raw.nearThresholdGap ?? fallback.nearThresholdGap ?? modeFallback.nearThresholdGap) || modeFallback.nearThresholdGap);
+  const farThresholdGap = Math.max(nearThresholdGap, Number(raw.farThresholdGap ?? fallback.farThresholdGap ?? modeFallback.farThresholdGap) || modeFallback.farThresholdGap);
+  return {
+    mode,
+    amountStep,
+    minCouponAmount,
+    nearThresholdGap,
+    farThresholdGap,
+    nearAmountMergeTolerance: Math.max(0, Number(raw.nearAmountMergeTolerance ?? fallback.nearAmountMergeTolerance ?? modeFallback.nearAmountMergeTolerance) || modeFallback.nearAmountMergeTolerance),
+    farAmountSkipTolerance: Math.max(0, Number(raw.farAmountSkipTolerance ?? fallback.farAmountSkipTolerance ?? modeFallback.farAmountSkipTolerance) || modeFallback.farAmountSkipTolerance),
+    maxOverBucketSpace: Math.max(0, Number(raw.maxOverBucketSpace ?? fallback.maxOverBucketSpace ?? modeFallback.maxOverBucketSpace) || 0),
+    representativeMode: normalizeCouponRepresentativeMode(raw.representativeMode, fallback.representativeMode || modeFallback.representativeMode)
+  };
+}
+
 function activityObjectivePayProfile(settings: ActivityDesignSettings, objective: ActivityDesignObjective) {
   const template = activityObjectiveTemplateFromSettings(settings, objective);
   const fallback = ACTIVITY_OBJECTIVE_PAY_PROFILES[objective]
@@ -518,6 +738,14 @@ function activityObjectivePayProfile(settings: ActivityDesignSettings, objective
   const payMin = fallback.min;
   const payMax = fallback.max;
   const rawStrategy = raw as Partial<typeof fallback> | undefined;
+  const fallbackMode = normalizeCouponRecommendationMode(fallback.couponRecommendationPolicy?.mode || fallback.couponScoringMode, 'balanced');
+  const rawMode = normalizeCouponRecommendationMode(rawStrategy?.couponRecommendationPolicy?.mode || rawStrategy?.couponScoringMode, fallbackMode);
+  const couponRecommendationPolicy = normalizeCouponRecommendationPolicy(
+    rawStrategy?.couponRecommendationPolicy,
+    rawStrategy?.couponRecommendationPolicy
+      ? { ...defaultCouponRecommendationPolicy(rawMode), ...rawStrategy.couponRecommendationPolicy, mode: rawMode }
+      : defaultCouponRecommendationPolicy(rawMode)
+  );
   return {
     ...fallback,
     min: payMin,
@@ -540,9 +768,8 @@ function activityObjectivePayProfile(settings: ActivityDesignSettings, objective
     maxFullRuleCount: Math.max(1, Math.floor(Number(rawStrategy?.maxFullRuleCount ?? fallback.maxFullRuleCount) || fallback.maxFullRuleCount)),
     minFullHitCount: Math.max(0, Math.floor(Number(rawStrategy?.minFullHitCount ?? fallback.minFullHitCount) || fallback.minFullHitCount)),
     minNetPayFloor: Math.max(0, Number(rawStrategy?.minNetPayFloor ?? fallback.minNetPayFloor) || fallback.minNetPayFloor),
-    couponScoringMode: rawStrategy?.couponScoringMode === 'conservative' || rawStrategy?.couponScoringMode === 'aggressive' || rawStrategy?.couponScoringMode === 'balanced'
-      ? rawStrategy.couponScoringMode
-      : fallback.couponScoringMode,
+    couponRecommendationPolicy,
+    couponScoringMode: couponRecommendationPolicy.mode,
     label: template?.targetPayLabel || fallback.label,
     segmentWeights: fallback.segmentWeights
   };
@@ -3078,15 +3305,17 @@ function scoreActivityRouteRecommendation(
   return applyActivityRouteMetrics(settings, recommendation, metrics, hitCount);
 }
 
-function recommendedCouponAmount(value: number) {
+function recommendedCouponAmount(value: number, policy: ActivityCouponRecommendationPolicy = ACTIVITY_COUPON_RECOMMENDATION_POLICY_DEFAULTS.balanced) {
+  const amountStep = Math.max(ACTIVITY_MONEY_AMOUNT_UNIT, Number(policy.amountStep) || ACTIVITY_COUPON_RECOMMEND_AMOUNT_UNIT);
+  const minAmount = Math.max(0, Number(policy.minCouponAmount) || ACTIVITY_ROUTE_MIN_COUPON_AMOUNT);
   const amount = roundMoney(
-    Math.floor(Math.max(0, Number(value) || 0) / ACTIVITY_COUPON_RECOMMEND_AMOUNT_UNIT + 1e-9)
-    * ACTIVITY_COUPON_RECOMMEND_AMOUNT_UNIT
+    Math.floor(Math.max(0, Number(value) || 0) / amountStep + 1e-9)
+    * amountStep
   );
-  return amount >= ACTIVITY_ROUTE_MIN_COUPON_AMOUNT - 1e-9 ? amount : 0;
+  return amount >= minAmount - 1e-9 ? amount : 0;
 }
 
-function activityCouponStrategyName(mode: ReturnType<typeof activityObjectivePayProfile>['couponScoringMode']) {
+function activityCouponStrategyName(mode: ActivityCouponRecommendationMode) {
   return {
     aggressive: '激进',
     balanced: '平稳',
@@ -3094,18 +3323,154 @@ function activityCouponStrategyName(mode: ReturnType<typeof activityObjectivePay
   }[mode] || '平稳';
 }
 
+function normalizeActivityCouponSceneTemplate(row: Partial<ActivityCouponSceneTemplate> | undefined, fallback: ActivityCouponSceneTemplate): ActivityCouponSceneTemplate {
+  const thresholdMin = Math.max(0, Number(row?.thresholdMin ?? fallback.thresholdMin) || 0);
+  const amountMin = Math.max(0, Number(row?.amountMin ?? fallback.amountMin) || 0);
+  const couponIndexRatioMin = Math.max(0, Math.min(1, Number(row?.couponIndexRatioMin ?? fallback.couponIndexRatioMin) || 0));
+  const objectiveKeys = Array.isArray(row?.objectiveKeys)
+    ? row.objectiveKeys.map(key => String(key || '')).filter(Boolean)
+    : [];
+  const legacyObjective = (row as { objective?: unknown } | undefined)?.objective;
+  const platforms = Array.isArray(row?.platforms)
+    ? row.platforms.filter((item): item is Platform => item === 'meituan' || item === 'eleme')
+    : fallback.platforms;
+  return {
+    key: String(row?.key || fallback.key),
+    enabled: row?.enabled !== false,
+    name: String(row?.name || fallback.name),
+    priority: Math.floor(Number(row?.priority ?? fallback.priority) || fallback.priority),
+    platforms,
+    channel: row?.channel === 'inStore' || row?.channel === 'orderReturn' || row?.channel === 'reviewReturn' || row?.channel === 'pointsReturn' || row?.channel === 'targeted' ? row.channel : fallback.channel,
+    targetUser: row?.targetUser === 'all' || row?.targetUser === 'newCustomer' || row?.targetUser === 'highFrequency' || row?.targetUser === 'highAov' || row?.targetUser === 'lostCustomer' || row?.targetUser === 'specified' ? row.targetUser : fallback.targetUser,
+    objectiveKeys: objectiveKeys.length ? objectiveKeys : legacyObjective ? [String(legacyObjective)] : fallback.objectiveKeys.slice(),
+    thresholdMode: row?.thresholdMode === 'lowThresholdOrder' || row?.thresholdMode === 'fullReductionInterleave' || row?.thresholdMode === 'addOnCritical' || row?.thresholdMode === 'highMarginGuide' || row?.thresholdMode === 'retentionRecall' ? row.thresholdMode : fallback.thresholdMode,
+    thresholdMin,
+    thresholdMax: Math.max(thresholdMin, Number(row?.thresholdMax ?? fallback.thresholdMax) || fallback.thresholdMax),
+    amountMin,
+    amountMax: Math.max(amountMin, Number(row?.amountMax ?? fallback.amountMax) || fallback.amountMax),
+    couponIndexRatioMin,
+    couponIndexRatioMax: Math.max(couponIndexRatioMin, Math.min(1, Number(row?.couponIndexRatioMax ?? fallback.couponIndexRatioMax) || fallback.couponIndexRatioMax)),
+    requireNearFullReduction: Boolean(row?.requireNearFullReduction ?? fallback.requireNearFullReduction),
+    maxFullReductionDistance: Math.max(0, Number(row?.maxFullReductionDistance ?? fallback.maxFullReductionDistance) || fallback.maxFullReductionDistance),
+    requireNearRedTier: Boolean(row?.requireNearRedTier ?? fallback.requireNearRedTier),
+    maxRedTierDistance: Math.max(0, Number(row?.maxRedTierDistance ?? fallback.maxRedTierDistance) || fallback.maxRedTierDistance),
+    addOnMin: Math.max(0, Number(row?.addOnMin ?? fallback.addOnMin) || 0),
+    addOnMax: Math.max(0, Number(row?.addOnMax ?? fallback.addOnMax) || fallback.addOnMax),
+    requireBoundarySafe: Boolean(row?.requireBoundarySafe ?? fallback.requireBoundarySafe),
+    maxOverBucketSpace: Math.max(0, Number(row?.maxOverBucketSpace ?? fallback.maxOverBucketSpace) || 0),
+    couponBudgetShare: Math.max(0, Math.min(100, Number(row?.couponBudgetShare ?? fallback.couponBudgetShare) || fallback.couponBudgetShare)),
+    maxCouponCount: Math.max(1, Math.floor(Number(row?.maxCouponCount ?? fallback.maxCouponCount) || fallback.maxCouponCount)),
+    maxCouponAmount: Math.max(0, Number(row?.maxCouponAmount ?? fallback.maxCouponAmount) || fallback.maxCouponAmount)
+  };
+}
+
+function activityCouponSceneTemplatesForPlatform(settings: ActivityDesignSettings, platform: Platform) {
+  const rawTemplates = settings.couponSceneTemplates?.length
+    ? settings.couponSceneTemplates
+    : DEFAULT_ACTIVITY_COUPON_SCENE_TEMPLATES;
+  const fallbackByKey = new Map(DEFAULT_ACTIVITY_COUPON_SCENE_TEMPLATES.map(row => [row.key, row]));
+  const allowedKeys = settings.platformCouponSceneKeys?.[platform];
+  const allowed = Array.isArray(allowedKeys) && allowedKeys.length ? new Set(allowedKeys) : null;
+  return rawTemplates
+    .map(template => normalizeActivityCouponSceneTemplate(template, fallbackByKey.get(template.key) || DEFAULT_ACTIVITY_COUPON_SCENE_TEMPLATES[0]))
+    .filter(template => template.enabled)
+    .filter(template => !allowed || allowed.has(template.key))
+    .filter(template => !template.platforms?.length || template.platforms.includes(platform))
+    .sort((a, b) => a.priority - b.priority || a.key.localeCompare(b.key));
+}
+
+type ActivityCouponDraftEntry = {
+  row: ActivityCouponBucketSuggestion;
+  amount: number;
+};
+
+type ActivityCouponDraft = {
+  key: string;
+  threshold: number;
+  amount: number;
+  maxObservedAmount: number;
+  entries: ActivityCouponDraftEntry[];
+  coveredRows: ActivityCouponBucketSuggestion[];
+};
+
+function refreshActivityCouponDraftRepresentative(draft: ActivityCouponDraft, policy: ActivityCouponRecommendationPolicy) {
+  const entries = draft.entries.slice().sort((a, b) => a.row.originalBucket - b.row.originalBucket);
+  if (!entries.length) return draft;
+  const representative = policy.representativeMode === 'highestThreshold'
+    ? entries[entries.length - 1]
+    : policy.representativeMode === 'balanced'
+      ? entries[Math.floor((entries.length - 1) / 2)]
+      : entries[0];
+  const amount = policy.representativeMode === 'lowestThreshold'
+    ? entries[0].amount
+    : Math.max(...entries.map(entry => entry.amount));
+  draft.threshold = representative.row.originalBucket;
+  draft.amount = roundMoney(amount);
+  draft.maxObservedAmount = Math.max(draft.maxObservedAmount, ...entries.map(entry => entry.amount));
+  return draft;
+}
+
+function activityCouponRiskForRows(
+  rows: ActivityCouponBucketSuggestion[],
+  coupon: Pick<Coupon, 'threshold' | 'amount'>,
+  maxOverBucketSpace: number
+) {
+  let riskLevel: ActivityCouponRiskLevel = 'safe';
+  const reasons = new Set<string>();
+  for (const row of rows) {
+    if (row.originalBucket + 1e-9 < coupon.threshold) continue;
+    const overBucketSpace = roundMoney(coupon.amount - row.amount);
+    const boundaryOverflow = roundMoney(coupon.amount - row.boundarySpace);
+    if (boundaryOverflow > 1e-9) {
+      riskLevel = 'risk';
+      reasons.add(`到手边界超¥${roundMoney(boundaryOverflow)}`);
+    } else if (overBucketSpace > maxOverBucketSpace + 1e-9 && riskLevel !== 'risk') {
+      riskLevel = 'watch';
+      reasons.add(`超桶级券空间¥${roundMoney(overBucketSpace)}`);
+    }
+  }
+  return { riskLevel, riskReasons: Array.from(reasons) };
+}
+
+function activityCouponSceneUsageSuggestion(
+  platform: Platform,
+  scene: ActivityCouponSceneTemplate,
+  coupon: Pick<Coupon, 'threshold' | 'amount'>,
+  context: {
+    fullTierText: string;
+    redTierText: string;
+    riskReasons: string[];
+  }
+) {
+  const redName = platform === 'meituan' ? '神券' : '爆红包';
+  const riskText = context.riskReasons.length ? `；风险：${context.riskReasons.join('，')}，应用前需核验` : '；应用前仍需支付价核验';
+  if (scene.thresholdMode === 'fullReductionInterleave') {
+    return `意义：补齐公开满减档位之间的价格带。${context.fullTierText}${riskText}。`;
+  }
+  if (scene.thresholdMode === 'highMarginGuide') {
+    return `意义：围绕${redName}档位和高到手组合做补档。${context.redTierText}${riskText}。`;
+  }
+  if (scene.thresholdMode === 'retentionRecall') {
+    return `意义：用于高门槛定向唤回或高客单复购，满${roundMoney(coupon.threshold)}减${roundMoney(coupon.amount)}不作为公开主档位${riskText}。`;
+  }
+  if (scene.thresholdMode === 'addOnCritical') {
+    return `意义：引导加购或轻量凑单，真实业务档位仍以满减档和${redName}档为准${riskText}。`;
+  }
+  return `意义：低门槛拉单，优先覆盖主要支付场景${riskText}。`;
+}
+
 function activityCouponUsageScenario(
+  settings: ActivityDesignSettings,
   platform: Platform,
   objective: ActivityDesignObjective,
-  mode: ReturnType<typeof activityObjectivePayProfile>['couponScoringMode'],
-  coupon: { threshold: number; amount: number },
+  policy: ActivityCouponRecommendationPolicy,
+  coupon: Pick<Coupon, 'threshold' | 'amount'>,
   index: number,
   total: number,
   fullReductionRules: FullReduction[],
-  redTiers: RedTier[]
+  redTiers: RedTier[],
+  coveredRows: ActivityCouponBucketSuggestion[]
 ): Pick<Coupon, 'sceneName' | 'channel' | 'targetUser' | 'thresholdMode' | 'usageSuggestion'> {
-  const firstTier = index === 0;
-  const lateTier = total > 1 && index >= Math.max(1, Math.floor(total * 0.6));
   const redName = platform === 'meituan' ? '神券' : '爆红包';
   const fullRules = normalizeActivityFullRules(fullReductionRules);
   const nextFullRule = fullRules.find(rule => rule.threshold > coupon.threshold + 1e-9);
@@ -3115,6 +3480,12 @@ function activityCouponUsageScenario(
     .slice()
     .sort((a, b) => a.threshold - b.threshold);
   const nextRedTier = normalizedRedTiers.find(row => row.threshold > redBasisAfterCoupon + 1e-9);
+  const fullDistance = nextFullRule ? roundMoney(nextFullRule.threshold - coupon.threshold) : Infinity;
+  const redDistance = nextRedTier ? roundMoney(nextRedTier.threshold - redBasisAfterCoupon) : Infinity;
+  const minCoveredBucket = coveredRows.length ? Math.min(...coveredRows.map(row => row.originalBucket)) : coupon.threshold;
+  const addOnDistance = Math.max(0, roundMoney(coupon.threshold - minCoveredBucket));
+  const risk = activityCouponRiskForRows(coveredRows, coupon, policy.maxOverBucketSpace);
+  const indexRatio = total <= 1 ? 0 : index / Math.max(1, total - 1);
   const fullTierText = nextFullRule
     ? `下一满减档满${roundMoney(nextFullRule.threshold)}减${roundMoney(nextFullRule.amount)}`
     : fullRules.length
@@ -3125,118 +3496,88 @@ function activityCouponUsageScenario(
     : normalizedRedTiers.length
       ? `当前最高${redName}档约满${roundMoney(normalizedRedTiers[normalizedRedTiers.length - 1].threshold)}减${roundMoney(normalizedRedTiers[normalizedRedTiers.length - 1].max)}`
       : `当前未配置${redName}档`;
-  const nearFullTier = Boolean(nextFullRule && nextFullRule.threshold - coupon.threshold <= 8 + 1e-9);
-  const nearRedTier = Boolean(nextRedTier && nextRedTier.threshold - redBasisAfterCoupon <= 8 + 1e-9);
-  if (objective === 'profitRecovery' || mode === 'conservative') {
-    return {
-      sceneName: `${redName}补档券`,
-      channel: 'targeted',
-      targetUser: 'highAov',
-      thresholdMode: 'highMarginGuide',
-      usageSuggestion: `意义：围绕${redName}档位做补档，同时控制利润风险。${redTierText}；${redName}按满减/券后的支付基础判断，应用前重点核验是否退档和是否亏损。`
-    };
-  }
-  if (nearRedTier && !nearFullTier) {
-    return {
-      sceneName: `${redName}补档券`,
-      channel: 'targeted',
-      targetUser: 'highAov',
-      thresholdMode: 'highMarginGuide',
-      usageSuggestion: `意义：围绕${redName}档位做补档。${redTierText}；该券不是独立业务档位，重点用于引导组合落在更合适的${redName}判断区间，并核验券后是否退档。`
-    };
-  }
-  if (nearFullTier || (!firstTier && fullRules.length)) {
-    return {
-      sceneName: '满减补档券',
-      channel: 'inStore',
-      targetUser: 'highFrequency',
-      thresholdMode: 'fullReductionInterleave',
-      usageSuggestion: `意义：补齐公开满减档位之间的价格带。${fullTierText}；券门槛不是业务档位，只用于承接未被满减覆盖充分的原价桶，并引导自然加购。`
-    };
-  }
-  if (objective === 'raiseAov' || lateTier) {
-    return {
-      sceneName: '加购引导券',
-      channel: 'orderReturn',
-      targetUser: 'highAov',
-      thresholdMode: 'addOnCritical',
-      usageSuggestion: `意义：提高客单价。用于下单返券、加料/小吃/套餐加购引导；不把满${roundMoney(coupon.threshold)}当业务档位，真实档位仍以满减档和${redName}档为准。`
-    };
-  }
-  if (objective === 'highMarginConversion') {
-    return {
-      sceneName: `${redName}补档券`,
-      channel: 'pointsReturn',
-      targetUser: 'highFrequency',
-      thresholdMode: 'highMarginGuide',
-      usageSuggestion: `意义：围绕${redName}档位和高到手组合做补档。${redTierText}；适合高频老客或会员复购，优先核验券后${redName}档位变化。`
-    };
-  }
-  if (objective === 'orderGrowth' || objective === 'hotProduct' || (mode === 'aggressive' && firstTier)) {
-    return {
-      sceneName: '加购引导券',
-      channel: 'inStore',
-      targetUser: 'all',
-      thresholdMode: 'addOnCritical',
-      usageSuggestion: `意义：拉单同时引导轻量加购。适合店内领券或爆品引流，真实业务档位仍以满减档和${redName}档为准。`
-    };
-  }
+  const scene = activityCouponSceneTemplatesForPlatform(settings, platform).find(template => {
+    if (template.objectiveKeys.length && !template.objectiveKeys.includes(objective)) return false;
+    if (coupon.threshold < template.thresholdMin - 1e-9 || coupon.threshold > template.thresholdMax + 1e-9) return false;
+    if (coupon.amount < template.amountMin - 1e-9 || coupon.amount > Math.min(template.amountMax, template.maxCouponAmount) + 1e-9) return false;
+    if (indexRatio < template.couponIndexRatioMin - 1e-9 || indexRatio > template.couponIndexRatioMax + 1e-9) return false;
+    if (template.requireNearFullReduction && fullDistance > template.maxFullReductionDistance + 1e-9) return false;
+    if (template.requireNearRedTier && redDistance > template.maxRedTierDistance + 1e-9) return false;
+    if (addOnDistance < template.addOnMin - 1e-9 || addOnDistance > template.addOnMax + 1e-9) return false;
+    if (template.requireBoundarySafe && risk.riskLevel === 'risk') return false;
+    if (risk.riskReasons.length && template.maxOverBucketSpace + 1e-9 < policy.maxOverBucketSpace) return false;
+    return true;
+  }) || normalizeActivityCouponSceneTemplate(undefined, fullRules.length ? DEFAULT_ACTIVITY_COUPON_SCENE_TEMPLATES[2] : DEFAULT_ACTIVITY_COUPON_SCENE_TEMPLATES[3]);
   return {
-    sceneName: fullRules.length ? '满减补档券' : `${redName}补档券`,
-    channel: 'inStore',
-    targetUser: 'all',
-    thresholdMode: fullRules.length ? 'fullReductionInterleave' : 'highMarginGuide',
-    usageSuggestion: fullRules.length
-      ? `意义：满减补档。${fullTierText}；用于补齐满减阶梯之间的价格带，券门槛不作为独立业务档位。`
-      : `意义：${redName}补档。${redTierText}；用于围绕平台券档位做承接，并核验券后是否退档。`
+    sceneName: scene.name,
+    channel: scene.channel,
+    targetUser: scene.targetUser,
+    thresholdMode: scene.thresholdMode,
+    usageSuggestion: activityCouponSceneUsageSuggestion(platform, scene, coupon, { fullTierText, redTierText, riskReasons: risk.riskReasons })
   };
 }
 
 function createStrategyCouponRules(
+  settings: ActivityDesignSettings,
   platform: Platform,
   objective: ActivityDesignObjective,
   suggestions: ActivityCouponBucketSuggestion[],
-  mode: ReturnType<typeof activityObjectivePayProfile>['couponScoringMode'],
+  policy: ActivityCouponRecommendationPolicy,
   fullReductionRules: FullReduction[] = [],
   redTiers: RedTier[] = []
 ) {
   const sorted = suggestions.slice().sort((a, b) => a.originalBucket - b.originalBucket);
   if (!sorted.length) return [] as Coupon[];
+  const mode = policy.mode;
 
   const scanStartIndex = mode === 'conservative'
     ? sorted.reduce((lastIndex, row, index) => (
-      row.amount < ACTIVITY_ROUTE_MIN_COUPON_AMOUNT - 1e-9 ? index : lastIndex
+      recommendedCouponAmount(row.amount, policy) <= 0 ? index : lastIndex
     ), -1) + 1
     : 0;
   const scanRows = sorted.slice(scanStartIndex);
-  if (!scanRows.some(row => recommendedCouponAmount(row.amount) > 0)) return [] as Coupon[];
+  if (!scanRows.some(row => recommendedCouponAmount(row.amount, policy) > 0)) return [] as Coupon[];
 
   const strategyName = activityCouponStrategyName(mode);
   const strategyKey = ['coupon-strategy', platform, objective, mode].join('::');
-  const couponDrafts: Array<{
-    key: string;
-    threshold: number;
-    amount: number;
-  }> = [];
+  const couponDrafts: ActivityCouponDraft[] = [];
   let highestAmount = 0;
   for (let index = scanStartIndex; index < sorted.length; index++) {
     const row = sorted[index];
-    const amount = recommendedCouponAmount(row.amount);
+    const amount = recommendedCouponAmount(row.amount, policy);
     if (amount <= highestAmount + 1e-9) continue;
-    const threshold = couponDrafts.length === 0 && mode === 'aggressive'
-      ? scanRows[0].originalBucket
-      : row.originalBucket;
-    if (couponDrafts.length && threshold <= couponDrafts[couponDrafts.length - 1].threshold + 1e-9) {
-      couponDrafts[couponDrafts.length - 1].amount = amount;
-      highestAmount = amount;
-      continue;
+    const previousDraft = couponDrafts[couponDrafts.length - 1];
+    if (previousDraft) {
+      const thresholdGap = roundMoney(row.originalBucket - previousDraft.threshold);
+      const amountDiff = roundMoney(amount - previousDraft.maxObservedAmount);
+      if (thresholdGap <= policy.nearThresholdGap + 1e-9 && amountDiff <= policy.nearAmountMergeTolerance + 1e-9) {
+        previousDraft.entries.push({ row, amount });
+        refreshActivityCouponDraftRepresentative(previousDraft, policy);
+        highestAmount = Math.max(highestAmount, amount);
+        continue;
+      }
+      if (thresholdGap >= policy.farThresholdGap - 1e-9 && amountDiff <= policy.farAmountSkipTolerance + 1e-9) {
+        previousDraft.entries.push({ row, amount });
+        previousDraft.maxObservedAmount = Math.max(previousDraft.maxObservedAmount, amount);
+        highestAmount = Math.max(highestAmount, amount);
+        continue;
+      }
     }
-    couponDrafts.push({
-      key: [strategyKey, threshold, amount].join('::'),
-      threshold,
-      amount
-    });
-    highestAmount = amount;
+    const draft: ActivityCouponDraft = {
+      key: '',
+      threshold: row.originalBucket,
+      amount,
+      maxObservedAmount: amount,
+      entries: [{ row, amount }],
+      coveredRows: []
+    };
+    refreshActivityCouponDraftRepresentative(draft, policy);
+    couponDrafts.push(draft);
+    highestAmount = Math.max(highestAmount, amount);
+  }
+
+  for (const draft of couponDrafts) {
+    draft.key = [strategyKey, draft.threshold, draft.amount].join('::');
   }
 
   for (let index = 0; index < couponDrafts.length; index++) {
@@ -3246,13 +3587,16 @@ function createStrategyCouponRules(
       row.originalBucket + 1e-9 >= coupon.threshold
       && (!nextCoupon || row.originalBucket < nextCoupon.threshold - 1e-9)
     ));
+    coupon.coveredRows = coveredRows;
     const minCoveredBucket = coveredRows.length
       ? Math.min(...coveredRows.map(row => row.originalBucket))
       : coupon.threshold;
     const maxCoveredBucket = coveredRows.length
       ? Math.max(...coveredRows.map(row => row.originalBucket))
       : coupon.threshold;
-    const thresholdSuggestion = sorted.find(row => Math.abs(row.originalBucket - coupon.threshold) < 1e-9) || coveredRows[0];
+    const thresholdSuggestion = coupon.entries.find(entry => Math.abs(entry.row.originalBucket - coupon.threshold) < 1e-9)?.row
+      || sorted.find(row => Math.abs(row.originalBucket - coupon.threshold) < 1e-9)
+      || coveredRows[0];
     if (!thresholdSuggestion) continue;
     thresholdSuggestion.selected = true;
     thresholdSuggestion.recommendedCouponKey = coupon.key;
@@ -3269,21 +3613,29 @@ function createStrategyCouponRules(
       .filter(coupon => suggestion.originalBucket + 1e-9 >= coupon.threshold)
       .sort((a, b) => b.amount - a.amount || b.threshold - a.threshold)[0];
     if (!matchedCoupon) continue;
-    const overSpace = roundMoney(matchedCoupon.amount - suggestion.amount);
-    if (overSpace <= 1e-9) continue;
-    suggestion.diagnosis = `${suggestion.diagnosis}；命中推荐券满${roundMoney(matchedCoupon.threshold)}减${roundMoney(matchedCoupon.amount)}，但本桶券空间仅¥${roundMoney(suggestion.amount)}，超出¥${overSpace}，建议在活动校验明细查看具体组合是否亏损`;
+    suggestion.recommendedCouponKey = suggestion.recommendedCouponKey || matchedCoupon.key;
+    suggestion.recommendedThreshold = suggestion.recommendedThreshold ?? matchedCoupon.threshold;
+    suggestion.recommendedAmount = suggestion.recommendedAmount ?? matchedCoupon.amount;
+    const risk = activityCouponRiskForRows([suggestion], matchedCoupon, policy.maxOverBucketSpace);
+    suggestion.riskLevel = risk.riskLevel;
+    suggestion.riskReasons = risk.riskReasons;
+    if (risk.riskReasons.length) {
+      suggestion.diagnosis = `${suggestion.diagnosis}；命中推荐券满${roundMoney(matchedCoupon.threshold)}减${roundMoney(matchedCoupon.amount)}，${risk.riskReasons.join('，')}，建议在活动校验明细查看具体组合是否亏损`;
+    }
   }
 
   return couponDrafts.map((coupon, index) => {
     const usage = activityCouponUsageScenario(
+      settings,
       platform,
       objective,
-      mode,
+      policy,
       coupon,
       index,
       couponDrafts.length,
       fullReductionRules,
-      redTiers
+      redTiers,
+      coupon.coveredRows
     );
     return {
       enabled: true,
@@ -3364,7 +3716,10 @@ function buildCouponRouteRules(
       minCoveredBucket: bucket,
       maxCoveredBucket: bucket,
       coveredBucketCount: 1,
-      scoringMode: payProfile.couponScoringMode,
+      recommendationMode: payProfile.couponRecommendationPolicy.mode,
+      riskLevel: 'safe',
+      riskReasons: [],
+      scoringMode: payProfile.couponRecommendationPolicy.mode,
       diagnosis: amount >= ACTIVITY_ROUTE_MIN_COUPON_AMOUNT - 1e-9
         ? `原价桶${bucket}满减后券空间约¥${roundMoney(remainingSpace)}，桶级券按小数保留为满${bucket}减${roundMoney(amount)}`
         : `原价桶${bucket}满减后券空间低于¥${roundMoney(ACTIVITY_ROUTE_MIN_COUPON_AMOUNT)}，不单独推荐，仅作为策略断点参考`
@@ -3372,10 +3727,11 @@ function buildCouponRouteRules(
   }
 
   const selected = createStrategyCouponRules(
+    settings,
     platform,
     objective,
     bucketSuggestions,
-    payProfile.couponScoringMode,
+    payProfile.couponRecommendationPolicy,
     fullReductionRules,
     state.platformRules.redTiers[platform] || []
   );

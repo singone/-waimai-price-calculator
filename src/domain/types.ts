@@ -6,10 +6,12 @@ export type ActivityDesignObjective = string;
 export type ActivityDesignCalculationMode = 'priceScan' | 'routeDesign' | 'payValidation';
 export type ActivityObjectiveGroup = 'stable' | 'marketing';
 export type ActivityFullAmountBasis = 'average' | 'p75' | 'min' | 'max';
-export type ActivityCouponScoringMode = 'conservative' | 'balanced' | 'aggressive';
+export type ActivityCouponRecommendationMode = 'conservative' | 'balanced' | 'aggressive';
+export type ActivityCouponScoringMode = ActivityCouponRecommendationMode;
 export type ActivityCouponThresholdMode = 'lowThresholdOrder' | 'fullReductionInterleave' | 'addOnCritical' | 'highMarginGuide' | 'retentionRecall';
 export type ActivityCouponChannel = 'inStore' | 'orderReturn' | 'reviewReturn' | 'pointsReturn' | 'targeted';
 export type ActivityCouponTargetUser = 'all' | 'newCustomer' | 'highFrequency' | 'highAov' | 'lostCustomer' | 'specified';
+export type ActivityCouponRiskLevel = 'safe' | 'watch' | 'risk';
 
 export type Product = {
   id: string;
@@ -216,6 +218,47 @@ export type ActivityOriginalDiscountTier = {
   discountRate: number;
 };
 
+export type ActivityCouponRecommendationPolicy = {
+  mode: ActivityCouponRecommendationMode;
+  amountStep: number;
+  minCouponAmount: number;
+  nearThresholdGap: number;
+  farThresholdGap: number;
+  nearAmountMergeTolerance: number;
+  farAmountSkipTolerance: number;
+  maxOverBucketSpace: number;
+  representativeMode: 'lowestThreshold' | 'balanced' | 'highestThreshold';
+};
+
+export type ActivityCouponSceneTemplate = {
+  key: string;
+  enabled: boolean;
+  name: string;
+  priority: number;
+  platforms?: Platform[];
+  channel: ActivityCouponChannel;
+  targetUser: ActivityCouponTargetUser;
+  objectiveKeys: ActivityDesignObjective[];
+  thresholdMode: ActivityCouponThresholdMode;
+  thresholdMin: number;
+  thresholdMax: number;
+  amountMin: number;
+  amountMax: number;
+  couponIndexRatioMin: number;
+  couponIndexRatioMax: number;
+  requireNearFullReduction: boolean;
+  maxFullReductionDistance: number;
+  requireNearRedTier: boolean;
+  maxRedTierDistance: number;
+  addOnMin: number;
+  addOnMax: number;
+  requireBoundarySafe: boolean;
+  maxOverBucketSpace: number;
+  couponBudgetShare: number;
+  maxCouponCount: number;
+  maxCouponAmount: number;
+};
+
 export type ActivityObjectiveStrategy = Partial<ActivityObjectivePayTarget> & {
   baseOriginalDiscountRate?: number;
   originalDiscountTiers: ActivityOriginalDiscountTier[];
@@ -229,6 +272,8 @@ export type ActivityObjectiveStrategy = Partial<ActivityObjectivePayTarget> & {
   maxFullRuleCount: number;
   minFullHitCount: number;
   minNetPayFloor: number;
+  couponRecommendationPolicy: ActivityCouponRecommendationPolicy;
+  /** @deprecated 兼容旧缓存，读取后映射到 couponRecommendationPolicy.mode。 */
   couponScoringMode: ActivityCouponScoringMode;
 };
 
@@ -236,6 +281,8 @@ export type ActivityStrategySettings = {
   baseOriginalDiscountRate: number;
   objectiveTemplates?: ActivityObjectiveTemplate[];
   objectiveStrategies: Partial<Record<ActivityDesignObjective, ActivityObjectiveStrategy>>;
+  couponSceneTemplates?: ActivityCouponSceneTemplate[];
+  platformCouponSceneKeys?: Partial<Record<Platform, string[]>>;
 };
 
 export type PricingEvaluationSettings = ComboRangeSettings & {
@@ -267,6 +314,8 @@ export type ActivityDesignSettings = ComboRangeSettings & {
   objectivePayTargets?: Partial<Record<ActivityDesignObjective, ActivityObjectivePayTarget>>;
   objectiveStrategies?: Partial<Record<ActivityDesignObjective, Partial<ActivityObjectiveStrategy>>>;
   objectiveTemplates?: ActivityObjectiveTemplate[];
+  couponSceneTemplates?: ActivityCouponSceneTemplate[];
+  platformCouponSceneKeys?: Partial<Record<Platform, string[]>>;
   minProfitRate?: number;
   originalBandSize?: number;
   payBandSize?: number;
@@ -536,7 +585,11 @@ export type ActivityCouponBucketSuggestion = {
   minCoveredBucket: number;
   maxCoveredBucket: number;
   coveredBucketCount: number;
-  scoringMode: ActivityCouponScoringMode;
+  recommendationMode: ActivityCouponRecommendationMode;
+  riskLevel: ActivityCouponRiskLevel;
+  riskReasons: string[];
+  /** @deprecated 兼容旧缓存，使用 recommendationMode。 */
+  scoringMode?: ActivityCouponScoringMode;
   recommendedThreshold?: number;
   recommendedAmount?: number;
   recommendedCouponKey?: string;
