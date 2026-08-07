@@ -126,6 +126,160 @@ type SelectedResultBand = {
 };
 
 type ActivityDesignStage = 'priceScan' | 'routeDesign' | 'payValidation';
+type BusinessDataMetricKey = 'actualReceipt' | 'validOrders' | 'exposureUsers' | 'visitRate' | 'orderRate' | 'merchantActivityCost' | 'tradedProductRate';
+
+type BusinessDailyRecord = {
+  key: string;
+  storeId: string;
+  storeName: string;
+  platform: Platform;
+  platformName: string;
+  date: string;
+  sourceFileName: string;
+  importBatchId: string;
+  importedAt: string;
+  externalStoreId: string;
+  externalStoreName: string;
+  grossSales: number;
+  actualReceipt: number;
+  merchantIncome: number;
+  validOrders: number;
+  invalidOrders: number;
+  averageReceipt: number;
+  averageMerchantIncome: number;
+  exposureUsers: number;
+  visitUsers: number;
+  orderUsers: number;
+  visitRate: number | null;
+  orderRate: number | null;
+  exposureTimes: number;
+  visitTimes: number;
+  orderTimes: number;
+  merchantActivityCost: number;
+  merchantActivityCostWithoutFull: number;
+  platformSubsidy: number;
+  totalActivitySubsidy: number;
+  commission: number;
+  deliveryServiceFee: number;
+  packageFee: number;
+  customerDeliveryFee: number;
+  activityOrders: number;
+  activityOrderRate: number | null;
+  cancelOrders: number;
+  merchantCancelOrders: number;
+  listedProducts: number;
+  tradedProducts: number;
+  outOfStockProducts: number;
+  activityProducts: number;
+  businessHoursText: string;
+  warnings: string[];
+};
+
+type BusinessDataImportBatch = {
+  id: string;
+  storeId: string;
+  storeName: string;
+  platform: Platform;
+  platformName: string;
+  fileName: string;
+  importedAt: string;
+  dateStart: string;
+  dateEnd: string;
+  rowCount: number;
+  replacedDates: string[];
+  warnings: string[];
+};
+
+type BusinessAnalysisNote = {
+  id: string;
+  storeId: string;
+  title: string;
+  createdAt: string;
+  dateStart: string;
+  dateEnd: string;
+  platform: Platform | 'all';
+  items: string[];
+};
+
+type BusinessDiagnosticItem = {
+  key: string;
+  severity: Severity;
+  title: string;
+  description: string;
+  suggestion: string;
+  currentText: string;
+  baselineText: string;
+};
+
+type BusinessDataState = {
+  records: BusinessDailyRecord[];
+  imports: BusinessDataImportBatch[];
+  notes: BusinessAnalysisNote[];
+};
+
+type BusinessDataSummary = {
+  dateStart: string;
+  dateEnd: string;
+  dayCount: number;
+  platformCount: number;
+  grossSales: number;
+  actualReceipt: number;
+  merchantIncome: number;
+  validOrders: number;
+  invalidOrders: number;
+  exposureUsers: number;
+  visitUsers: number;
+  orderUsers: number;
+  visitRate: number | null;
+  orderRate: number | null;
+  averageReceipt: number;
+  merchantActivityCost: number;
+  merchantActivityCostWithoutFull: number;
+  platformSubsidy: number;
+  totalActivitySubsidy: number;
+  commission: number;
+  deliveryServiceFee: number;
+  packageFee: number;
+  activityCostRate: number | null;
+  merchantCostPerOrder: number | null;
+  tradedProductRate: number | null;
+};
+
+type BusinessDailyAggregate = BusinessDataSummary & {
+  key: string;
+  date: string;
+};
+
+type BusinessPlatformAggregate = BusinessDataSummary & {
+  key: string;
+  platform: Platform;
+  platformName: string;
+};
+
+type BusinessWeekdayCell = BusinessDataSummary & {
+  date: string;
+  weekdayIndex: number;
+};
+
+type BusinessWeekComparisonRow = {
+  key: string;
+  weekStart: string;
+  weekEnd: string;
+  weekLabel: string;
+  platform: Platform;
+  platformName: string;
+  days: Record<number, BusinessWeekdayCell | undefined>;
+  total: BusinessDataSummary;
+};
+
+type BusinessFunnelMetricSource = Pick<BusinessDataSummary, 'exposureUsers' | 'visitUsers' | 'orderUsers' | 'validOrders' | 'visitRate' | 'orderRate'>;
+
+type ParsedBusinessReport = {
+  platform: Platform;
+  sheetName: string;
+  records: Array<Omit<BusinessDailyRecord, 'key' | 'storeId' | 'storeName' | 'sourceFileName' | 'importBatchId' | 'importedAt'>>;
+  warnings: string[];
+};
 
 type ActivityFullReductionLogSegmentType = '参数' | '生成' | '拒绝' | '退出' | '其他';
 type ActivityFullReductionLogSegment = {
@@ -414,6 +568,7 @@ type CalculatorState = {
   activePage: PageKey;
   riskSafetyMargin: number;
   activityStrategySettings: ActivityStrategySettings;
+  businessData: BusinessDataState;
   platformRules: FeeRule;
   stores: Store[];
 };
@@ -1254,6 +1409,11 @@ const defaultState: CalculatorState = {
   activePage: 'store',
   riskSafetyMargin: 0,
   activityStrategySettings: DEFAULT_ACTIVITY_STRATEGY_SETTINGS,
+  businessData: {
+    records: [],
+    imports: [],
+    notes: []
+  },
   platformRules: {
     commissionRate: 4.8,
     minCommission: 0.96,
@@ -1461,6 +1621,20 @@ function couponThresholdModeLabel(value: unknown) {
     highMarginGuide: '神券/爆红包补档',
     retentionRecall: '定向唤回'
   }[String(value || '')] || '-';
+}
+
+function activityRepresentedComboCount(row: Pick<ActivityComboSimulationRow, 'representedComboCount'>) {
+  if (row.representedComboCount === undefined || row.representedComboCount === null) return 1;
+  return Math.max(0, Math.floor(Number(row.representedComboCount) || 0));
+}
+
+function activityCostBasisLabel(row: Pick<ActivityComboSimulationRow, 'key' | 'scenarioName' | 'representedComboCount'>) {
+  const key = String(row.key || '');
+  const scenarioName = String(row.scenarioName || '');
+  if (key.endsWith('::maxCost') || scenarioName.includes('最高成本')) return '最高成本';
+  if (key.endsWith('::minCost') || scenarioName.includes('最低成本')) return '最低成本';
+  if (row.representedComboCount !== undefined && row.representedComboCount !== null) return '平均成本';
+  return '真实组合';
 }
 
 function roundMoney(value: unknown) {
@@ -3698,6 +3872,135 @@ function normalizeActivityDesignSettings(settings: Partial<ActivityDesignSetting
   };
 }
 
+function normalizeBusinessDate(value: unknown) {
+  const text = String(value ?? '').trim();
+  if (!text) return '';
+  const dateMatch = text.match(/^(\d{4})[-/.年]?(\d{1,2})[-/.月]?(\d{1,2})/);
+  if (dateMatch) {
+    const [, year, month, day] = dateMatch;
+    return `${year}-${month.padStart(2, '0')}-${day.padStart(2, '0')}`;
+  }
+  const compactMatch = text.match(/^(\d{4})(\d{2})(\d{2})$/);
+  if (compactMatch) {
+    const [, year, month, day] = compactMatch;
+    return `${year}-${month}-${day}`;
+  }
+  const numberValue = Number(value);
+  if (Number.isFinite(numberValue) && numberValue > 25000 && numberValue < 80000) {
+    const epoch = new Date(Date.UTC(1899, 11, 30));
+    epoch.setUTCDate(epoch.getUTCDate() + Math.floor(numberValue));
+    return epoch.toISOString().slice(0, 10);
+  }
+  return '';
+}
+
+function normalizeBusinessRate(value: unknown, fallback: number | null = null) {
+  const text = String(value ?? '').trim();
+  if (!text || text === '-') return fallback;
+  const parsed = toNumber(text.replace('%', ''), Number.NaN);
+  if (!Number.isFinite(parsed)) return fallback;
+  return text.includes('%') || parsed > 1 ? parsed / 100 : parsed;
+}
+
+function normalizeBusinessDailyRecord(row: Partial<BusinessDailyRecord> | undefined): BusinessDailyRecord | null {
+  const platform = row?.platform === 'eleme' ? 'eleme' : row?.platform === 'meituan' ? 'meituan' : null;
+  const date = normalizeBusinessDate(row?.date);
+  if (!platform || !date) return null;
+  const actualReceipt = Math.max(0, toMoneyNumber(row?.actualReceipt, 0));
+  const validOrders = Math.max(0, Math.floor(toNumber(row?.validOrders, 0)));
+  const exposureUsers = Math.max(0, Math.floor(toNumber(row?.exposureUsers, 0)));
+  const visitUsers = Math.max(0, Math.floor(toNumber(row?.visitUsers, 0)));
+  const orderUsers = Math.max(0, Math.floor(toNumber(row?.orderUsers, 0)));
+  const visitRate = row?.visitRate === null || row?.visitRate === undefined
+    ? exposureUsers > 0 ? visitUsers / exposureUsers : null
+    : normalizeBusinessRate(row.visitRate);
+  const orderRate = row?.orderRate === null || row?.orderRate === undefined
+    ? visitUsers > 0 ? orderUsers / visitUsers : null
+    : normalizeBusinessRate(row.orderRate);
+  return {
+    key: `${row?.storeId || ''}:${platform}:${date}`,
+    storeId: String(row?.storeId || ''),
+    storeName: String(row?.storeName || ''),
+    platform,
+    platformName: PLATFORM_NAMES[platform],
+    date,
+    sourceFileName: String(row?.sourceFileName || ''),
+    importBatchId: String(row?.importBatchId || ''),
+    importedAt: String(row?.importedAt || ''),
+    externalStoreId: String(row?.externalStoreId || ''),
+    externalStoreName: String(row?.externalStoreName || ''),
+    grossSales: Math.max(0, toMoneyNumber(row?.grossSales, 0)),
+    actualReceipt,
+    merchantIncome: Math.max(0, toMoneyNumber(row?.merchantIncome, 0)),
+    validOrders,
+    invalidOrders: Math.max(0, Math.floor(toNumber(row?.invalidOrders, 0))),
+    averageReceipt: Math.max(0, toMoneyNumber(row?.averageReceipt, validOrders > 0 ? actualReceipt / validOrders : 0)),
+    averageMerchantIncome: Math.max(0, toMoneyNumber(row?.averageMerchantIncome, 0)),
+    exposureUsers,
+    visitUsers,
+    orderUsers,
+    visitRate,
+    orderRate,
+    exposureTimes: Math.max(0, Math.floor(toNumber(row?.exposureTimes, 0))),
+    visitTimes: Math.max(0, Math.floor(toNumber(row?.visitTimes, 0))),
+    orderTimes: Math.max(0, Math.floor(toNumber(row?.orderTimes, 0))),
+    merchantActivityCost: Math.max(0, toMoneyNumber(row?.merchantActivityCost, 0)),
+    merchantActivityCostWithoutFull: Math.max(0, toMoneyNumber(row?.merchantActivityCostWithoutFull, row?.merchantActivityCost || 0)),
+    platformSubsidy: Math.max(0, toMoneyNumber(row?.platformSubsidy, 0)),
+    totalActivitySubsidy: Math.max(0, toMoneyNumber(row?.totalActivitySubsidy, 0)),
+    commission: Math.max(0, toMoneyNumber(row?.commission, 0)),
+    deliveryServiceFee: Math.max(0, toMoneyNumber(row?.deliveryServiceFee, 0)),
+    packageFee: Math.max(0, toMoneyNumber(row?.packageFee, 0)),
+    customerDeliveryFee: Math.max(0, toMoneyNumber(row?.customerDeliveryFee, 0)),
+    activityOrders: Math.max(0, Math.floor(toNumber(row?.activityOrders, 0))),
+    activityOrderRate: normalizeBusinessRate(row?.activityOrderRate),
+    cancelOrders: Math.max(0, Math.floor(toNumber(row?.cancelOrders, 0))),
+    merchantCancelOrders: Math.max(0, Math.floor(toNumber(row?.merchantCancelOrders, 0))),
+    listedProducts: Math.max(0, Math.floor(toNumber(row?.listedProducts, 0))),
+    tradedProducts: Math.max(0, Math.floor(toNumber(row?.tradedProducts, 0))),
+    outOfStockProducts: Math.max(0, Math.floor(toNumber(row?.outOfStockProducts, 0))),
+    activityProducts: Math.max(0, Math.floor(toNumber(row?.activityProducts, 0))),
+    businessHoursText: String(row?.businessHoursText || ''),
+    warnings: Array.isArray(row?.warnings) ? row.warnings.map(item => String(item || '')).filter(Boolean) : []
+  };
+}
+
+function normalizeBusinessData(value: Partial<BusinessDataState> | undefined): BusinessDataState {
+  const records = (Array.isArray(value?.records) ? value.records : [])
+    .map(row => normalizeBusinessDailyRecord(row))
+    .filter((row): row is BusinessDailyRecord => Boolean(row))
+    .sort((a, b) => a.date.localeCompare(b.date) || a.platform.localeCompare(b.platform));
+  const imports = (Array.isArray(value?.imports) ? value.imports : [])
+    .map(row => ({
+      id: String(row?.id || uid('business-import')),
+      storeId: String(row?.storeId || ''),
+      storeName: String(row?.storeName || ''),
+      platform: row?.platform === 'eleme' ? 'eleme' : 'meituan' as Platform,
+      platformName: row?.platformName || PLATFORM_NAMES[row?.platform === 'eleme' ? 'eleme' : 'meituan'],
+      fileName: String(row?.fileName || ''),
+      importedAt: String(row?.importedAt || ''),
+      dateStart: normalizeBusinessDate(row?.dateStart),
+      dateEnd: normalizeBusinessDate(row?.dateEnd),
+      rowCount: Math.max(0, Math.floor(toNumber(row?.rowCount, 0))),
+      replacedDates: Array.isArray(row?.replacedDates) ? row.replacedDates.map(normalizeBusinessDate).filter(Boolean) : [],
+      warnings: Array.isArray(row?.warnings) ? row.warnings.map(item => String(item || '')).filter(Boolean) : []
+    }))
+    .sort((a, b) => b.importedAt.localeCompare(a.importedAt));
+  const notes = (Array.isArray(value?.notes) ? value.notes : [])
+    .map(row => ({
+      id: String(row?.id || uid('business-note')),
+      storeId: String(row?.storeId || ''),
+      title: String(row?.title || '经营诊断'),
+      createdAt: String(row?.createdAt || ''),
+      dateStart: normalizeBusinessDate(row?.dateStart),
+      dateEnd: normalizeBusinessDate(row?.dateEnd),
+      platform: row?.platform === 'meituan' || row?.platform === 'eleme' ? row.platform : 'all' as Platform | 'all',
+      items: Array.isArray(row?.items) ? row.items.map(item => String(item || '')).filter(Boolean) : []
+    }))
+    .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  return { records, imports, notes };
+}
+
 function normalizePricingStrategyTier(row: Partial<PricingStrategyTier> | undefined, fallback: PricingStrategyTier): PricingStrategyTier {
   const payMin = Math.max(0, toMoneyNumber(row?.payMin, fallback.payMin));
   const payMax = Math.max(payMin, toMoneyNumber(row?.payMax, fallback.payMax));
@@ -3767,6 +4070,7 @@ function normalizeState(data: unknown): CalculatorState {
     selectedStoreId: selected,
     activePage: isPageKey(raw.activePage) ? raw.activePage : DEFAULT_PAGE_KEY,
     activityStrategySettings,
+    businessData: normalizeBusinessData(raw.businessData),
     platformRules: {
       ...base.platformRules,
       ...(raw.platformRules || {}),
@@ -6328,6 +6632,697 @@ function parseCostWorkbook(workbook: XLSX.WorkBook) {
   return { costs: Array.from(costsByName.values()), skipped, duplicated, sheetName, headerRow: header.rowIndex + 1 };
 }
 
+function businessNumber(row: unknown[], index: number, fallback = 0) {
+  return index >= 0 ? toMoneyNumber(row[index], fallback) : fallback;
+}
+
+function businessInteger(row: unknown[], index: number, fallback = 0) {
+  return Math.max(0, Math.floor(toNumber(index >= 0 ? row[index] : fallback, fallback)));
+}
+
+function businessText(row: unknown[], index: number) {
+  return index >= 0 ? String(row[index] ?? '').trim() : '';
+}
+
+function businessRate(row: unknown[], index: number) {
+  return index >= 0 ? normalizeBusinessRate(row[index]) : null;
+}
+
+function businessColumn(row: unknown[], candidates: string[]) {
+  return findImportColumnIndex(row, candidates);
+}
+
+function detectBusinessReportPlatform(header: unknown[]): Platform | null {
+  if (businessColumn(header, ['门店id']) >= 0 && businessColumn(header, ['顾客实付（不含券）', '顾客实付']) >= 0) return 'meituan';
+  if (businessColumn(header, ['门店编号']) >= 0 && businessColumn(header, ['饿了么补贴', '顾客实付总额']) >= 0) return 'eleme';
+  return null;
+}
+
+function findBusinessReportHeader(rows: unknown[][]) {
+  const limit = Math.min(rows.length, 30);
+  for (let rowIndex = 0; rowIndex < limit; rowIndex++) {
+    const row = rows[rowIndex] || [];
+    if (businessColumn(row, ['日期']) >= 0 && businessColumn(row, ['门店名称']) >= 0 && businessColumn(row, ['有效订单']) >= 0) {
+      const platform = detectBusinessReportPlatform(row);
+      if (platform) return { rowIndex, header: row, platform };
+    }
+  }
+  return null;
+}
+
+function parseMeituanBusinessRecord(row: unknown[], header: unknown[], warnings: string[]): ParsedBusinessReport['records'][number] | null {
+  const dateIndex = businessColumn(header, ['日期']);
+  const date = normalizeBusinessDate(row[dateIndex]);
+  if (!date) return null;
+  const validOrders = businessInteger(row, businessColumn(header, ['有效订单']));
+  const exposureUsers = businessInteger(row, businessColumn(header, ['曝光人数']));
+  const visitUsers = businessInteger(row, businessColumn(header, ['入店人数']));
+  const orderUsers = businessInteger(row, businessColumn(header, ['下单人数']), validOrders);
+  const grossSales = businessNumber(row, businessColumn(header, ['优惠前总额', '商品原价']));
+  const actualReceipt = businessNumber(row, businessColumn(header, ['顾客实付']));
+  const merchantActivityCost = businessNumber(row, businessColumn(header, ['商家活动支出']));
+  const platformSubsidy = businessNumber(row, businessColumn(header, ['平台活动补贴']));
+  const platformName = PLATFORM_NAMES.meituan;
+  const recordWarnings = [
+    ...(businessColumn(header, ['有交易商品数']) < 0 ? ['美团日报缺少商品交易结构字段，商品结构诊断仅做平台总览。'] : [])
+  ];
+  if (!validOrders && actualReceipt > 0) warnings.push(`${date} 美团有实收但有效订单为0，请复核原始报表。`);
+  return {
+    platform: 'meituan',
+    platformName,
+    date,
+    externalStoreId: businessText(row, businessColumn(header, ['门店id'])),
+    externalStoreName: businessText(row, businessColumn(header, ['门店名称'])),
+    grossSales,
+    actualReceipt,
+    merchantIncome: businessNumber(row, businessColumn(header, ['营业收入'])),
+    validOrders,
+    invalidOrders: businessInteger(row, businessColumn(header, ['取消订单'])),
+    averageReceipt: businessNumber(row, businessColumn(header, ['实付单均价']), validOrders > 0 ? actualReceipt / validOrders : 0),
+    averageMerchantIncome: validOrders > 0 ? businessNumber(row, businessColumn(header, ['营业收入'])) / validOrders : 0,
+    exposureUsers,
+    visitUsers,
+    orderUsers,
+    visitRate: businessRate(row, businessColumn(header, ['入店转化率'])) ?? (exposureUsers > 0 ? visitUsers / exposureUsers : null),
+    orderRate: businessRate(row, businessColumn(header, ['下单转化率'])) ?? (visitUsers > 0 ? orderUsers / visitUsers : null),
+    exposureTimes: businessInteger(row, businessColumn(header, ['曝光次数'])),
+    visitTimes: businessInteger(row, businessColumn(header, ['入店次数'])),
+    orderTimes: validOrders,
+    merchantActivityCost,
+    merchantActivityCostWithoutFull: merchantActivityCost,
+    platformSubsidy,
+    totalActivitySubsidy: businessNumber(row, businessColumn(header, ['活动补贴'])),
+    commission: businessNumber(row, businessColumn(header, ['佣金'])),
+    deliveryServiceFee: businessNumber(row, businessColumn(header, ['配送服务费'])),
+    packageFee: businessNumber(row, businessColumn(header, ['包装费'])),
+    customerDeliveryFee: businessNumber(row, businessColumn(header, ['顾客配送费（跑腿/自配送）', '顾客配送费'])),
+    activityOrders: 0,
+    activityOrderRate: null,
+    cancelOrders: businessInteger(row, businessColumn(header, ['取消订单'])),
+    merchantCancelOrders: businessInteger(row, businessColumn(header, ['商责取消订单'])),
+    listedProducts: 0,
+    tradedProducts: 0,
+    outOfStockProducts: 0,
+    activityProducts: 0,
+    businessHoursText: businessText(row, businessColumn(header, ['营业时段'])),
+    warnings: recordWarnings
+  };
+}
+
+function parseElemeBusinessRecord(row: unknown[], header: unknown[], warnings: string[]): ParsedBusinessReport['records'][number] | null {
+  const dateIndex = businessColumn(header, ['日期']);
+  const date = normalizeBusinessDate(row[dateIndex]);
+  if (!date) return null;
+  const validOrders = businessInteger(row, businessColumn(header, ['有效订单']));
+  const exposureUsers = businessInteger(row, businessColumn(header, ['曝光人数']));
+  const visitUsers = businessInteger(row, businessColumn(header, ['进店人数', '入店人数']));
+  const orderUsers = businessInteger(row, businessColumn(header, ['下单人数']), validOrders);
+  const actualReceipt = businessNumber(row, businessColumn(header, ['顾客实付总额', '顾客实付']));
+  const merchantActivityCost = businessNumber(row, businessColumn(header, ['商家活动成本（含满减活动）', '商家活动成本']));
+  const merchantActivityCostWithoutFull = businessNumber(row, businessColumn(header, ['商家活动成本（不含满减活动）']), merchantActivityCost);
+  const elemeSubsidy = businessNumber(row, businessColumn(header, ['饿了么补贴']));
+  const agentSubsidy = businessNumber(row, businessColumn(header, ['代理商补贴']));
+  if (!validOrders && actualReceipt > 0) warnings.push(`${date} 饿了么有实收但有效订单为0，请复核原始报表。`);
+  return {
+    platform: 'eleme',
+    platformName: PLATFORM_NAMES.eleme,
+    date,
+    externalStoreId: businessText(row, businessColumn(header, ['门店编号'])),
+    externalStoreName: businessText(row, businessColumn(header, ['门店名称'])),
+    grossSales: businessNumber(row, businessColumn(header, ['营业额'])),
+    actualReceipt,
+    merchantIncome: businessNumber(row, businessColumn(header, ['收入'])),
+    validOrders,
+    invalidOrders: businessInteger(row, businessColumn(header, ['无效订单'])),
+    averageReceipt: businessNumber(row, businessColumn(header, ['单均实付']), validOrders > 0 ? actualReceipt / validOrders : 0),
+    averageMerchantIncome: businessNumber(row, businessColumn(header, ['单均收入'])),
+    exposureUsers,
+    visitUsers,
+    orderUsers,
+    visitRate: businessRate(row, businessColumn(header, ['进店转化率', '入店转化率'])) ?? (exposureUsers > 0 ? visitUsers / exposureUsers : null),
+    orderRate: businessRate(row, businessColumn(header, ['下单转化率'])) ?? (visitUsers > 0 ? orderUsers / visitUsers : null),
+    exposureTimes: businessInteger(row, businessColumn(header, ['曝光次数'])),
+    visitTimes: businessInteger(row, businessColumn(header, ['进店次数', '入店次数'])),
+    orderTimes: businessInteger(row, businessColumn(header, ['下单次数']), validOrders),
+    merchantActivityCost,
+    merchantActivityCostWithoutFull,
+    platformSubsidy: elemeSubsidy + agentSubsidy,
+    totalActivitySubsidy: businessNumber(row, businessColumn(header, ['活动总补贴'])),
+    commission: businessNumber(row, businessColumn(header, ['平台技术服务费'])) + businessNumber(row, businessColumn(header, ['履约技术服务费'])),
+    deliveryServiceFee: businessNumber(row, businessColumn(header, ['配送费补贴'])),
+    packageFee: businessNumber(row, businessColumn(header, ['打包费'])),
+    customerDeliveryFee: 0,
+    activityOrders: businessInteger(row, businessColumn(header, ['活动订单数'])),
+    activityOrderRate: businessRate(row, businessColumn(header, ['活动订单占比'])),
+    cancelOrders: businessInteger(row, businessColumn(header, ['商责取消数'])),
+    merchantCancelOrders: businessInteger(row, businessColumn(header, ['商责退单数'])),
+    listedProducts: businessInteger(row, businessColumn(header, ['上架商品数'])),
+    tradedProducts: businessInteger(row, businessColumn(header, ['有交易商品数'])),
+    outOfStockProducts: businessInteger(row, businessColumn(header, ['库存不足商品数'])),
+    activityProducts: businessInteger(row, businessColumn(header, ['活动商品数'])),
+    businessHoursText: businessText(row, businessColumn(header, ['设置营业时间段'])),
+    warnings: []
+  };
+}
+
+function parseBusinessReportWorkbook(workbook: XLSX.WorkBook, fileName: string): ParsedBusinessReport {
+  const { sheetName, rows } = firstSheetRows(workbook);
+  const headerInfo = findBusinessReportHeader(rows);
+  if (!headerInfo) throw new Error('没有找到可识别的经营日报表头。');
+  const warnings: string[] = [];
+  const records = rows.slice(headerInfo.rowIndex + 1)
+    .filter(rowHasText)
+    .map(row => headerInfo.platform === 'meituan'
+      ? parseMeituanBusinessRecord(row, headerInfo.header, warnings)
+      : parseElemeBusinessRecord(row, headerInfo.header, warnings))
+    .filter((row): row is ParsedBusinessReport['records'][number] => Boolean(row));
+  const duplicateDates = records
+    .map(row => row.date)
+    .filter((date, index, list) => list.indexOf(date) !== index);
+  if (duplicateDates.length) warnings.push(`${fileName} 内存在重复日期，导入时会保留最后一条。`);
+  return {
+    platform: headerInfo.platform,
+    sheetName,
+    records,
+    warnings: Array.from(new Set(warnings))
+  };
+}
+
+async function readBusinessReportWorkbook(file: File) {
+  const isCsv = /\.csv|\.txt$/i.test(file.name);
+  if (!isCsv) return readWorkbook(file);
+  const buffer = await file.arrayBuffer();
+  const decoders = ['gb18030', 'gbk', 'utf-8'];
+  let text = '';
+  for (const encoding of decoders) {
+    try {
+      text = new TextDecoder(encoding, { fatal: true }).decode(buffer);
+      break;
+    } catch {
+      text = '';
+    }
+  }
+  if (!text) text = new TextDecoder().decode(buffer);
+  return XLSX.read(text, { type: 'string', cellDates: false, raw: false });
+}
+
+function businessDateRangeText(start: string, end: string) {
+  if (start && end && start !== end) return `${start} 至 ${end}`;
+  return start || end || '全部日期';
+}
+
+const BUSINESS_WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+const BUSINESS_WEEK_TOTAL_LABEL = '周总计';
+const BUSINESS_WEEKDAY_CHART_COLORS = [
+  '#1f77b4',
+  '#ff7f0e',
+  '#2ca02c',
+  '#d62728',
+  '#9467bd',
+  '#8c564b',
+  '#17becf',
+  '#111827'
+];
+
+function businessUtcDate(dateText: string) {
+  const normalized = normalizeBusinessDate(dateText);
+  if (!normalized) return null;
+  const [year, month, day] = normalized.split('-').map(Number);
+  if (!year || !month || !day) return null;
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function businessDateFromUtc(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function businessAddDays(dateText: string, days: number) {
+  const date = businessUtcDate(dateText);
+  if (!date) return '';
+  date.setUTCDate(date.getUTCDate() + days);
+  return businessDateFromUtc(date);
+}
+
+function businessWeekdayIndex(dateText: string) {
+  const date = businessUtcDate(dateText);
+  if (!date) return 0;
+  return (date.getUTCDay() + 6) % 7;
+}
+
+function businessWeekStart(dateText: string) {
+  const date = businessUtcDate(dateText);
+  if (!date) return '';
+  date.setUTCDate(date.getUTCDate() - ((date.getUTCDay() + 6) % 7));
+  return businessDateFromUtc(date);
+}
+
+function businessWeekLabel(weekStart: string) {
+  const weekEnd = businessAddDays(weekStart, 6);
+  return businessDateRangeText(weekStart, weekEnd);
+}
+
+function businessSummaryEmpty(): BusinessDataSummary {
+  return {
+    dateStart: '',
+    dateEnd: '',
+    dayCount: 0,
+    platformCount: 0,
+    grossSales: 0,
+    actualReceipt: 0,
+    merchantIncome: 0,
+    validOrders: 0,
+    invalidOrders: 0,
+    exposureUsers: 0,
+    visitUsers: 0,
+    orderUsers: 0,
+    visitRate: null,
+    orderRate: null,
+    averageReceipt: 0,
+    merchantActivityCost: 0,
+    merchantActivityCostWithoutFull: 0,
+    platformSubsidy: 0,
+    totalActivitySubsidy: 0,
+    commission: 0,
+    deliveryServiceFee: 0,
+    packageFee: 0,
+    activityCostRate: null,
+    merchantCostPerOrder: null,
+    tradedProductRate: null
+  };
+}
+
+function sumBusinessNumber(records: BusinessDailyRecord[], field: keyof BusinessDailyRecord) {
+  return roundMoney(records.reduce((sum, row) => sum + (Number(row[field]) || 0), 0));
+}
+
+function summarizeBusinessRecords(records: BusinessDailyRecord[]): BusinessDataSummary {
+  if (!records.length) return businessSummaryEmpty();
+  const sorted = records.slice().sort((a, b) => a.date.localeCompare(b.date));
+  const grossSales = sumBusinessNumber(records, 'grossSales');
+  const actualReceipt = sumBusinessNumber(records, 'actualReceipt');
+  const merchantIncome = sumBusinessNumber(records, 'merchantIncome');
+  const validOrders = Math.round(sumBusinessNumber(records, 'validOrders'));
+  const invalidOrders = Math.round(sumBusinessNumber(records, 'invalidOrders'));
+  const exposureUsers = Math.round(sumBusinessNumber(records, 'exposureUsers'));
+  const visitUsers = Math.round(sumBusinessNumber(records, 'visitUsers'));
+  const orderUsers = Math.round(sumBusinessNumber(records, 'orderUsers'));
+  const merchantActivityCost = sumBusinessNumber(records, 'merchantActivityCost');
+  const merchantActivityCostWithoutFull = sumBusinessNumber(records, 'merchantActivityCostWithoutFull');
+  const platformSubsidy = sumBusinessNumber(records, 'platformSubsidy');
+  const totalActivitySubsidy = sumBusinessNumber(records, 'totalActivitySubsidy');
+  const listedProducts = Math.round(sumBusinessNumber(records, 'listedProducts'));
+  const tradedProducts = Math.round(sumBusinessNumber(records, 'tradedProducts'));
+  return {
+    dateStart: sorted[0].date,
+    dateEnd: sorted[sorted.length - 1].date,
+    dayCount: new Set(records.map(row => row.date)).size,
+    platformCount: new Set(records.map(row => row.platform)).size,
+    grossSales,
+    actualReceipt,
+    merchantIncome,
+    validOrders,
+    invalidOrders,
+    exposureUsers,
+    visitUsers,
+    orderUsers,
+    visitRate: exposureUsers > 0 ? visitUsers / exposureUsers : null,
+    orderRate: visitUsers > 0 ? orderUsers / visitUsers : null,
+    averageReceipt: validOrders > 0 ? actualReceipt / validOrders : 0,
+    merchantActivityCost,
+    merchantActivityCostWithoutFull,
+    platformSubsidy,
+    totalActivitySubsidy,
+    commission: sumBusinessNumber(records, 'commission'),
+    deliveryServiceFee: sumBusinessNumber(records, 'deliveryServiceFee'),
+    packageFee: sumBusinessNumber(records, 'packageFee'),
+    activityCostRate: grossSales > 0 ? merchantActivityCost / grossSales : null,
+    merchantCostPerOrder: validOrders > 0 ? merchantActivityCost / validOrders : null,
+    tradedProductRate: listedProducts > 0 ? tradedProducts / listedProducts : null
+  };
+}
+
+function aggregateBusinessRecordsByDate(records: BusinessDailyRecord[]): BusinessDailyAggregate[] {
+  const byDate = new Map<string, BusinessDailyRecord[]>();
+  records.forEach(row => {
+    byDate.set(row.date, (byDate.get(row.date) || []).concat(row));
+  });
+  return Array.from(byDate.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, rows]) => ({
+      ...summarizeBusinessRecords(rows),
+      key: date,
+      date
+    }));
+}
+
+function aggregateBusinessRecordsByPlatform(records: BusinessDailyRecord[]): BusinessPlatformAggregate[] {
+  return PLATFORMS.flatMap(platform => {
+    const rows = records.filter(row => row.platform === platform);
+    if (!rows.length) return [];
+    return [{
+        ...summarizeBusinessRecords(rows),
+        key: platform,
+        platform,
+        platformName: PLATFORM_NAMES[platform]
+    }];
+  });
+}
+
+function aggregateBusinessRecordsByWeekday(records: BusinessDailyRecord[]): BusinessWeekComparisonRow[] {
+  const byWeekPlatform = new Map<string, BusinessDailyRecord[]>();
+  records.forEach(row => {
+    const weekStart = businessWeekStart(row.date);
+    if (!weekStart) return;
+    const key = `${weekStart}:${row.platform}`;
+    byWeekPlatform.set(key, (byWeekPlatform.get(key) || []).concat(row));
+  });
+  return Array.from(byWeekPlatform.entries())
+    .map(([key, rows]) => {
+      const first = rows[0];
+      const weekStart = businessWeekStart(first.date);
+      const byDate = new Map<string, BusinessDailyRecord[]>();
+      rows.forEach(row => {
+        byDate.set(row.date, (byDate.get(row.date) || []).concat(row));
+      });
+      const days: Record<number, BusinessWeekdayCell | undefined> = {};
+      Array.from(byDate.entries()).forEach(([date, dateRows]) => {
+        const weekdayIndex = businessWeekdayIndex(date);
+        days[weekdayIndex] = {
+          ...summarizeBusinessRecords(dateRows),
+          date,
+          weekdayIndex
+        };
+      });
+      return {
+        key,
+        weekStart,
+        weekEnd: businessAddDays(weekStart, 6),
+        weekLabel: businessWeekLabel(weekStart),
+        platform: first.platform,
+        platformName: first.platformName,
+        days,
+        total: summarizeBusinessRecords(rows)
+      };
+    })
+    .sort((a, b) => b.weekStart.localeCompare(a.weekStart) || a.platform.localeCompare(b.platform));
+}
+
+function businessMetricValue(row: BusinessDataSummary, metric: BusinessDataMetricKey) {
+  if (metric === 'tradedProductRate') return row.tradedProductRate;
+  return row[metric];
+}
+
+function businessMetricName(metric: BusinessDataMetricKey) {
+  return {
+    actualReceipt: '实收',
+    validOrders: '有效订单',
+    exposureUsers: '曝光人数',
+    visitRate: '入店率',
+    orderRate: '下单率',
+    merchantActivityCost: '商家活动成本',
+    tradedProductRate: '动销率'
+  }[metric];
+}
+
+function businessMetricText(metric: BusinessDataMetricKey, value: number | null) {
+  if (value === null || value === undefined || !Number.isFinite(value)) return '-';
+  if (metric === 'visitRate' || metric === 'orderRate' || metric === 'tradedProductRate') return rateText(value);
+  if (metric === 'validOrders' || metric === 'exposureUsers') return `${Math.round(value)}`;
+  return `¥${money(value)}`;
+}
+
+function businessFunnelMetrics(row: BusinessFunnelMetricSource) {
+  const visitRate = row.visitRate ?? (row.exposureUsers > 0 ? row.visitUsers / row.exposureUsers : null);
+  const orderRate = row.orderRate ?? (row.visitUsers > 0 ? row.orderUsers / row.visitUsers : null);
+  const exposureVisitLoss = Math.max(0, row.exposureUsers - row.visitUsers);
+  const visitOrderLoss = Math.max(0, row.visitUsers - row.orderUsers);
+  const exposureVisitLossRate = visitRate === null ? null : Math.max(0, 1 - visitRate);
+  const visitOrderLossRate = orderRate === null ? null : Math.max(0, 1 - orderRate);
+  const orderValidRate = row.orderUsers > 0 ? row.validOrders / row.orderUsers : null;
+  const exposureValidRate = row.exposureUsers > 0 ? row.validOrders / row.exposureUsers : null;
+  let bottleneck = '-';
+  if (exposureVisitLossRate !== null || visitOrderLossRate !== null) {
+    bottleneck = (exposureVisitLossRate ?? -1) >= (visitOrderLossRate ?? -1) ? '曝光到入店' : '入店到下单';
+  }
+  return {
+    visitRate,
+    orderRate,
+    exposureVisitLoss,
+    visitOrderLoss,
+    exposureVisitLossRate,
+    visitOrderLossRate,
+    orderValidRate,
+    exposureValidRate,
+    bottleneck
+  };
+}
+
+function businessFunnelStageText(row: BusinessFunnelMetricSource) {
+  return `曝光 ${row.exposureUsers} → 入店 ${row.visitUsers} → 下单 ${row.orderUsers} → 有效订单 ${row.validOrders}`;
+}
+
+function businessChangeText(metric: BusinessDataMetricKey, current: number | null, baseline: number | null) {
+  if (current === null || baseline === null || !Number.isFinite(current) || !Number.isFinite(baseline) || baseline <= 0) return '-';
+  const diff = current - baseline;
+  const relative = diff / baseline;
+  if (metric === 'visitRate' || metric === 'orderRate' || metric === 'tradedProductRate') {
+    return `${diff >= 0 ? '+' : ''}${(diff * 100).toFixed(2)}pp / ${relative >= 0 ? '+' : ''}${(relative * 100).toFixed(1)}%`;
+  }
+  if (metric === 'validOrders' || metric === 'exposureUsers') {
+    return `${diff >= 0 ? '+' : ''}${Math.round(diff)} / ${relative >= 0 ? '+' : ''}${(relative * 100).toFixed(1)}%`;
+  }
+  return `${diff >= 0 ? '+' : ''}¥${money(Math.abs(diff))} / ${relative >= 0 ? '+' : ''}${(relative * 100).toFixed(1)}%`;
+}
+
+function averageBusinessMetric(rows: BusinessDailyAggregate[], metric: BusinessDataMetricKey) {
+  const values = rows
+    .map(row => businessMetricValue(row, metric))
+    .filter((value): value is number => value !== null && Number.isFinite(value));
+  return values.length ? average(values) : null;
+}
+
+function businessDiagnosticColor(severity: Severity) {
+  if (severity === 'critical') return 'red';
+  if (severity === 'high') return 'orange';
+  if (severity === 'medium') return 'gold';
+  if (severity === 'config') return 'blue';
+  return 'green';
+}
+
+function businessDiagnosticSeverityText(severity: Severity) {
+  return { critical: '严重', high: '高', medium: '中', config: '提示', none: '正常' }[severity];
+}
+
+function appendBusinessDropDiagnostic(
+  items: BusinessDiagnosticItem[],
+  scopeName: string,
+  metric: BusinessDataMetricKey,
+  current: number | null,
+  baseline: number | null,
+  options: { relativeDrop: number; absoluteDrop: number; key: string; suggestion: string; date: string }
+) {
+  if (current === null || baseline === null || !Number.isFinite(current) || !Number.isFinite(baseline) || baseline <= 0) return;
+  const drop = baseline - current;
+  const relativeDrop = drop / baseline;
+  if (drop < options.absoluteDrop && relativeDrop < options.relativeDrop) return;
+  const metricName = businessMetricName(metric);
+  items.push({
+    key: options.key,
+    severity: relativeDrop >= 0.3 ? 'high' : 'medium',
+    title: `${scopeName}${metricName}下降`,
+    description: `${options.date} 的${metricName}低于前序日期均值，变化为 ${businessChangeText(metric, current, baseline)}。`,
+    suggestion: options.suggestion,
+    currentText: businessMetricText(metric, current),
+    baselineText: businessMetricText(metric, baseline)
+  });
+}
+
+function appendBusinessTrendDiagnostics(items: BusinessDiagnosticItem[], scopeName: string, rows: BusinessDailyAggregate[], keyPrefix: string) {
+  const sorted = rows.slice().sort((a, b) => a.date.localeCompare(b.date));
+  if (sorted.length < 2) return;
+  const latest = sorted[sorted.length - 1];
+  const baselineRows = sorted.slice(0, -1);
+  const date = latest.date;
+  appendBusinessDropDiagnostic(items, scopeName, 'validOrders', latest.validOrders, averageBusinessMetric(baselineRows, 'validOrders'), {
+    relativeDrop: 0.2,
+    absoluteDrop: 2,
+    key: `${keyPrefix}-orders`,
+    date,
+    suggestion: '先看曝光人数和入店率是否同步下降；如果流量正常，再排查活动力度、商品排序和高销量商品是否异常。'
+  });
+  appendBusinessDropDiagnostic(items, scopeName, 'actualReceipt', latest.actualReceipt, averageBusinessMetric(baselineRows, 'actualReceipt'), {
+    relativeDrop: 0.2,
+    absoluteDrop: 30,
+    key: `${keyPrefix}-receipt`,
+    date,
+    suggestion: '拆到订单数和单均实付：订单数下降优先看流量转化，单均下降优先看券、满减和商品结构。'
+  });
+  appendBusinessDropDiagnostic(items, scopeName, 'exposureUsers', latest.exposureUsers, averageBusinessMetric(baselineRows, 'exposureUsers'), {
+    relativeDrop: 0.2,
+    absoluteDrop: 10,
+    key: `${keyPrefix}-exposure`,
+    date,
+    suggestion: '检查平台曝光、营业时段、配送范围、排名和库存状态，判断是否是平台流量入口变少。'
+  });
+  appendBusinessDropDiagnostic(items, scopeName, 'visitRate', latest.visitRate, averageBusinessMetric(baselineRows, 'visitRate'), {
+    relativeDrop: 0.2,
+    absoluteDrop: 0.01,
+    key: `${keyPrefix}-visit-rate`,
+    date,
+    suggestion: '优先检查门店头像、起送价、配送费、评分展示、头图和主推商品价格是否影响进店。'
+  });
+  appendBusinessDropDiagnostic(items, scopeName, 'orderRate', latest.orderRate, averageBusinessMetric(baselineRows, 'orderRate'), {
+    relativeDrop: 0.2,
+    absoluteDrop: 0.03,
+    key: `${keyPrefix}-order-rate`,
+    date,
+    suggestion: '优先检查活动后支付价、满减断档、券密度、商品库存和高销量商品是否缺失。'
+  });
+}
+
+function diagnoseBusinessRecords(records: BusinessDailyRecord[]): BusinessDiagnosticItem[] {
+  const items: BusinessDiagnosticItem[] = [];
+  const dailyRows = aggregateBusinessRecordsByDate(records);
+  appendBusinessTrendDiagnostics(items, '全店', dailyRows, 'all');
+  PLATFORMS.forEach(platform => {
+    const platformRows = aggregateBusinessRecordsByDate(records.filter(row => row.platform === platform));
+    appendBusinessTrendDiagnostics(items, PLATFORM_NAMES[platform], platformRows, platform);
+  });
+
+  const summary = summarizeBusinessRecords(records);
+  if (summary.activityCostRate !== null && summary.activityCostRate >= 0.35) {
+    items.push({
+      key: 'activity-cost-rate',
+      severity: summary.activityCostRate >= 0.45 ? 'high' : 'medium',
+      title: '商家活动成本偏高',
+      description: `当前范围商家活动成本占营业额 ${rateText(summary.activityCostRate)}，平台补贴已单独展示，不计入成本异常判断。`,
+      suggestion: '结合活动设计页核对满减、券和加码是否叠加过深，优先收紧低利润支付价区间。',
+      currentText: rateText(summary.activityCostRate),
+      baselineText: '建议低于35%'
+    });
+  }
+  if (summary.tradedProductRate !== null && summary.tradedProductRate < 0.12) {
+    items.push({
+      key: 'traded-product-rate',
+      severity: 'medium',
+      title: '商品动销偏窄',
+      description: `当前有交易商品占上架商品 ${rateText(summary.tradedProductRate)}，订单可能集中在少数商品。`,
+      suggestion: '排查主推商品、套餐组合和加购品是否覆盖核心支付价；必要时下架弱商品或调整排序。',
+      currentText: rateText(summary.tradedProductRate),
+      baselineText: '建议不低于12%'
+    });
+  }
+  const outOfStockProducts = records.reduce((sum, row) => sum + row.outOfStockProducts, 0);
+  if (outOfStockProducts > 0) {
+    items.push({
+      key: 'out-of-stock',
+      severity: 'medium',
+      title: '存在库存不足商品',
+      description: `当前范围累计出现 ${outOfStockProducts} 个库存不足商品，可能影响下单转化和商品结构。`,
+      suggestion: '优先恢复高点击、高成交商品库存，再检查活动商品是否被库存状态截断。',
+      currentText: `${outOfStockProducts}`,
+      baselineText: '0'
+    });
+  }
+  const totalOrders = summary.validOrders + summary.invalidOrders;
+  if (totalOrders > 0 && summary.invalidOrders / totalOrders >= 0.15) {
+    items.push({
+      key: 'invalid-order-rate',
+      severity: 'medium',
+      title: '异常订单占比偏高',
+      description: `当前范围无效订单占比 ${rateText(summary.invalidOrders / totalOrders)}，已按有效订单口径分析核心经营指标。`,
+      suggestion: '检查取消原因、商责取消和履约问题；异常订单过高会拉低真实转化质量。',
+      currentText: rateText(summary.invalidOrders / totalOrders),
+      baselineText: '建议低于15%'
+    });
+  }
+  const merchantCancelOrders = records.reduce((sum, row) => sum + row.merchantCancelOrders, 0);
+  if (merchantCancelOrders > 0) {
+    items.push({
+      key: 'merchant-cancel',
+      severity: 'medium',
+      title: '存在商责取消',
+      description: `当前范围累计商责取消 ${merchantCancelOrders} 单，可能影响平台流量分发和转化。`,
+      suggestion: '复核出餐、缺货、配送交接和营业时段设置，避免商责问题放大到流量端。',
+      currentText: `${merchantCancelOrders}`,
+      baselineText: '0'
+    });
+  }
+  const warningTexts = Array.from(new Set(records.flatMap(row => row.warnings))).filter(Boolean);
+  warningTexts.forEach((warning, index) => {
+    items.push({
+      key: `warning-${index}`,
+      severity: 'config',
+      title: '字段提示',
+      description: warning,
+      suggestion: '该提示不阻断导入，但对应模块的诊断粒度会受限。',
+      currentText: '已提示',
+      baselineText: '-'
+    });
+  });
+  if (!items.length) {
+    items.push({
+      key: 'no-risk',
+      severity: 'none',
+      title: '暂无明显异常',
+      description: '当前筛选范围内没有触发单量、转化、流量、成本或商品结构异常规则。',
+      suggestion: '继续观察最近一天与前序日期均值的变化，重点看实收、入店率和下单率。',
+      currentText: '正常',
+      baselineText: '-'
+    });
+  }
+  return items;
+}
+
+function businessReportExportRows(records: BusinessDailyRecord[]) {
+  return records
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date) || a.platform.localeCompare(b.platform))
+    .map(row => {
+      const funnel = businessFunnelMetrics(row);
+      return {
+        日期: row.date,
+        平台: row.platformName,
+        门店: row.storeName,
+        平台门店: row.externalStoreName,
+        实收: money(row.actualReceipt),
+        营业额: money(row.grossSales),
+        商家收入: money(row.merchantIncome),
+        有效订单: row.validOrders,
+        无效订单: row.invalidOrders,
+        单均实付: money(row.averageReceipt),
+        曝光人数: row.exposureUsers,
+        入店人数: row.visitUsers,
+        下单人数: row.orderUsers,
+        入店率: row.visitRate === null ? '' : rateText(row.visitRate),
+        下单率: row.orderRate === null ? '' : rateText(row.orderRate),
+        曝光到入店流失: funnel.exposureVisitLoss,
+        曝光到入店流失率: funnel.exposureVisitLossRate === null ? '' : rateText(funnel.exposureVisitLossRate),
+        入店到下单流失: funnel.visitOrderLoss,
+        入店到下单流失率: funnel.visitOrderLossRate === null ? '' : rateText(funnel.visitOrderLossRate),
+        有效订单转化率: funnel.orderValidRate === null ? '' : rateText(funnel.orderValidRate),
+        全链路订单转化率: funnel.exposureValidRate === null ? '' : rateText(funnel.exposureValidRate),
+        漏斗主要断点: funnel.bottleneck,
+        商家活动成本: money(row.merchantActivityCost),
+        平台补贴不计成本: money(row.platformSubsidy),
+        佣金及技术服务费: money(row.commission),
+        配送服务费: money(row.deliveryServiceFee),
+        上架商品数: row.listedProducts || '',
+        有交易商品数: row.tradedProducts || '',
+        库存不足商品数: row.outOfStockProducts || '',
+        来源文件: row.sourceFileName,
+        导入时间: row.importedAt
+      };
+    });
+}
+
+function businessImportedAtText(value: string) {
+  if (!value) return '-';
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString('zh-CN', { hour12: false });
+}
+
 function csvCell(value: unknown) {
   const text = String(value ?? '');
   return /[",\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
@@ -6995,6 +7990,9 @@ function WaimaiCalculatorInner() {
   const [resultPlatformTab, setResultPlatformTab] = useState<Platform>('meituan');
   const [activityDesignPlatformTab, setActivityDesignPlatformTab] = useState<Platform>('meituan');
   const [pricingPlatformFilter, setPricingPlatformFilter] = useState<Platform | 'all'>('all');
+  const [businessAnalysisPlatform, setBusinessAnalysisPlatform] = useState<Platform | 'all'>('all');
+  const [businessAnalysisDateStart, setBusinessAnalysisDateStart] = useState('');
+  const [businessAnalysisDateEnd, setBusinessAnalysisDateEnd] = useState('');
   const [activityDesignFilters, setActivityDesignFilters] = useState<ActivityDesignPageFilters>(DEFAULT_ACTIVITY_DESIGN_PAGE_FILTERS);
   const [pricingSettings, setPricingSettings] = useState<PricingEvaluationSettings>(DEFAULT_PRICING_EVALUATION_SETTINGS);
   const [measurementSettings, setMeasurementSettings] = useState<MeasurementSettings>(DEFAULT_MEASUREMENT_SETTINGS);
@@ -7069,6 +8067,36 @@ function WaimaiCalculatorInner() {
   activityDesignByScenarioRef.current = activityDesignByScenario;
   activityPriceScanPersistenceMetaRef.current = activityPriceScanPersistenceMeta;
   const store = useMemo(() => currentStoreFrom(state), [state]);
+  const businessStoreRecords = useMemo(() => {
+    return state.businessData.records.filter(row => row.storeId === store.id);
+  }, [state.businessData.records, store.id]);
+  const businessDataDateBounds = useMemo(() => {
+    if (!businessStoreRecords.length) return { start: '', end: '' };
+    const dates = businessStoreRecords.map(row => row.date).sort();
+    return { start: dates[0], end: dates[dates.length - 1] };
+  }, [businessStoreRecords]);
+  const filteredBusinessRecords = useMemo(() => {
+    return businessStoreRecords
+      .filter(row => businessAnalysisPlatform === 'all' || row.platform === businessAnalysisPlatform)
+      .filter(row => !businessAnalysisDateStart || row.date >= businessAnalysisDateStart)
+      .filter(row => !businessAnalysisDateEnd || row.date <= businessAnalysisDateEnd)
+      .sort((a, b) => a.date.localeCompare(b.date) || a.platform.localeCompare(b.platform));
+  }, [businessAnalysisDateEnd, businessAnalysisDateStart, businessAnalysisPlatform, businessStoreRecords]);
+  const businessSummary = useMemo(() => summarizeBusinessRecords(filteredBusinessRecords), [filteredBusinessRecords]);
+  const businessPlatformRows = useMemo(() => aggregateBusinessRecordsByPlatform(filteredBusinessRecords), [filteredBusinessRecords]);
+  const businessDailyRows = useMemo(() => aggregateBusinessRecordsByDate(filteredBusinessRecords), [filteredBusinessRecords]);
+  const businessWeeklyRows = useMemo(() => aggregateBusinessRecordsByWeekday(filteredBusinessRecords), [filteredBusinessRecords]);
+  const businessDiagnostics = useMemo(() => diagnoseBusinessRecords(filteredBusinessRecords), [filteredBusinessRecords]);
+  const businessImportRows = useMemo(() => {
+    return state.businessData.imports
+      .filter(row => row.storeId === store.id)
+      .sort((a, b) => b.importedAt.localeCompare(a.importedAt));
+  }, [state.businessData.imports, store.id]);
+  const businessNotes = useMemo(() => {
+    return state.businessData.notes
+      .filter(row => row.storeId === store.id)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+  }, [state.businessData.notes, store.id]);
   const storeActivityDesignSettings = useMemo(() => effectiveActivityDesignSettingsFromStore(store, state.activityStrategySettings), [state.activityStrategySettings, store]);
   const routeObjectiveOptionsFromSettings = useMemo(() => activityObjectiveOptionsFromSettings(storeActivityDesignSettings), [storeActivityDesignSettings]);
   const routeObjectiveStrategiesFromSettings = useMemo(() => normalizeActivityObjectiveStrategies(
@@ -8250,6 +9278,97 @@ function WaimaiCalculatorInner() {
     } catch {
       message.error('导入成本表失败，请确认文件包含商品名称和成本价列。');
     }
+  }
+
+  async function importBusinessReport(file: File) {
+    try {
+      const parsed = parseBusinessReportWorkbook(await readBusinessReportWorkbook(file), file.name);
+      const rowsByDate = new Map<string, ParsedBusinessReport['records'][number]>();
+      parsed.records.forEach(row => {
+        rowsByDate.set(row.date, row);
+      });
+      const sourceRows = Array.from(rowsByDate.values()).sort((a, b) => a.date.localeCompare(b.date));
+      if (!sourceRows.length) {
+        message.warning('没有识别到有效经营日报，请确认文件包含日期、门店名称和有效订单。');
+        return;
+      }
+      const importedAt = new Date().toISOString();
+      const importBatchId = uid('business-import');
+      const dateSet = new Set(sourceRows.map(row => row.date));
+      const replacedDates = Array.from(new Set(
+        state.businessData.records
+          .filter(row => row.storeId === store.id && row.platform === parsed.platform && dateSet.has(row.date))
+          .map(row => row.date)
+      )).sort();
+      const warnings = Array.from(new Set([
+        ...parsed.warnings,
+        ...sourceRows.flatMap(row => row.warnings || [])
+      ])).filter(Boolean);
+      const nextRecords = sourceRows
+        .map(row => normalizeBusinessDailyRecord({
+          ...row,
+          key: `${store.id}:${row.platform}:${row.date}`,
+          storeId: store.id,
+          storeName: store.name,
+          sourceFileName: file.name,
+          importBatchId,
+          importedAt
+        }))
+        .filter((row): row is BusinessDailyRecord => Boolean(row));
+      const dateStart = nextRecords[0]?.date || '';
+      const dateEnd = nextRecords[nextRecords.length - 1]?.date || '';
+      await commitState(draft => {
+        draft.businessData.records = draft.businessData.records
+          .filter(row => !(row.storeId === store.id && row.platform === parsed.platform && dateSet.has(row.date)))
+          .concat(nextRecords)
+          .sort((a, b) => a.storeId.localeCompare(b.storeId) || a.date.localeCompare(b.date) || a.platform.localeCompare(b.platform));
+        draft.businessData.imports = [{
+          id: importBatchId,
+          storeId: store.id,
+          storeName: store.name,
+          platform: parsed.platform,
+          platformName: PLATFORM_NAMES[parsed.platform],
+          fileName: file.name,
+          importedAt,
+          dateStart,
+          dateEnd,
+          rowCount: nextRecords.length,
+          replacedDates,
+          warnings
+        }, ...draft.businessData.imports].slice(0, 100);
+      }, `已导入${PLATFORM_NAMES[parsed.platform]}经营日报：${nextRecords.length} 天，覆盖 ${replacedDates.length} 天。`);
+      if (warnings.length) message.warning(warnings.slice(0, 2).join('；'));
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '导入经营日报失败，请确认文件格式。');
+    }
+  }
+
+  function exportBusinessAnalysis() {
+    const ok = downloadCsv(`${store.name}_经营数据_${businessDateRangeText(businessSummary.dateStart, businessSummary.dateEnd)}.csv`, businessReportExportRows(filteredBusinessRecords));
+    if (!ok) message.warning('当前筛选范围没有可导出的经营数据。');
+  }
+
+  async function saveBusinessAnalysisNote() {
+    if (!filteredBusinessRecords.length) {
+      message.warning('当前筛选范围没有经营数据，无法保存诊断。');
+      return;
+    }
+    const dateStart = businessSummary.dateStart;
+    const dateEnd = businessSummary.dateEnd;
+    const platform = businessAnalysisPlatform;
+    const items = businessDiagnostics.map(row => `${row.title}：${row.description} 建议：${row.suggestion}`);
+    await commitState(draft => {
+      draft.businessData.notes = [{
+        id: uid('business-note'),
+        storeId: store.id,
+        title: `${store.name} ${businessDateRangeText(dateStart, dateEnd)} 经营诊断`,
+        createdAt: new Date().toISOString(),
+        dateStart,
+        dateEnd,
+        platform,
+        items
+      }, ...draft.businessData.notes].slice(0, 100);
+    }, '当前经营诊断已保存。');
   }
 
   function importProductsFile(file: File) {
@@ -10967,6 +12086,25 @@ function WaimaiCalculatorInner() {
     const selectedActivityDesignFullCount = selectedActivityDesignPayBand
       ? selectedActivityDesignPayBand.comboCount
       : selectedActivityDesignPayBands.reduce((sum, row) => sum + row.comboCount, 0);
+    const selectedActivityDesignRiskCoveredCount = selectedActivityDesignPayBand
+      ? selectedActivityDesignPayBand.riskCount
+      : selectedActivityDesignPayBands.reduce((sum, row) => sum + row.riskCount, 0);
+    const selectedActivityDesignPayBandWeight = Math.max(1, selectedActivityDesignFullCount);
+    const selectedActivityDesignAveragePay = selectedActivityDesignPayBand
+      ? selectedActivityDesignPayBand.avgFinalPay
+      : selectedActivityDesignPayBands.reduce((sum, row) => sum + row.avgFinalPay * row.comboCount, 0) / selectedActivityDesignPayBandWeight;
+    const selectedActivityDesignAverageNetPay = selectedActivityDesignPayBand
+      ? selectedActivityDesignPayBand.avgNetPay
+      : selectedActivityDesignPayBands.reduce((sum, row) => sum + row.avgNetPay * row.comboCount, 0) / selectedActivityDesignPayBandWeight;
+    const selectedActivityDesignAverageCost = selectedActivityDesignPayBand
+      ? selectedActivityDesignPayBand.avgCost
+      : selectedActivityDesignPayBands.reduce((sum, row) => sum + row.avgCost * row.comboCount, 0) / selectedActivityDesignPayBandWeight;
+    const selectedActivityDesignMinProfitRate = selectedActivityDesignPayBand
+      ? selectedActivityDesignPayBand.minProfitRate
+      : selectedActivityDesignPayBands.map(row => row.minProfitRate).filter(finiteRate).sort((a, b) => a - b)[0] ?? null;
+    const selectedActivityDesignMaxProfitRate = selectedActivityDesignPayBand
+      ? selectedActivityDesignPayBand.maxProfitRate
+      : selectedActivityDesignPayBands.map(row => row.maxProfitRate).filter(finiteRate).sort((a, b) => b - a)[0] ?? null;
     const selectedActivityDesignRows = selectedActivityDesignPayBand
       ? selectedActivityDesignPlatformRows.filter(row => (
         row.finalPay + 1e-9 >= selectedActivityDesignPayBand.min
@@ -10981,7 +12119,25 @@ function WaimaiCalculatorInner() {
         .toLowerCase()
         .includes(activityDesignKeyword))
       : selectedActivityDesignRows;
+    const selectedActivityDesignFilteredCoveredCount = selectedActivityDesignFilteredRows.reduce((sum, row) => sum + activityRepresentedComboCount(row), 0);
     const selectedActivityDesignRiskRows = selectedActivityDesignFilteredRows.filter(row => row.ignored || row.risk?.hasRisk);
+    const selectedActivityValidationComboColumns: TableColumnsType<ActivityComboSimulationRow> = [
+      activityComboColumns[0],
+      {
+        title: '成本口径',
+        width: 100,
+        render: (_, row) => <Tag color={activityCostBasisLabel(row) === '真实组合' ? 'green' : 'blue'}>{activityCostBasisLabel(row)}</Tag>,
+        sorter: (a, b) => activityCostBasisLabel(a).localeCompare(activityCostBasisLabel(b), 'zh-CN')
+      },
+      {
+        title: '代表组合数',
+        dataIndex: 'representedComboCount',
+        width: 110,
+        render: (_, row) => activityRepresentedComboCount(row),
+        sorter: (a, b) => activityRepresentedComboCount(a) - activityRepresentedComboCount(b)
+      },
+      ...activityComboColumns.slice(1)
+    ];
     const selectedActivityOriginalBucketExpandedRows = selectedActivityOriginalBucket
       ? expandActivityOriginalBucketCombos(activityDesign, selectedActivityOriginalBucket, state, store, storeActivityDesignSettings)
       : [];
@@ -11517,7 +12673,7 @@ function WaimaiCalculatorInner() {
           ) : null}
         </Modal>
         <Modal
-          title={selectedActivityDesignBand ? `${PLATFORM_NAMES[selectedActivityDesignBand.platform]} / ${selectedActivityDesignPayBand ? `¥${selectedActivityDesignPayBand.label}` : '全部支付价区间'} 活动校验明细` : '活动校验明细'}
+          title={selectedActivityDesignBand ? `${PLATFORM_NAMES[selectedActivityDesignBand.platform]} / ${selectedActivityDesignPayBand ? `¥${selectedActivityDesignPayBand.label}` : '全部支付价区间'} 活动校验摘要与代表明细` : '活动校验明细'}
           open={Boolean(selectedActivityDesignBand)}
           width={1280}
           footer={null}
@@ -11529,6 +12685,54 @@ function WaimaiCalculatorInner() {
         >
           {selectedActivityDesignBand ? (
             <Space direction="vertical" style={{ width: '100%' }} size="middle">
+              <Card size="small" title="核验摘要">
+                <Space direction="vertical" style={{ width: '100%' }} size="small">
+                  <Row gutter={[12, 12]}>
+                    <Col xs={12} md={4}>
+                      <div className="field">
+                        <Text type="secondary">覆盖真实组合</Text>
+                        <div className="field-value">{selectedActivityDesignFullCount}</div>
+                      </div>
+                    </Col>
+                    <Col xs={12} md={4}>
+                      <div className="field">
+                        <Text type="secondary">代表明细行</Text>
+                        <div className="field-value">{selectedActivityDesignRows.length}</div>
+                      </div>
+                    </Col>
+                    <Col xs={12} md={4}>
+                      <div className="field">
+                        <Text type="secondary">风险覆盖组合</Text>
+                        <div className="field-value">{selectedActivityDesignRiskCoveredCount}</div>
+                      </div>
+                    </Col>
+                    <Col xs={12} md={4}>
+                      <div className="field">
+                        <Text type="secondary">平均支付价</Text>
+                        <div className="field-value">¥{money(selectedActivityDesignAveragePay)}</div>
+                      </div>
+                    </Col>
+                    <Col xs={12} md={4}>
+                      <div className="field">
+                        <Text type="secondary">平均到手价</Text>
+                        <div className="field-value">¥{money(selectedActivityDesignAverageNetPay)}</div>
+                      </div>
+                    </Col>
+                    <Col xs={12} md={4}>
+                      <div className="field">
+                        <Text type="secondary">平均成本</Text>
+                        <div className="field-value">¥{money(selectedActivityDesignAverageCost)}</div>
+                      </div>
+                    </Col>
+                  </Row>
+                  <Space wrap size={[6, 6]}>
+                    <Tag color={selectedActivityDesignRiskCoveredCount ? 'orange' : 'green'}>风险覆盖 {selectedActivityDesignRiskCoveredCount}</Tag>
+                    <Tag>利润率范围 {selectedActivityDesignMinProfitRate === null ? '-' : `${rateText(selectedActivityDesignMinProfitRate)}-${rateText(selectedActivityDesignMaxProfitRate)}`}</Tag>
+                    <Tag>当前筛选覆盖 {selectedActivityDesignFilteredCoveredCount}</Tag>
+                  </Space>
+                  <Text type="secondary" className="table-text-wrap">支付区间组合数按原价桶代表的真实组合数加权统计；下方默认展示平均/最高/最低成本口径的代表明细，不直接展开全量真实组合。</Text>
+                </Space>
+              </Card>
               <Space wrap>
                 <Input.Search
                   allowClear
@@ -11537,24 +12741,24 @@ function WaimaiCalculatorInner() {
                   value={activityDesignDetailSearchText}
                   onChange={event => setActivityDesignDetailSearchText(event.target.value)}
                 />
-                <Text type="secondary">当前展示 {selectedActivityDesignFilteredRows.length} 条，区间全量 {selectedActivityDesignFullCount} 条，风险 {selectedActivityDesignRiskRows.length} 条</Text>
+                <Text type="secondary">当前展示 {selectedActivityDesignFilteredRows.length} 条代表明细，覆盖 {selectedActivityDesignFilteredCoveredCount} 个真实组合；区间覆盖 {selectedActivityDesignFullCount} 个真实组合，风险覆盖 {selectedActivityDesignRiskCoveredCount} 个组合</Text>
               </Space>
               <Tabs
                 destroyOnHidden
                 items={[
                   {
                     key: 'details',
-                    label: '组合明细',
+                    label: '代表明细',
                     children: (
                       <Table
                         loading={isActivityDesignLoading}
                         rowClassName={row => row.ignored ? 'risk-config' : row.risk?.hasRisk ? `risk-${row.risk.severity}` : ''}
                         rowKey="key"
                         size="small"
-                        columns={activityComboColumns}
+                        columns={selectedActivityValidationComboColumns}
                         dataSource={selectedActivityDesignFilteredRows}
                         pagination={tablePagination(30)}
-                        scroll={{ x: 2440 }}
+                        scroll={{ x: 2650 }}
                         tableLayout="fixed"
                       />
                     )
@@ -11724,6 +12928,454 @@ function WaimaiCalculatorInner() {
           ) : null}
         </Modal>
       </div>
+    );
+  }
+
+  function renderDataAnalysisPage() {
+    const platformDailyRows = filteredBusinessRecords;
+    const moneyTrendRows = platformDailyRows.flatMap(row => [
+      { key: `${row.date}-${row.platform}-actualReceipt`, date: row.date, metric: `${row.platformName}实收`, value: roundMoney(row.actualReceipt) },
+      { key: `${row.date}-${row.platform}-grossSales`, date: row.date, metric: `${row.platformName}营业额`, value: roundMoney(row.grossSales) },
+      { key: `${row.date}-${row.platform}-merchantActivityCost`, date: row.date, metric: `${row.platformName}活动成本`, value: roundMoney(row.merchantActivityCost) }
+    ]).filter(row => Number.isFinite(row.value));
+    const visitRateTrendRows = platformDailyRows.map(row => ({
+      key: `${row.date}-${row.platform}-visitRate`,
+      date: row.date,
+      platformName: row.platformName,
+      value: row.visitRate === null ? null : roundMoney(row.visitRate * 100)
+    })).filter((row): row is { key: string; date: string; platformName: string; value: number } => row.value !== null && Number.isFinite(row.value));
+    const orderRateTrendRows = platformDailyRows.map(row => ({
+      key: `${row.date}-${row.platform}-orderRate`,
+      date: row.date,
+      platformName: row.platformName,
+      value: row.orderRate === null ? null : roundMoney(row.orderRate * 100)
+    })).filter((row): row is { key: string; date: string; platformName: string; value: number } => row.value !== null && Number.isFinite(row.value));
+    const weeklyTrendChartRows = businessWeeklyRows
+      .slice()
+      .sort((a, b) => a.weekStart.localeCompare(b.weekStart) || a.platform.localeCompare(b.platform))
+      .flatMap(row => {
+        const weekdayRows = BUSINESS_WEEKDAY_LABELS.flatMap((weekdayLabel, weekdayIndex) => {
+          const day = row.days[weekdayIndex];
+          if (!day) return [];
+          return [{
+            key: `${row.key}-${weekdayIndex}`,
+            weekLabel: row.weekLabel,
+            weekStart: row.weekStart,
+            platform: row.platform,
+            platformName: row.platformName,
+            weekdayIndex,
+            weekdayLabel,
+            series: weekdayLabel,
+            exposureUsers: day.exposureUsers,
+            visitUsers: day.visitUsers,
+            orderUsers: day.orderUsers,
+            validOrders: day.validOrders,
+            actualReceipt: roundMoney(day.actualReceipt),
+            visitRate: day.visitRate === null ? null : roundMoney(day.visitRate * 100),
+            orderRate: day.orderRate === null ? null : roundMoney(day.orderRate * 100),
+            isWeekTotal: false
+          }];
+        });
+        return weekdayRows.concat({
+          key: `${row.key}-total`,
+          weekLabel: row.weekLabel,
+          weekStart: row.weekStart,
+          platform: row.platform,
+          platformName: row.platformName,
+          weekdayIndex: BUSINESS_WEEKDAY_LABELS.length,
+          weekdayLabel: BUSINESS_WEEK_TOTAL_LABEL,
+          series: BUSINESS_WEEK_TOTAL_LABEL,
+          exposureUsers: row.total.exposureUsers,
+          visitUsers: row.total.visitUsers,
+          orderUsers: row.total.orderUsers,
+          validOrders: row.total.validOrders,
+          actualReceipt: roundMoney(row.total.actualReceipt),
+          visitRate: row.total.visitRate === null ? null : roundMoney(row.total.visitRate * 100),
+          orderRate: row.total.orderRate === null ? null : roundMoney(row.total.orderRate * 100),
+          isWeekTotal: true
+        });
+      });
+    const weeklyTrendPlatformGroups = PLATFORMS
+      .map(platform => ({
+        platform,
+        platformName: PLATFORM_NAMES[platform],
+        rows: weeklyTrendChartRows.filter(row => row.platform === platform)
+      }))
+      .filter(group => group.rows.length);
+    const platformSummaryColumns: TableColumnsType<BusinessPlatformAggregate> = [
+      { title: '平台', dataIndex: 'platformName', width: 100, fixed: 'left', render: value => <Tag>{value}</Tag> },
+      { title: '日期范围', width: 210, render: (_, row) => businessDateRangeText(row.dateStart, row.dateEnd) },
+      { title: '天数', dataIndex: 'dayCount', width: 80 },
+      { title: '实收', dataIndex: 'actualReceipt', width: 110, render: value => `¥${money(value)}`, sorter: (a, b) => a.actualReceipt - b.actualReceipt },
+      { title: '营业额', dataIndex: 'grossSales', width: 110, render: value => `¥${money(value)}` },
+      { title: '有效订单', dataIndex: 'validOrders', width: 100, sorter: (a, b) => a.validOrders - b.validOrders },
+      { title: '单均实付', dataIndex: 'averageReceipt', width: 100, render: value => `¥${money(value)}` },
+      { title: '曝光人数', dataIndex: 'exposureUsers', width: 100 },
+      { title: '入店率', dataIndex: 'visitRate', width: 100, render: value => value === null ? '-' : rateText(value) },
+      { title: '下单率', dataIndex: 'orderRate', width: 100, render: value => value === null ? '-' : rateText(value) },
+      { title: '商家活动成本', dataIndex: 'merchantActivityCost', width: 130, render: value => `¥${money(value)}` },
+      { title: '活动成本率', dataIndex: 'activityCostRate', width: 110, render: value => value === null ? '-' : rateText(value) },
+      { title: '平台补贴', dataIndex: 'platformSubsidy', width: 110, render: value => `¥${money(value)}` },
+      { title: '动销率', dataIndex: 'tradedProductRate', width: 100, render: value => value === null ? '-' : rateText(value) }
+    ];
+    const funnelSummaryColumns: TableColumnsType<BusinessPlatformAggregate> = [
+      { title: '平台', dataIndex: 'platformName', width: 90, fixed: 'left', render: value => <Tag>{value}</Tag> },
+      { title: '漏斗阶段', width: 320, render: (_, row) => businessFunnelStageText(row) },
+      { title: '入店率', width: 100, render: (_, row) => businessFunnelMetrics(row).visitRate === null ? '-' : rateText(businessFunnelMetrics(row).visitRate) },
+      { title: '曝光到入店流失', width: 150, render: (_, row) => {
+        const funnel = businessFunnelMetrics(row);
+        return `${funnel.exposureVisitLoss} / ${funnel.exposureVisitLossRate === null ? '-' : rateText(funnel.exposureVisitLossRate)}`;
+      } },
+      { title: '下单率', width: 100, render: (_, row) => businessFunnelMetrics(row).orderRate === null ? '-' : rateText(businessFunnelMetrics(row).orderRate) },
+      { title: '入店到下单流失', width: 150, render: (_, row) => {
+        const funnel = businessFunnelMetrics(row);
+        return `${funnel.visitOrderLoss} / ${funnel.visitOrderLossRate === null ? '-' : rateText(funnel.visitOrderLossRate)}`;
+      } },
+      { title: '有效订单转化', width: 130, render: (_, row) => {
+        const funnel = businessFunnelMetrics(row);
+        return funnel.orderValidRate === null ? '-' : rateText(funnel.orderValidRate);
+      } },
+      { title: '全链路订单转化', width: 140, render: (_, row) => {
+        const funnel = businessFunnelMetrics(row);
+        return funnel.exposureValidRate === null ? '-' : rateText(funnel.exposureValidRate);
+      } },
+      { title: '主要断点', width: 120, render: (_, row) => <Tag color="orange">{businessFunnelMetrics(row).bottleneck}</Tag> }
+    ];
+    const dailyColumns: TableColumnsType<BusinessDailyAggregate> = [
+      { title: '日期', dataIndex: 'date', width: 120, fixed: 'left' },
+      { title: '实收', dataIndex: 'actualReceipt', width: 110, render: value => `¥${money(value)}`, sorter: (a, b) => a.actualReceipt - b.actualReceipt },
+      { title: '营业额', dataIndex: 'grossSales', width: 110, render: value => `¥${money(value)}` },
+      { title: '有效订单', dataIndex: 'validOrders', width: 100, sorter: (a, b) => a.validOrders - b.validOrders },
+      { title: '单均实付', dataIndex: 'averageReceipt', width: 100, render: value => `¥${money(value)}` },
+      { title: '曝光人数', dataIndex: 'exposureUsers', width: 100 },
+      { title: '入店人数', dataIndex: 'visitUsers', width: 100 },
+      { title: '入店率', dataIndex: 'visitRate', width: 100, render: value => value === null ? '-' : rateText(value) },
+      { title: '下单人数', dataIndex: 'orderUsers', width: 100 },
+      { title: '下单率', dataIndex: 'orderRate', width: 100, render: value => value === null ? '-' : rateText(value) },
+      { title: '商家活动成本', dataIndex: 'merchantActivityCost', width: 130, render: value => `¥${money(value)}` },
+      { title: '平台补贴', dataIndex: 'platformSubsidy', width: 110, render: value => `¥${money(value)}` },
+      { title: '成本率', dataIndex: 'activityCostRate', width: 100, render: value => value === null ? '-' : rateText(value) }
+    ];
+    const detailColumns: TableColumnsType<BusinessDailyRecord> = [
+      { title: '日期', dataIndex: 'date', width: 120, fixed: 'left' },
+      { title: '平台', dataIndex: 'platformName', width: 90, render: value => <Tag>{value}</Tag> },
+      { title: '实收', dataIndex: 'actualReceipt', width: 110, render: value => `¥${money(value)}`, sorter: (a, b) => a.actualReceipt - b.actualReceipt },
+      { title: '营业额', dataIndex: 'grossSales', width: 110, render: value => `¥${money(value)}` },
+      { title: '有效订单', dataIndex: 'validOrders', width: 100 },
+      { title: '无效订单', dataIndex: 'invalidOrders', width: 100 },
+      { title: '单均实付', dataIndex: 'averageReceipt', width: 100, render: value => `¥${money(value)}` },
+      { title: '曝光', dataIndex: 'exposureUsers', width: 90 },
+      { title: '入店', dataIndex: 'visitUsers', width: 90 },
+      { title: '入店率', dataIndex: 'visitRate', width: 100, render: value => value === null ? '-' : rateText(value) },
+      { title: '下单', dataIndex: 'orderUsers', width: 90 },
+      { title: '下单率', dataIndex: 'orderRate', width: 100, render: value => value === null ? '-' : rateText(value) },
+      { title: '商家活动成本', dataIndex: 'merchantActivityCost', width: 130, render: value => `¥${money(value)}` },
+      { title: '平台补贴', dataIndex: 'platformSubsidy', width: 110, render: value => `¥${money(value)}` },
+      {
+        title: '商品结构',
+        width: 180,
+        render: (_, row) => row.listedProducts > 0
+          ? `${row.tradedProducts}/${row.listedProducts} 动销，缺货 ${row.outOfStockProducts}`
+          : <Text type="secondary">日报未提供</Text>
+      },
+      { title: '来源', dataIndex: 'sourceFileName', width: 220, ellipsis: true }
+    ];
+    const dailyFunnelColumns: TableColumnsType<BusinessDailyRecord> = [
+      { title: '日期', dataIndex: 'date', width: 120, fixed: 'left' },
+      { title: '平台', dataIndex: 'platformName', width: 90, fixed: 'left', render: value => <Tag>{value}</Tag> },
+      { title: '漏斗阶段', width: 320, render: (_, row) => businessFunnelStageText(row) },
+      { title: '入店率', width: 100, render: (_, row) => businessFunnelMetrics(row).visitRate === null ? '-' : rateText(businessFunnelMetrics(row).visitRate) },
+      { title: '曝光到入店流失', width: 150, render: (_, row) => {
+        const funnel = businessFunnelMetrics(row);
+        return `${funnel.exposureVisitLoss} / ${funnel.exposureVisitLossRate === null ? '-' : rateText(funnel.exposureVisitLossRate)}`;
+      } },
+      { title: '下单率', width: 100, render: (_, row) => businessFunnelMetrics(row).orderRate === null ? '-' : rateText(businessFunnelMetrics(row).orderRate) },
+      { title: '入店到下单流失', width: 150, render: (_, row) => {
+        const funnel = businessFunnelMetrics(row);
+        return `${funnel.visitOrderLoss} / ${funnel.visitOrderLossRate === null ? '-' : rateText(funnel.visitOrderLossRate)}`;
+      } },
+      { title: '有效订单转化', width: 130, render: (_, row) => {
+        const funnel = businessFunnelMetrics(row);
+        return funnel.orderValidRate === null ? '-' : rateText(funnel.orderValidRate);
+      } },
+      { title: '全链路订单转化', width: 140, render: (_, row) => {
+        const funnel = businessFunnelMetrics(row);
+        return funnel.exposureValidRate === null ? '-' : rateText(funnel.exposureValidRate);
+      } },
+      { title: '主要断点', width: 120, render: (_, row) => <Tag color="orange">{businessFunnelMetrics(row).bottleneck}</Tag> }
+    ];
+    const diagnosticColumns: TableColumnsType<BusinessDiagnosticItem> = [
+      {
+        title: '等级',
+        dataIndex: 'severity',
+        width: 90,
+        render: value => <Tag color={businessDiagnosticColor(value)}>{businessDiagnosticSeverityText(value)}</Tag>
+      },
+      { title: '问题', dataIndex: 'title', width: 180 },
+      { title: '当前', dataIndex: 'currentText', width: 120 },
+      { title: '对比', dataIndex: 'baselineText', width: 120 },
+      { title: '判断', dataIndex: 'description', width: 360 },
+      { title: '建议', dataIndex: 'suggestion', width: 360 }
+    ];
+    const importColumns: TableColumnsType<BusinessDataImportBatch> = [
+      { title: '导入时间', dataIndex: 'importedAt', width: 170, render: value => businessImportedAtText(String(value || '')) },
+      { title: '平台', dataIndex: 'platformName', width: 90, render: value => <Tag>{value}</Tag> },
+      { title: '日期范围', width: 210, render: (_, row) => businessDateRangeText(row.dateStart, row.dateEnd) },
+      { title: '天数', dataIndex: 'rowCount', width: 80 },
+      { title: '覆盖日期', width: 220, render: (_, row) => row.replacedDates.length ? row.replacedDates.join('、') : <Text type="secondary">无</Text> },
+      { title: '文件', dataIndex: 'fileName', width: 260, ellipsis: true },
+      { title: '提示', width: 260, render: (_, row) => row.warnings.length ? row.warnings.join('；') : <Text type="secondary">无</Text> }
+    ];
+    const noteColumns: TableColumnsType<BusinessAnalysisNote> = [
+      { title: '保存时间', dataIndex: 'createdAt', width: 170, render: value => businessImportedAtText(String(value || '')) },
+      { title: '范围', width: 210, render: (_, row) => businessDateRangeText(row.dateStart, row.dateEnd) },
+      { title: '平台', dataIndex: 'platform', width: 90, render: value => value === 'all' ? '全部' : PLATFORM_NAMES[value as Platform] },
+      { title: '结论', render: (_, row) => row.items.length ? row.items.join('；') : <Text type="secondary">无</Text> }
+    ];
+    const renderBusinessMetric = (label: string, value: React.ReactNode, secondary?: string) => (
+      <div className="field">
+        <Text type="secondary">{label}</Text>
+        <div className="field-value">{value}</div>
+        {secondary ? <Text type="secondary">{secondary}</Text> : null}
+      </div>
+    );
+    const renderBusinessLineChart = (
+      rows: Array<{ key: string; value: number; series: string } & Record<string, unknown>>,
+      xField: string,
+      xTitle: string,
+      yTitle: string,
+      unit: 'count' | 'rate' | 'money'
+    ) => rows.length ? (
+      <div className="chart-frame">
+        <AntvLine
+          data={rows}
+          height={260}
+          autoFit
+          xField={xField}
+          yField="value"
+          colorField="series"
+          shapeField="smooth"
+          axis={{
+            x: { title: xTitle, labelAutoRotate: false },
+            y: {
+              title: yTitle,
+              labelFormatter: (value: number | string) => (
+                unit === 'rate' ? `${money(value)}%` : unit === 'money' ? `¥${money(value)}` : `${Math.round(Number(value))}`
+              )
+            }
+          }}
+          scale={{
+            color: {
+              domain: [...BUSINESS_WEEKDAY_LABELS, BUSINESS_WEEK_TOTAL_LABEL],
+              range: BUSINESS_WEEKDAY_CHART_COLORS
+            }
+          }}
+          style={{ lineWidth: 2.4 }}
+          point={{ sizeField: 3.5, style: { stroke: '#fff', lineWidth: 1 } }}
+          slider={{
+            x: {
+              labelFormatter: (value: number | string) => String(value)
+            }
+          }}
+        />
+      </div>
+    ) : <div className="chart-empty">暂无{yTitle}数据</div>;
+
+    return (
+      <Space direction="vertical" style={{ width: '100%' }} size="middle">
+        <Card
+          title="经营数据分析"
+          extra={
+            <Space wrap>
+              <Upload {...uploadProps(importBusinessReport)}><Button icon={<UploadOutlined />}>导入经营日报</Button></Upload>
+              <Button icon={<DownloadOutlined />} onClick={exportBusinessAnalysis}>导出明细</Button>
+              <Button icon={<SaveOutlined />} onClick={saveBusinessAnalysisNote}>保存诊断</Button>
+            </Space>
+          }
+        >
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Space wrap>
+              <Select
+                style={{ width: 140 }}
+                value={businessAnalysisPlatform}
+                onChange={setBusinessAnalysisPlatform}
+                options={[
+                  { value: 'all', label: '全部平台' },
+                  ...PLATFORMS.map(platform => ({ value: platform, label: PLATFORM_NAMES[platform] }))
+                ]}
+              />
+              <Input type="date" style={{ width: 160 }} value={businessAnalysisDateStart} onChange={event => setBusinessAnalysisDateStart(event.target.value)} />
+              <Input type="date" style={{ width: 160 }} value={businessAnalysisDateEnd} onChange={event => setBusinessAnalysisDateEnd(event.target.value)} />
+              <Button onClick={() => { setBusinessAnalysisDateStart(''); setBusinessAnalysisDateEnd(''); }}>全部日期</Button>
+              <Tag color="blue">{businessStoreRecords.length} 条日报</Tag>
+              <Tag>{businessDateRangeText(businessDataDateBounds.start, businessDataDateBounds.end)}</Tag>
+            </Space>
+            <Text type="secondary">当前按订单日期和平台分别统计；重复导入同一平台同一天会直接覆盖。总计只做辅助查看，平台补贴单独展示，不计入商家活动成本。</Text>
+          </Space>
+        </Card>
+
+        <Card title="总计汇总（辅助）">
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Text type="secondary">这里用于快速看当前筛选范围的全店合计；经营判断和后续拆解以平台分开统计为准。</Text>
+            <Row gutter={[12, 12]}>
+              <Col xs={12} md={6}>{renderBusinessMetric('实收', `¥${money(businessSummary.actualReceipt)}`, `${businessSummary.validOrders} 单`)}</Col>
+              <Col xs={12} md={6}>{renderBusinessMetric('入店率', businessSummary.visitRate === null ? '-' : rateText(businessSummary.visitRate), `${businessSummary.exposureUsers} 曝光`)}</Col>
+              <Col xs={12} md={6}>{renderBusinessMetric('下单率', businessSummary.orderRate === null ? '-' : rateText(businessSummary.orderRate), `${businessSummary.visitUsers} 入店`)}</Col>
+              <Col xs={12} md={6}>{renderBusinessMetric('单均实付', `¥${money(businessSummary.averageReceipt)}`, `${businessSummary.dayCount} 天`)}</Col>
+              <Col xs={12} md={6}>{renderBusinessMetric('商家活动成本', `¥${money(businessSummary.merchantActivityCost)}`, businessSummary.merchantCostPerOrder === null ? undefined : `单均 ¥${money(businessSummary.merchantCostPerOrder)}`)}</Col>
+              <Col xs={12} md={6}>{renderBusinessMetric('活动成本率', businessSummary.activityCostRate === null ? '-' : rateText(businessSummary.activityCostRate), '按营业额计算')}</Col>
+              <Col xs={12} md={6}>{renderBusinessMetric('平台补贴', `¥${money(businessSummary.platformSubsidy)}`, '不计入成本')}</Col>
+              <Col xs={12} md={6}>{renderBusinessMetric('动销率', businessSummary.tradedProductRate === null ? '-' : rateText(businessSummary.tradedProductRate), '按日报字段')}</Col>
+            </Row>
+          </Space>
+        </Card>
+
+        <Card title="平台汇总（主口径）">
+          <Table rowKey="key" size="small" columns={platformSummaryColumns} dataSource={businessPlatformRows} pagination={false} scroll={{ x: 1510 }} />
+        </Card>
+
+        <Card title="漏斗模型（平台对比）">
+          <Space direction="vertical" style={{ width: '100%' }} size="small">
+            <Text type="secondary">按平台比较曝光到入店、入店到下单、下单到有效订单的转化链路，用于定位主要流失环节。</Text>
+            <Table rowKey="key" size="small" columns={funnelSummaryColumns} dataSource={businessPlatformRows} pagination={false} scroll={{ x: 1500 }} />
+          </Space>
+        </Card>
+
+        <Card title="按周变化（星期对比）">
+          <Space direction="vertical" style={{ width: '100%' }} size="large">
+            <Text type="secondary">横轴是自然周，每条线代表周一到周日中的某一天，并额外展示周总计曲线；平台分开展示。可拖动图表底部滑块缩放自然周范围。</Text>
+            {weeklyTrendPlatformGroups.length ? weeklyTrendPlatformGroups.map(group => {
+              const exposureRows = group.rows.map(row => ({ ...row, value: row.exposureUsers }));
+              const visitRows = group.rows.map(row => ({ ...row, value: row.visitUsers }));
+              const orderUserRows = group.rows.map(row => ({ ...row, value: row.orderUsers }));
+              return (
+                <Space key={group.platform} direction="vertical" style={{ width: '100%' }} size="small">
+                  <Space wrap>
+                    <Tag color="blue">{group.platformName}</Tag>
+                    <Text type="secondary">每条线为一个星期几，周总计为该平台当周合计口径。</Text>
+                  </Space>
+                  <Row gutter={[12, 12]}>
+                    <Col xs={24} xl={8}>
+                      <Space direction="vertical" style={{ width: '100%' }} size="small">
+                        <Text strong>曝光人数按周变化</Text>
+                        {renderBusinessLineChart(exposureRows, 'weekLabel', '自然周', '曝光人数', 'count')}
+                      </Space>
+                    </Col>
+                    <Col xs={24} xl={8}>
+                      <Space direction="vertical" style={{ width: '100%' }} size="small">
+                        <Text strong>入店人数按周变化</Text>
+                        {renderBusinessLineChart(visitRows, 'weekLabel', '自然周', '入店人数', 'count')}
+                      </Space>
+                    </Col>
+                    <Col xs={24} xl={8}>
+                      <Space direction="vertical" style={{ width: '100%' }} size="small">
+                        <Text strong>下单数按周变化</Text>
+                        {renderBusinessLineChart(orderUserRows, 'weekLabel', '自然周', '下单数', 'count')}
+                      </Space>
+                    </Col>
+                  </Row>
+                </Space>
+              );
+            }) : <div className="chart-empty">暂无按周变化数据</div>}
+          </Space>
+        </Card>
+
+        <Row gutter={[12, 12]}>
+          <Col xs={24} xl={12}>
+            <Card title="金额趋势（按平台）">
+              {moneyTrendRows.length ? (
+                <div className="chart-frame">
+                  <AntvLine
+                    data={moneyTrendRows}
+                    height={260}
+                    autoFit
+                    xField="date"
+                    yField="value"
+                    colorField="metric"
+                    shapeField="smooth"
+                    axis={{
+                      x: { title: '日期', labelAutoRotate: false },
+                      y: { title: '金额', labelFormatter: (value: number | string) => `¥${money(value)}` }
+                    }}
+                    scale={{ color: { range: ['#496f5d', '#5b7c99', '#b85f32'] } }}
+                    point={{ sizeField: 3.5, style: { stroke: '#fff', lineWidth: 1 } }}
+                  />
+                </div>
+              ) : <div className="chart-empty">暂无金额趋势数据</div>}
+            </Card>
+          </Col>
+          <Col xs={24} xl={12}>
+            <Card title="入店率趋势（按平台）">
+              {visitRateTrendRows.length ? (
+                <div className="chart-frame">
+                  <AntvLine
+                    data={visitRateTrendRows}
+                    height={260}
+                    autoFit
+                    xField="date"
+                    yField="value"
+                    colorField="platformName"
+                    shapeField="smooth"
+                    axis={{
+                      x: { title: '日期', labelAutoRotate: false },
+                      y: { title: '入店率', labelFormatter: (value: number | string) => `${money(value)}%` }
+                    }}
+                    scale={{ color: { range: ['#d95b18', '#6d6aa8'] } }}
+                    point={{ sizeField: 3.5, style: { stroke: '#fff', lineWidth: 1 } }}
+                  />
+                </div>
+              ) : <div className="chart-empty">暂无入店率趋势数据</div>}
+            </Card>
+          </Col>
+          <Col xs={24} xl={12}>
+            <Card title="下单率趋势（按平台）">
+              {orderRateTrendRows.length ? (
+                <div className="chart-frame">
+                  <AntvLine
+                    data={orderRateTrendRows}
+                    height={260}
+                    autoFit
+                    xField="date"
+                    yField="value"
+                    colorField="platformName"
+                    shapeField="smooth"
+                    axis={{
+                      x: { title: '日期', labelAutoRotate: false },
+                      y: { title: '下单率', labelFormatter: (value: number | string) => `${money(value)}%` }
+                    }}
+                    scale={{ color: { range: ['#d95b18', '#6d6aa8'] } }}
+                    point={{ sizeField: 3.5, style: { stroke: '#fff', lineWidth: 1 } }}
+                  />
+                </div>
+              ) : <div className="chart-empty">暂无下单率趋势数据</div>}
+            </Card>
+          </Col>
+        </Row>
+
+        <Card title="诊断摘要">
+          <Table rowKey="key" size="small" columns={diagnosticColumns} dataSource={businessDiagnostics} pagination={false} scroll={{ x: 1250 }} />
+        </Card>
+
+        <Card title="每日总计（辅助）">
+          <Table rowKey="key" size="small" columns={dailyColumns} dataSource={businessDailyRows} pagination={{ pageSize: 8 }} scroll={{ x: 1360 }} />
+        </Card>
+
+        <Card title="每日平台统计（主口径）">
+          <Table rowKey="key" size="small" columns={detailColumns} dataSource={filteredBusinessRecords} pagination={{ pageSize: 8 }} scroll={{ x: 1640 }} />
+        </Card>
+
+        <Card title="每日漏斗明细（主口径）">
+          <Table rowKey="key" size="small" columns={dailyFunnelColumns} dataSource={filteredBusinessRecords} pagination={{ pageSize: 8 }} scroll={{ x: 1500 }} />
+        </Card>
+
+        <Card title="导入记录">
+          <Table rowKey="id" size="small" columns={importColumns} dataSource={businessImportRows} pagination={{ pageSize: 6 }} scroll={{ x: 1270 }} />
+        </Card>
+
+        <Card title="已保存诊断">
+          <Table rowKey="id" size="small" columns={noteColumns} dataSource={businessNotes} pagination={{ pageSize: 5 }} />
+        </Card>
+      </Space>
     );
   }
 
@@ -12140,6 +13792,7 @@ function WaimaiCalculatorInner() {
     if (state.activePage === 'meituan') return renderActivityPage('meituan');
     if (state.activePage === 'eleme') return renderActivityPage('eleme');
     if (state.activePage === 'activity-design') return renderActivityDesignPage();
+    if (state.activePage === 'data-analysis') return renderDataAnalysisPage();
     if (state.activePage === 'pricing') return renderPricingEvaluationPage();
     return renderResultsPage();
   }
@@ -12178,6 +13831,7 @@ function WaimaiCalculatorInner() {
               { key: 'meituan', label: '美团活动' },
               { key: 'eleme', label: '饿了么活动' },
               { key: 'activity-design', label: '活动设计' },
+              { key: 'data-analysis', label: '数据分析' },
               { key: 'pricing', label: '定价评估' },
               { key: 'results', label: '测算结果' }
             ]}

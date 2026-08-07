@@ -235,7 +235,6 @@ body {
 .chart-frame {
   width: 100%;
   min-height: 298px;
-  overflow: hidden;
   padding: 8px;
   border: 1px solid #eadfd2;
   border-radius: 8px;
