@@ -245,6 +245,27 @@ body {
   width: 100%;
 }
 
+.business-anomaly-chart {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+}
+
+.business-anomaly-trend {
+  min-height: 338px;
+}
+
+.business-anomaly-delta {
+  min-height: 214px;
+  background: #fff;
+}
+
+.business-anomaly-delta-empty {
+  min-height: 176px;
+  border: 0;
+  background: transparent;
+}
+
 .chart-empty {
   display: flex;
   min-height: 220px;

@@ -1,8 +1,8 @@
-export type PageKey = 'store' | 'products' | 'system-strategy' | 'platform' | 'meituan' | 'eleme' | 'activity-design' | 'data-analysis' | 'pricing' | 'results';
+export type PageKey = 'store' | 'products' | 'system-strategy' | 'platform' | 'meituan' | 'eleme' | 'activity-design' | 'order-analysis' | 'data-analysis' | 'pricing' | 'results';
 
 export const DEFAULT_PAGE_KEY: PageKey = 'store';
 
-export const PAGE_KEYS: PageKey[] = ['store', 'products', 'system-strategy', 'platform', 'meituan', 'eleme', 'activity-design', 'data-analysis', 'pricing', 'results'];
+export const PAGE_KEYS: PageKey[] = ['store', 'products', 'system-strategy', 'platform', 'meituan', 'eleme', 'activity-design', 'order-analysis', 'data-analysis', 'pricing', 'results'];
 
 export const ROUTED_PAGE_KEYS: PageKey[] = PAGE_KEYS.filter(page => page !== DEFAULT_PAGE_KEY);
 
@@ -14,6 +14,7 @@ export const PAGE_PATHS: Record<PageKey, string> = {
   meituan: '/meituan',
   eleme: '/eleme',
   'activity-design': '/activity-design',
+  'order-analysis': '/order-analysis',
   'data-analysis': '/data-analysis',
   pricing: '/pricing',
   results: '/results'

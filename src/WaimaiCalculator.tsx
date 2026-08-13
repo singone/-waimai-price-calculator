@@ -9,6 +9,7 @@ import {
   Card,
   Checkbox,
   ConfigProvider,
+  DatePicker,
   Flex,
   Input,
   InputNumber,
@@ -42,8 +43,17 @@ import {
   SaveOutlined,
   UploadOutlined
 } from '@ant-design/icons';
+import dayjs, { type Dayjs } from 'dayjs';
 import * as XLSX from 'xlsx';
 import { DEFAULT_PAGE_KEY, isPageKey, pageFromPathname, pathForPage, type PageKey } from './pageRoutes';
+import { ActivityPage } from './components/activity/ActivityPage';
+import { ActivityDiscountTierEditorModal, type ActivityDiscountTierBatchDraft } from './components/modals/ActivityDiscountTierEditorModal';
+import { BusinessNoteEditorModal } from './components/modals/BusinessNoteEditorModal';
+import { OrderAnalysisPage } from './components/orderAnalysis/OrderAnalysisPage';
+import { PlatformPage } from './components/platform/PlatformPage';
+import { ProductsPage } from './components/products/ProductsPage';
+import { StorePage } from './components/store/StorePage';
+import { SystemStrategyPage } from './components/systemStrategy/SystemStrategyPage';
 import { summarizePriceBands as summarizeDomainPriceBands } from './domain/core';
 import { isCalculationAbortError, runCalculationTask } from './workers/calculationClient';
 import type {
@@ -75,9 +85,40 @@ import type {
   PricingProductRow
 } from './domain/types';
 import { buildActivityRouteKey } from './domain/activity/shared';
+import {
+  aggregateEnrichedOrdersByProduct,
+  aggregateOrdersByActivityCombo,
+  aggregateOrdersByActivityComboPayBand,
+  aggregateOrdersByActivityType,
+  aggregateOrdersByHour,
+  aggregateOrdersByMealPeriod,
+  aggregateOrdersByMealPeriodPayBand,
+  aggregateOrdersByPayBand,
+  aggregateOrdersByPlatform,
+  aggregateOrdersByPlatformPayBand,
+  buildOrderInsights,
+  buildOrderOperationRecommendations,
+  enrichOrderRecords,
+  findOrderWorkbookHeader,
+  normalizeOrderAnalysisState,
+  normalizeOrderDetailRecord,
+  orderAnalysisExportRows,
+  parseOrderWorkbook,
+  summarizeOrderProfit,
+  summarizeOrderRecords
+} from './domain/orderAnalysis';
+import type {
+  OrderAnalysisPlatformFilter,
+  OrderAnalysisState,
+  OrderDetailRecord,
+  ParsedOrderWorkbook
+} from './domain/orderAnalysis';
 
 const AntvLine = dynamic(() => import('@ant-design/charts').then(mod => mod.Line), { ssr: false });
+const AntvColumn = dynamic(() => import('@ant-design/charts').then(mod => mod.Column), { ssr: false });
 const AntvDualAxes = dynamic(() => import('@ant-design/charts').then(mod => mod.DualAxes), { ssr: false });
+const AntvFunnel = dynamic(() => import('@ant-design/charts').then(mod => mod.Funnel), { ssr: false });
+const { RangePicker } = DatePicker;
 
 type Platform = 'meituan' | 'eleme';
 type Severity = 'none' | 'critical' | 'high' | 'medium' | 'config';
@@ -126,7 +167,7 @@ type SelectedResultBand = {
 };
 
 type ActivityDesignStage = 'priceScan' | 'routeDesign' | 'payValidation';
-type BusinessDataMetricKey = 'actualReceipt' | 'validOrders' | 'exposureUsers' | 'visitRate' | 'orderRate' | 'merchantActivityCost' | 'tradedProductRate';
+type BusinessDataMetricKey = 'actualReceipt' | 'validOrders' | 'exposureUsers' | 'visitRate' | 'orderRate' | 'merchantActivityCost' | 'tradedProductRate' | 'newOrderUsers' | 'oldOrderUsers' | 'newOrderRate' | 'oldOrderRate' | 'repeatRate7d' | 'repeatRate30d' | 'platformRepeatRate';
 
 type BusinessDailyRecord = {
   key: string;
@@ -152,6 +193,23 @@ type BusinessDailyRecord = {
   orderUsers: number;
   visitRate: number | null;
   orderRate: number | null;
+  customerBreakdownProvided: boolean;
+  newExposureUsers: number;
+  oldExposureUsers: number;
+  newVisitUsers: number;
+  oldVisitUsers: number;
+  newOrderUsers: number;
+  oldOrderUsers: number;
+  newVisitRate: number | null;
+  oldVisitRate: number | null;
+  newOrderRate: number | null;
+  oldOrderRate: number | null;
+  repeatDataProvided: boolean;
+  repeatUsers7d: number;
+  repeatRate7d: number | null;
+  repeatUsers30d: number;
+  repeatRate30d: number | null;
+  platformRepeatRate: number | null;
   exposureTimes: number;
   visitTimes: number;
   orderTimes: number;
@@ -190,15 +248,27 @@ type BusinessDataImportBatch = {
   warnings: string[];
 };
 
+type BusinessAnalysisNoteKind = 'memo' | 'diagnostic';
+
 type BusinessAnalysisNote = {
   id: string;
   storeId: string;
+  kind: BusinessAnalysisNoteKind;
   title: string;
   createdAt: string;
   dateStart: string;
   dateEnd: string;
   platform: Platform | 'all';
   items: string[];
+};
+
+type BusinessNoteEditorState = {
+  id?: string;
+  dateStart: string;
+  dateEnd: string;
+  platform: Platform | 'all';
+  title: string;
+  content: string;
 };
 
 type BusinessDiagnosticItem = {
@@ -232,6 +302,25 @@ type BusinessDataSummary = {
   orderUsers: number;
   visitRate: number | null;
   orderRate: number | null;
+  customerBreakdownProvided: boolean;
+  newExposureUsers: number;
+  oldExposureUsers: number;
+  newVisitUsers: number;
+  oldVisitUsers: number;
+  newOrderUsers: number;
+  oldOrderUsers: number;
+  newVisitRate: number | null;
+  oldVisitRate: number | null;
+  newOrderRate: number | null;
+  oldOrderRate: number | null;
+  newOrderShare: number | null;
+  oldOrderShare: number | null;
+  repeatDataProvided: boolean;
+  repeatUsers7d: number;
+  repeatRate7d: number | null;
+  repeatUsers30d: number;
+  repeatRate30d: number | null;
+  platformRepeatRate: number | null;
   averageReceipt: number;
   merchantActivityCost: number;
   merchantActivityCostWithoutFull: number;
@@ -273,6 +362,16 @@ type BusinessWeekComparisonRow = {
 };
 
 type BusinessFunnelMetricSource = Pick<BusinessDataSummary, 'exposureUsers' | 'visitUsers' | 'orderUsers' | 'validOrders' | 'visitRate' | 'orderRate'>;
+type BusinessFunnelChartRow = {
+  key: string;
+  stage: string;
+  value: number;
+  valueText: string;
+  conversionTitleText: string;
+  conversionRateText: string;
+  conversionText: string;
+  totalConversionText: string;
+};
 
 type ParsedBusinessReport = {
   platform: Platform;
@@ -295,13 +394,6 @@ type ActivityDiscountTierEditorState = {
   objective: RedesignedActivityDesignObjective;
   title: string;
   fallback: ActivityOriginalDiscountTier[];
-};
-
-type ActivityDiscountTierBatchDraft = {
-  start: number;
-  end: number | '';
-  step: number;
-  rate: number;
 };
 
 type PayBandAnalysisPanelProps = {
@@ -569,6 +661,7 @@ type CalculatorState = {
   riskSafetyMargin: number;
   activityStrategySettings: ActivityStrategySettings;
   businessData: BusinessDataState;
+  orderAnalysis: OrderAnalysisState;
   platformRules: FeeRule;
   stores: Store[];
 };
@@ -1413,6 +1506,10 @@ const defaultState: CalculatorState = {
     records: [],
     imports: [],
     notes: []
+  },
+  orderAnalysis: {
+    records: [],
+    imports: []
   },
   platformRules: {
     commissionRate: 4.8,
@@ -3676,53 +3773,6 @@ function formatActivityOriginalDiscountTiers(tiers: ActivityOriginalDiscountTier
   return text || '无覆盖，全部按基准';
 }
 
-function parseActivityOriginalDiscountTiers(value: string, fallback: ActivityOriginalDiscountTier[]) {
-  const rows = value
-    .split(/[;；,，\n]+/)
-    .map(item => item.trim())
-    .filter(Boolean)
-    .map(item => {
-      const [rangeText, rateText = ''] = item.split(/[:：]/);
-      const [minText = '', maxText = ''] = rangeText.split(/[-~—至到]/);
-      const originalMin = Math.max(0, toMoneyNumber(minText, Number.NaN));
-      const originalMax = /∞|不限|\+/.test(maxText) ? 999 : Math.max(originalMin + 1, toMoneyNumber(maxText, Number.NaN));
-      const discountRate = Math.max(0, Math.min(95, toMoneyNumber(rateText.replace('%', ''), Number.NaN)));
-      return { originalMin, originalMax, discountRate };
-    })
-    .filter(row => Number.isFinite(row.originalMin) && Number.isFinite(row.originalMax) && Number.isFinite(row.discountRate));
-  return normalizeActivityOriginalDiscountTiers(rows, fallback);
-}
-
-function createActivityDiscountTiersByStep(draft: ActivityDiscountTierBatchDraft) {
-  const start = Math.max(0, Number(draft.start) || 0);
-  const end = draft.end === '' ? 999 : Math.max(start + 1, Number(draft.end) || start + 1);
-  const step = Math.max(1, Number(draft.step) || 1);
-  const rate = Math.max(0, Math.min(95, Number(draft.rate) || 0));
-  const rows: ActivityOriginalDiscountTier[] = [];
-  let current = start;
-  while (current < end - 1e-9 && rows.length < 80) {
-    const next = Math.min(end, current + step);
-    rows.push({ originalMin: roundMoney(current), originalMax: next >= 999 ? 999 : roundMoney(next), discountRate: rate });
-    current = next;
-  }
-  return rows;
-}
-
-function shiftActivityDiscountTierRates(tiers: ActivityOriginalDiscountTier[], delta: number) {
-  return normalizeActivityOriginalDiscountTiers(tiers.map(tier => ({
-    ...tier,
-    discountRate: Math.max(0, Math.min(95, roundMoney(tier.discountRate + delta)))
-  })), tiers);
-}
-
-function setActivityDiscountTierRates(tiers: ActivityOriginalDiscountTier[], rate: number) {
-  const nextRate = Math.max(0, Math.min(95, Number(rate) || 0));
-  return normalizeActivityOriginalDiscountTiers(tiers.map(tier => ({
-    ...tier,
-    discountRate: nextRate
-  })), tiers);
-}
-
 function normalizeActivityObjectiveStrategies(
   value: Partial<Record<RedesignedActivityDesignObjective, Partial<ActivityObjectiveStrategy>>> | undefined,
   baseTargetProfitRate = DEFAULT_ACTIVITY_DESIGN_SETTINGS.targetProfitRate,
@@ -3911,12 +3961,58 @@ function normalizeBusinessDailyRecord(row: Partial<BusinessDailyRecord> | undefi
   const exposureUsers = Math.max(0, Math.floor(toNumber(row?.exposureUsers, 0)));
   const visitUsers = Math.max(0, Math.floor(toNumber(row?.visitUsers, 0)));
   const orderUsers = Math.max(0, Math.floor(toNumber(row?.orderUsers, 0)));
+  const hasBusinessField = (field: keyof BusinessDailyRecord) => row?.[field] !== undefined && row?.[field] !== null;
+  const customerBreakdownProvided = Boolean(row?.customerBreakdownProvided) || ([
+    'newExposureUsers',
+    'oldExposureUsers',
+    'newVisitUsers',
+    'oldVisitUsers',
+    'newOrderUsers',
+    'oldOrderUsers',
+    'newVisitRate',
+    'oldVisitRate',
+    'newOrderRate',
+    'oldOrderRate'
+  ] as Array<keyof BusinessDailyRecord>).some(hasBusinessField);
+  const newExposureUsers = customerBreakdownProvided ? Math.max(0, Math.floor(toNumber(row?.newExposureUsers, 0))) : 0;
+  const oldExposureUsers = customerBreakdownProvided ? Math.max(0, Math.floor(toNumber(row?.oldExposureUsers, 0))) : 0;
+  const newVisitUsers = customerBreakdownProvided ? Math.max(0, Math.floor(toNumber(row?.newVisitUsers, 0))) : 0;
+  const oldVisitUsers = customerBreakdownProvided ? Math.max(0, Math.floor(toNumber(row?.oldVisitUsers, 0))) : 0;
+  const newOrderUsers = customerBreakdownProvided ? Math.max(0, Math.floor(toNumber(row?.newOrderUsers, 0))) : 0;
+  const oldOrderUsers = customerBreakdownProvided ? Math.max(0, Math.floor(toNumber(row?.oldOrderUsers, 0))) : 0;
   const visitRate = row?.visitRate === null || row?.visitRate === undefined
     ? exposureUsers > 0 ? visitUsers / exposureUsers : null
     : normalizeBusinessRate(row.visitRate);
   const orderRate = row?.orderRate === null || row?.orderRate === undefined
     ? visitUsers > 0 ? orderUsers / visitUsers : null
     : normalizeBusinessRate(row.orderRate);
+  const newVisitRate = customerBreakdownProvided
+    ? row?.newVisitRate === null || row?.newVisitRate === undefined
+      ? newExposureUsers > 0 ? newVisitUsers / newExposureUsers : null
+      : normalizeBusinessRate(row.newVisitRate)
+    : null;
+  const oldVisitRate = customerBreakdownProvided
+    ? row?.oldVisitRate === null || row?.oldVisitRate === undefined
+      ? oldExposureUsers > 0 ? oldVisitUsers / oldExposureUsers : null
+      : normalizeBusinessRate(row.oldVisitRate)
+    : null;
+  const newOrderRate = customerBreakdownProvided
+    ? row?.newOrderRate === null || row?.newOrderRate === undefined
+      ? newVisitUsers > 0 ? newOrderUsers / newVisitUsers : null
+      : normalizeBusinessRate(row.newOrderRate)
+    : null;
+  const oldOrderRate = customerBreakdownProvided
+    ? row?.oldOrderRate === null || row?.oldOrderRate === undefined
+      ? oldVisitUsers > 0 ? oldOrderUsers / oldVisitUsers : null
+      : normalizeBusinessRate(row.oldOrderRate)
+    : null;
+  const repeatDataProvided = Boolean(row?.repeatDataProvided) || ([
+    'repeatUsers7d',
+    'repeatRate7d',
+    'repeatUsers30d',
+    'repeatRate30d',
+    'platformRepeatRate'
+  ] as Array<keyof BusinessDailyRecord>).some(hasBusinessField);
   return {
     key: `${row?.storeId || ''}:${platform}:${date}`,
     storeId: String(row?.storeId || ''),
@@ -3941,6 +4037,23 @@ function normalizeBusinessDailyRecord(row: Partial<BusinessDailyRecord> | undefi
     orderUsers,
     visitRate,
     orderRate,
+    customerBreakdownProvided,
+    newExposureUsers,
+    oldExposureUsers,
+    newVisitUsers,
+    oldVisitUsers,
+    newOrderUsers,
+    oldOrderUsers,
+    newVisitRate,
+    oldVisitRate,
+    newOrderRate,
+    oldOrderRate,
+    repeatDataProvided,
+    repeatUsers7d: repeatDataProvided ? Math.max(0, Math.floor(toNumber(row?.repeatUsers7d, 0))) : 0,
+    repeatRate7d: repeatDataProvided ? normalizeBusinessRate(row?.repeatRate7d) : null,
+    repeatUsers30d: repeatDataProvided ? Math.max(0, Math.floor(toNumber(row?.repeatUsers30d, 0))) : 0,
+    repeatRate30d: repeatDataProvided ? normalizeBusinessRate(row?.repeatRate30d) : null,
+    platformRepeatRate: repeatDataProvided ? normalizeBusinessRate(row?.platformRepeatRate) : null,
     exposureTimes: Math.max(0, Math.floor(toNumber(row?.exposureTimes, 0))),
     visitTimes: Math.max(0, Math.floor(toNumber(row?.visitTimes, 0))),
     orderTimes: Math.max(0, Math.floor(toNumber(row?.orderTimes, 0))),
@@ -3990,6 +4103,7 @@ function normalizeBusinessData(value: Partial<BusinessDataState> | undefined): B
     .map(row => ({
       id: String(row?.id || uid('business-note')),
       storeId: String(row?.storeId || ''),
+      kind: (row?.kind === 'memo' ? 'memo' : 'diagnostic') as BusinessAnalysisNoteKind,
       title: String(row?.title || '经营诊断'),
       createdAt: String(row?.createdAt || ''),
       dateStart: normalizeBusinessDate(row?.dateStart),
@@ -4071,6 +4185,7 @@ function normalizeState(data: unknown): CalculatorState {
     activePage: isPageKey(raw.activePage) ? raw.activePage : DEFAULT_PAGE_KEY,
     activityStrategySettings,
     businessData: normalizeBusinessData(raw.businessData),
+    orderAnalysis: normalizeOrderAnalysisState(raw.orderAnalysis),
     platformRules: {
       ...base.platformRules,
       ...(raw.platformRules || {}),
@@ -6640,6 +6755,10 @@ function businessInteger(row: unknown[], index: number, fallback = 0) {
   return Math.max(0, Math.floor(toNumber(index >= 0 ? row[index] : fallback, fallback)));
 }
 
+function businessOptionalInteger(row: unknown[], index: number) {
+  return index >= 0 ? Math.max(0, Math.floor(toNumber(row[index], 0))) : 0;
+}
+
 function businessText(row: unknown[], index: number) {
   return index >= 0 ? String(row[index] ?? '').trim() : '';
 }
@@ -6650,6 +6769,14 @@ function businessRate(row: unknown[], index: number) {
 
 function businessColumn(row: unknown[], candidates: string[]) {
   return findImportColumnIndex(row, candidates);
+}
+
+function businessExactColumn(row: unknown[], candidates: string[]) {
+  const cells = row.map(normalizeImportHeader);
+  return candidates
+    .map(normalizeImportHeader)
+    .map(candidate => cells.indexOf(candidate))
+    .find(index => index >= 0) ?? -1;
 }
 
 function detectBusinessReportPlatform(header: unknown[]): Platform | null {
@@ -6678,6 +6805,36 @@ function parseMeituanBusinessRecord(row: unknown[], header: unknown[], warnings:
   const exposureUsers = businessInteger(row, businessColumn(header, ['曝光人数']));
   const visitUsers = businessInteger(row, businessColumn(header, ['入店人数']));
   const orderUsers = businessInteger(row, businessColumn(header, ['下单人数']), validOrders);
+  const newExposureIndex = businessColumn(header, ['曝光新客', '新客曝光人数']);
+  const oldExposureIndex = businessColumn(header, ['曝光老客', '老客曝光人数']);
+  const newVisitIndex = businessColumn(header, ['入店新客', '进店新客', '新客入店人数', '新客进店人数']);
+  const oldVisitIndex = businessColumn(header, ['入店老客', '进店老客', '老客入店人数', '老客进店人数']);
+  const newOrderIndex = businessColumn(header, ['下单新客', '新客下单人数']);
+  const oldOrderIndex = businessColumn(header, ['下单老客', '老客下单人数']);
+  const newVisitRateIndex = businessColumn(header, ['新客入店转化率', '新客进店转化率']);
+  const oldVisitRateIndex = businessColumn(header, ['老客入店转化率', '老客进店转化率']);
+  const newOrderRateIndex = businessColumn(header, ['新客下单转化率']);
+  const oldOrderRateIndex = businessColumn(header, ['老客下单转化率']);
+  const customerBreakdownProvided = [
+    newExposureIndex,
+    oldExposureIndex,
+    newVisitIndex,
+    oldVisitIndex,
+    newOrderIndex,
+    oldOrderIndex,
+    newVisitRateIndex,
+    oldVisitRateIndex,
+    newOrderRateIndex,
+    oldOrderRateIndex
+  ].some(index => index >= 0);
+  const newExposureUsers = businessOptionalInteger(row, newExposureIndex);
+  const oldExposureUsers = businessOptionalInteger(row, oldExposureIndex);
+  const newVisitUsers = businessOptionalInteger(row, newVisitIndex);
+  const oldVisitUsers = businessOptionalInteger(row, oldVisitIndex);
+  const newOrderUsers = businessOptionalInteger(row, newOrderIndex);
+  const oldOrderUsers = businessOptionalInteger(row, oldOrderIndex);
+  const platformRepeatRateIndex = businessExactColumn(header, ['复购率']);
+  const platformRepeatRate = businessRate(row, platformRepeatRateIndex);
   const grossSales = businessNumber(row, businessColumn(header, ['优惠前总额', '商品原价']));
   const actualReceipt = businessNumber(row, businessColumn(header, ['顾客实付']));
   const merchantActivityCost = businessNumber(row, businessColumn(header, ['商家活动支出']));
@@ -6705,6 +6862,23 @@ function parseMeituanBusinessRecord(row: unknown[], header: unknown[], warnings:
     orderUsers,
     visitRate: businessRate(row, businessColumn(header, ['入店转化率'])) ?? (exposureUsers > 0 ? visitUsers / exposureUsers : null),
     orderRate: businessRate(row, businessColumn(header, ['下单转化率'])) ?? (visitUsers > 0 ? orderUsers / visitUsers : null),
+    customerBreakdownProvided,
+    newExposureUsers,
+    oldExposureUsers,
+    newVisitUsers,
+    oldVisitUsers,
+    newOrderUsers,
+    oldOrderUsers,
+    newVisitRate: businessRate(row, newVisitRateIndex) ?? (newExposureUsers > 0 ? newVisitUsers / newExposureUsers : null),
+    oldVisitRate: businessRate(row, oldVisitRateIndex) ?? (oldExposureUsers > 0 ? oldVisitUsers / oldExposureUsers : null),
+    newOrderRate: businessRate(row, newOrderRateIndex) ?? (newVisitUsers > 0 ? newOrderUsers / newVisitUsers : null),
+    oldOrderRate: businessRate(row, oldOrderRateIndex) ?? (oldVisitUsers > 0 ? oldOrderUsers / oldVisitUsers : null),
+    repeatDataProvided: platformRepeatRateIndex >= 0,
+    repeatUsers7d: 0,
+    repeatRate7d: null,
+    repeatUsers30d: 0,
+    repeatRate30d: null,
+    platformRepeatRate,
     exposureTimes: businessInteger(row, businessColumn(header, ['曝光次数'])),
     visitTimes: businessInteger(row, businessColumn(header, ['入店次数'])),
     orderTimes: validOrders,
@@ -6737,6 +6911,39 @@ function parseElemeBusinessRecord(row: unknown[], header: unknown[], warnings: s
   const exposureUsers = businessInteger(row, businessColumn(header, ['曝光人数']));
   const visitUsers = businessInteger(row, businessColumn(header, ['进店人数', '入店人数']));
   const orderUsers = businessInteger(row, businessColumn(header, ['下单人数']), validOrders);
+  const newExposureIndex = businessColumn(header, ['新客曝光人数', '曝光新客']);
+  const oldExposureIndex = businessColumn(header, ['老客曝光人数', '曝光老客']);
+  const newVisitIndex = businessColumn(header, ['新客进店人数', '新客入店人数', '进店新客', '入店新客']);
+  const oldVisitIndex = businessColumn(header, ['老客进店人数', '老客入店人数', '进店老客', '入店老客']);
+  const newOrderIndex = businessColumn(header, ['新客下单人数', '下单新客']);
+  const oldOrderIndex = businessColumn(header, ['老客下单人数', '下单老客']);
+  const newVisitRateIndex = businessColumn(header, ['新客进店转化率', '新客入店转化率']);
+  const oldVisitRateIndex = businessColumn(header, ['老客进店转化率', '老客入店转化率']);
+  const newOrderRateIndex = businessColumn(header, ['新客下单转化率']);
+  const oldOrderRateIndex = businessColumn(header, ['老客下单转化率']);
+  const customerBreakdownProvided = [
+    newExposureIndex,
+    oldExposureIndex,
+    newVisitIndex,
+    oldVisitIndex,
+    newOrderIndex,
+    oldOrderIndex,
+    newVisitRateIndex,
+    oldVisitRateIndex,
+    newOrderRateIndex,
+    oldOrderRateIndex
+  ].some(index => index >= 0);
+  const newExposureUsers = businessOptionalInteger(row, newExposureIndex);
+  const oldExposureUsers = businessOptionalInteger(row, oldExposureIndex);
+  const newVisitUsers = businessOptionalInteger(row, newVisitIndex);
+  const oldVisitUsers = businessOptionalInteger(row, oldVisitIndex);
+  const newOrderUsers = businessOptionalInteger(row, newOrderIndex);
+  const oldOrderUsers = businessOptionalInteger(row, oldOrderIndex);
+  const repeatUsers7dIndex = businessColumn(header, ['近7日复购人数']);
+  const repeatRate7dIndex = businessColumn(header, ['近7日复购率']);
+  const repeatUsers30dIndex = businessColumn(header, ['近30日复购人数']);
+  const repeatRate30dIndex = businessColumn(header, ['近30日复购率']);
+  const repeatDataProvided = [repeatUsers7dIndex, repeatRate7dIndex, repeatUsers30dIndex, repeatRate30dIndex].some(index => index >= 0);
   const actualReceipt = businessNumber(row, businessColumn(header, ['顾客实付总额', '顾客实付']));
   const merchantActivityCost = businessNumber(row, businessColumn(header, ['商家活动成本（含满减活动）', '商家活动成本']));
   const merchantActivityCostWithoutFull = businessNumber(row, businessColumn(header, ['商家活动成本（不含满减活动）']), merchantActivityCost);
@@ -6761,6 +6968,23 @@ function parseElemeBusinessRecord(row: unknown[], header: unknown[], warnings: s
     orderUsers,
     visitRate: businessRate(row, businessColumn(header, ['进店转化率', '入店转化率'])) ?? (exposureUsers > 0 ? visitUsers / exposureUsers : null),
     orderRate: businessRate(row, businessColumn(header, ['下单转化率'])) ?? (visitUsers > 0 ? orderUsers / visitUsers : null),
+    customerBreakdownProvided,
+    newExposureUsers,
+    oldExposureUsers,
+    newVisitUsers,
+    oldVisitUsers,
+    newOrderUsers,
+    oldOrderUsers,
+    newVisitRate: businessRate(row, newVisitRateIndex) ?? (newExposureUsers > 0 ? newVisitUsers / newExposureUsers : null),
+    oldVisitRate: businessRate(row, oldVisitRateIndex) ?? (oldExposureUsers > 0 ? oldVisitUsers / oldExposureUsers : null),
+    newOrderRate: businessRate(row, newOrderRateIndex) ?? (newVisitUsers > 0 ? newOrderUsers / newVisitUsers : null),
+    oldOrderRate: businessRate(row, oldOrderRateIndex) ?? (oldVisitUsers > 0 ? oldOrderUsers / oldVisitUsers : null),
+    repeatDataProvided,
+    repeatUsers7d: businessOptionalInteger(row, repeatUsers7dIndex),
+    repeatRate7d: businessRate(row, repeatRate7dIndex),
+    repeatUsers30d: businessOptionalInteger(row, repeatUsers30dIndex),
+    repeatRate30d: businessRate(row, repeatRate30dIndex),
+    platformRepeatRate: null,
     exposureTimes: businessInteger(row, businessColumn(header, ['曝光次数'])),
     visitTimes: businessInteger(row, businessColumn(header, ['进店次数', '入店次数'])),
     orderTimes: businessInteger(row, businessColumn(header, ['下单次数']), validOrders),
@@ -6808,22 +7032,84 @@ function parseBusinessReportWorkbook(workbook: XLSX.WorkBook, fileName: string):
   };
 }
 
+
+function arrayBufferToBinaryString(buffer: ArrayBuffer) {
+  const bytes = new Uint8Array(buffer);
+  const chunkSize = 0x8000;
+  const chunks: string[] = [];
+  for (let index = 0; index < bytes.length; index += chunkSize) {
+    chunks.push(String.fromCharCode(...bytes.subarray(index, index + chunkSize)));
+  }
+  return chunks.join('');
+}
+
+function workbookImportHeaderScore(workbook: XLSX.WorkBook) {
+  let score = 0;
+  workbook.SheetNames.forEach(sheetName => {
+    const sheet = workbook.Sheets[sheetName];
+    if (!sheet) return;
+    const rows = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, defval: '', raw: false });
+    if (findOrderWorkbookHeader(rows)) score = Math.max(score, 100);
+    if (findBusinessReportHeader(rows)) score = Math.max(score, 90);
+    rows.slice(0, 30).forEach(row => {
+      const matchedFields = [
+        '日期',
+        '门店名称',
+        '订单编号',
+        '订单单号',
+        '下单时间',
+        '订单状态',
+        '订单实付',
+        '顾客实付',
+        '商品信息',
+        '商品原价',
+        '订单原价',
+        '有效订单'
+      ].filter(field => findImportColumnIndex(row || [], [field]) >= 0).length;
+      score = Math.max(score, matchedFields);
+    });
+  });
+  return score;
+}
+
 async function readBusinessReportWorkbook(file: File) {
   const isCsv = /\.csv|\.txt$/i.test(file.name);
   if (!isCsv) return readWorkbook(file);
   const buffer = await file.arrayBuffer();
-  const decoders = ['gb18030', 'gbk', 'utf-8'];
-  let text = '';
-  for (const encoding of decoders) {
+  const candidates: XLSX.WorkBook[] = [];
+  const addCandidate = (data: string, options: XLSX.ParsingOptions) => {
     try {
-      text = new TextDecoder(encoding, { fatal: true }).decode(buffer);
-      break;
+      candidates.push(XLSX.read(data, { ...options, cellDates: false, raw: true }));
     } catch {
-      text = '';
+      return;
     }
-  }
-  if (!text) text = new TextDecoder().decode(buffer);
-  return XLSX.read(text, { type: 'string', cellDates: false, raw: false });
+  };
+  ['utf-8', 'gb18030', 'gbk'].forEach(encoding => {
+    try {
+      addCandidate(new TextDecoder(encoding, { fatal: true }).decode(buffer), { type: 'string' });
+    } catch {
+      return;
+    }
+  });
+  addCandidate(arrayBufferToBinaryString(buffer), { type: 'binary', codepage: 936 });
+  if (!candidates.length) addCandidate(new TextDecoder().decode(buffer), { type: 'string' });
+  return candidates
+    .map((workbook, index) => ({ workbook, index, score: workbookImportHeaderScore(workbook) }))
+    .sort((a, b) => b.score - a.score || a.index - b.index)[0]?.workbook || XLSX.utils.book_new();
+}
+
+const readOrderWorkbook = readBusinessReportWorkbook;
+
+function recommendationPriorityColor(priority: Severity) {
+  return severityColor(priority);
+}
+
+function recommendationPriorityText(priority: Severity) {
+  return severityLabel(priority);
+}
+
+function orderImportedAtText(value: string) {
+  return businessImportedAtText(value);
 }
 
 function businessDateRangeText(start: string, end: string) {
@@ -6833,6 +7119,8 @@ function businessDateRangeText(start: string, end: string) {
 
 const BUSINESS_WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
 const BUSINESS_WEEK_TOTAL_LABEL = '周总计';
+const BUSINESS_WEEKLY_TREND_MIN_DAYS = 30;
+const BUSINESS_NOTE_LIMIT = 300;
 const BUSINESS_WEEKDAY_CHART_COLORS = [
   '#1f77b4',
   '#ff7f0e',
@@ -6842,6 +7130,14 @@ const BUSINESS_WEEKDAY_CHART_COLORS = [
   '#8c564b',
   '#17becf',
   '#111827'
+];
+const BUSINESS_LINE_CHART_COLORS = [
+  '#376996',
+  '#d95b18',
+  '#4f8f73',
+  '#8f5f42',
+  '#6d6aa8',
+  '#b7791f'
 ];
 
 function businessUtcDate(dateText: string) {
@@ -6881,6 +7177,82 @@ function businessWeekLabel(weekStart: string) {
   return businessDateRangeText(weekStart, weekEnd);
 }
 
+function businessDateSpanDays(startText: string, endText: string) {
+  const start = businessUtcDate(startText);
+  const end = businessUtcDate(endText);
+  if (!start || !end) return 0;
+  return Math.max(0, Math.round((end.getTime() - start.getTime()) / 86400000) + 1);
+}
+
+function normalizeBusinessDateRange(startText: string, endText: string) {
+  const start = normalizeBusinessDate(startText);
+  const end = normalizeBusinessDate(endText);
+  if (!start && !end) return { dateStart: '', dateEnd: '' };
+  if (!start) return { dateStart: end, dateEnd: end };
+  if (!end) return { dateStart: start, dateEnd: start };
+  return start <= end ? { dateStart: start, dateEnd: end } : { dateStart: end, dateEnd: start };
+}
+
+function businessNoteDateStart(note: BusinessAnalysisNote) {
+  return note.dateStart || note.dateEnd;
+}
+
+function businessNoteDateEnd(note: BusinessAnalysisNote) {
+  return note.dateEnd || note.dateStart;
+}
+
+function businessNoteContainsDate(note: BusinessAnalysisNote, dateText: string) {
+  const date = normalizeBusinessDate(dateText);
+  if (!date) return false;
+  const start = businessNoteDateStart(note);
+  const end = businessNoteDateEnd(note);
+  return (!start || date >= start) && (!end || date <= end);
+}
+
+function businessNoteOverlapsDateRange(note: BusinessAnalysisNote, startText: string, endText: string) {
+  const range = normalizeBusinessDateRange(startText, endText);
+  if (!range.dateStart && !range.dateEnd) return true;
+  const noteStart = businessNoteDateStart(note);
+  const noteEnd = businessNoteDateEnd(note);
+  if (!noteStart && !noteEnd) return true;
+  if (range.dateStart && noteEnd && noteEnd < range.dateStart) return false;
+  if (range.dateEnd && noteStart && noteStart > range.dateEnd) return false;
+  return true;
+}
+
+function businessNoteMatchesPlatformFilter(note: BusinessAnalysisNote, platform: Platform | 'all') {
+  return platform === 'all' || note.platform === 'all' || note.platform === platform;
+}
+
+function businessNoteMatchesRecord(note: BusinessAnalysisNote, row: BusinessDailyRecord) {
+  return note.kind === 'memo'
+    && businessNoteContainsDate(note, row.date)
+    && (note.platform === 'all' || note.platform === row.platform);
+}
+
+function businessNoteItemsText(note: BusinessAnalysisNote) {
+  return note.items.join('；');
+}
+
+function businessMonthStart(dateText: string) {
+  const normalized = normalizeBusinessDate(dateText);
+  if (!normalized) return '';
+  return `${normalized.slice(0, 7)}-01`;
+}
+
+function businessMonthEnd(monthStart: string) {
+  const date = businessUtcDate(monthStart);
+  if (!date) return '';
+  date.setUTCMonth(date.getUTCMonth() + 1);
+  date.setUTCDate(0);
+  return businessDateFromUtc(date);
+}
+
+function businessDateToDayjs(dateText: string): Dayjs | null {
+  const normalized = normalizeBusinessDate(dateText);
+  return normalized ? dayjs(normalized) : null;
+}
+
 function businessSummaryEmpty(): BusinessDataSummary {
   return {
     dateStart: '',
@@ -6897,6 +7269,25 @@ function businessSummaryEmpty(): BusinessDataSummary {
     orderUsers: 0,
     visitRate: null,
     orderRate: null,
+    customerBreakdownProvided: false,
+    newExposureUsers: 0,
+    oldExposureUsers: 0,
+    newVisitUsers: 0,
+    oldVisitUsers: 0,
+    newOrderUsers: 0,
+    oldOrderUsers: 0,
+    newVisitRate: null,
+    oldVisitRate: null,
+    newOrderRate: null,
+    oldOrderRate: null,
+    newOrderShare: null,
+    oldOrderShare: null,
+    repeatDataProvided: false,
+    repeatUsers7d: 0,
+    repeatRate7d: null,
+    repeatUsers30d: 0,
+    repeatRate30d: null,
+    platformRepeatRate: null,
     averageReceipt: 0,
     merchantActivityCost: 0,
     merchantActivityCostWithoutFull: 0,
@@ -6915,6 +7306,28 @@ function sumBusinessNumber(records: BusinessDailyRecord[], field: keyof Business
   return roundMoney(records.reduce((sum, row) => sum + (Number(row[field]) || 0), 0));
 }
 
+function averageBusinessRecordRate(records: BusinessDailyRecord[], field: keyof BusinessDailyRecord) {
+  const values = records
+    .map(row => row[field])
+    .filter((value): value is number => typeof value === 'number' && Number.isFinite(value));
+  return values.length ? average(values) : null;
+}
+
+function businessRollingRepeatRate(records: BusinessDailyRecord[], usersField: keyof BusinessDailyRecord, rateField: keyof BusinessDailyRecord) {
+  let numerator = 0;
+  let denominator = 0;
+  records.forEach(row => {
+    const users = Number(row[usersField]) || 0;
+    const rate = row[rateField];
+    if (users > 0 && typeof rate === 'number' && Number.isFinite(rate) && rate > 0) {
+      numerator += users;
+      denominator += users / rate;
+    }
+  });
+  if (denominator > 0) return numerator / denominator;
+  return averageBusinessRecordRate(records, rateField);
+}
+
 function summarizeBusinessRecords(records: BusinessDailyRecord[]): BusinessDataSummary {
   if (!records.length) return businessSummaryEmpty();
   const sorted = records.slice().sort((a, b) => a.date.localeCompare(b.date));
@@ -6926,6 +7339,17 @@ function summarizeBusinessRecords(records: BusinessDailyRecord[]): BusinessDataS
   const exposureUsers = Math.round(sumBusinessNumber(records, 'exposureUsers'));
   const visitUsers = Math.round(sumBusinessNumber(records, 'visitUsers'));
   const orderUsers = Math.round(sumBusinessNumber(records, 'orderUsers'));
+  const customerRows = records.filter(row => row.customerBreakdownProvided);
+  const newExposureUsers = Math.round(sumBusinessNumber(customerRows, 'newExposureUsers'));
+  const oldExposureUsers = Math.round(sumBusinessNumber(customerRows, 'oldExposureUsers'));
+  const newVisitUsers = Math.round(sumBusinessNumber(customerRows, 'newVisitUsers'));
+  const oldVisitUsers = Math.round(sumBusinessNumber(customerRows, 'oldVisitUsers'));
+  const newOrderUsers = Math.round(sumBusinessNumber(customerRows, 'newOrderUsers'));
+  const oldOrderUsers = Math.round(sumBusinessNumber(customerRows, 'oldOrderUsers'));
+  const customerOrderUsers = newOrderUsers + oldOrderUsers;
+  const repeatRows = records.filter(row => row.repeatDataProvided);
+  const repeatUsers7d = Math.round(sumBusinessNumber(repeatRows, 'repeatUsers7d'));
+  const repeatUsers30d = Math.round(sumBusinessNumber(repeatRows, 'repeatUsers30d'));
   const merchantActivityCost = sumBusinessNumber(records, 'merchantActivityCost');
   const merchantActivityCostWithoutFull = sumBusinessNumber(records, 'merchantActivityCostWithoutFull');
   const platformSubsidy = sumBusinessNumber(records, 'platformSubsidy');
@@ -6947,6 +7371,25 @@ function summarizeBusinessRecords(records: BusinessDailyRecord[]): BusinessDataS
     orderUsers,
     visitRate: exposureUsers > 0 ? visitUsers / exposureUsers : null,
     orderRate: visitUsers > 0 ? orderUsers / visitUsers : null,
+    customerBreakdownProvided: customerRows.length > 0,
+    newExposureUsers,
+    oldExposureUsers,
+    newVisitUsers,
+    oldVisitUsers,
+    newOrderUsers,
+    oldOrderUsers,
+    newVisitRate: newExposureUsers > 0 ? newVisitUsers / newExposureUsers : null,
+    oldVisitRate: oldExposureUsers > 0 ? oldVisitUsers / oldExposureUsers : null,
+    newOrderRate: newVisitUsers > 0 ? newOrderUsers / newVisitUsers : null,
+    oldOrderRate: oldVisitUsers > 0 ? oldOrderUsers / oldVisitUsers : null,
+    newOrderShare: customerOrderUsers > 0 ? newOrderUsers / customerOrderUsers : null,
+    oldOrderShare: customerOrderUsers > 0 ? oldOrderUsers / customerOrderUsers : null,
+    repeatDataProvided: repeatRows.length > 0,
+    repeatUsers7d,
+    repeatRate7d: businessRollingRepeatRate(repeatRows, 'repeatUsers7d', 'repeatRate7d'),
+    repeatUsers30d,
+    repeatRate30d: businessRollingRepeatRate(repeatRows, 'repeatUsers30d', 'repeatRate30d'),
+    platformRepeatRate: averageBusinessRecordRate(repeatRows, 'platformRepeatRate'),
     averageReceipt: validOrders > 0 ? actualReceipt / validOrders : 0,
     merchantActivityCost,
     merchantActivityCostWithoutFull,
@@ -7040,14 +7483,21 @@ function businessMetricName(metric: BusinessDataMetricKey) {
     visitRate: '入店率',
     orderRate: '下单率',
     merchantActivityCost: '商家活动成本',
-    tradedProductRate: '动销率'
+    tradedProductRate: '动销率',
+    newOrderUsers: '新客下单人数',
+    oldOrderUsers: '老客下单人数',
+    newOrderRate: '新客下单率',
+    oldOrderRate: '老客下单率',
+    repeatRate7d: '近7日复购率',
+    repeatRate30d: '近30日复购率',
+    platformRepeatRate: '平台复购率'
   }[metric];
 }
 
 function businessMetricText(metric: BusinessDataMetricKey, value: number | null) {
   if (value === null || value === undefined || !Number.isFinite(value)) return '-';
-  if (metric === 'visitRate' || metric === 'orderRate' || metric === 'tradedProductRate') return rateText(value);
-  if (metric === 'validOrders' || metric === 'exposureUsers') return `${Math.round(value)}`;
+  if (metric === 'visitRate' || metric === 'orderRate' || metric === 'tradedProductRate' || metric === 'newOrderRate' || metric === 'oldOrderRate' || metric === 'repeatRate7d' || metric === 'repeatRate30d' || metric === 'platformRepeatRate') return rateText(value);
+  if (metric === 'validOrders' || metric === 'exposureUsers' || metric === 'newOrderUsers' || metric === 'oldOrderUsers') return `${Math.round(value)}`;
   return `¥${money(value)}`;
 }
 
@@ -7078,17 +7528,73 @@ function businessFunnelMetrics(row: BusinessFunnelMetricSource) {
 }
 
 function businessFunnelStageText(row: BusinessFunnelMetricSource) {
-  return `曝光 ${row.exposureUsers} → 入店 ${row.visitUsers} → 下单 ${row.orderUsers} → 有效订单 ${row.validOrders}`;
+  return `曝光 ${row.exposureUsers} → 入店 ${row.visitUsers} → 下单 ${row.orderUsers}`;
+}
+
+function businessFunnelChartRows(row: BusinessFunnelMetricSource): BusinessFunnelChartRow[] {
+  const stages = [
+    { key: 'exposure', stage: '曝光人数', value: row.exposureUsers },
+    { key: 'visit', stage: '入店人数', value: row.visitUsers },
+    { key: 'order', stage: '下单数', value: row.orderUsers }
+  ];
+  return stages.map((stage, index) => {
+    const value = Math.max(0, Math.round(Number(stage.value) || 0));
+    const prevValue = index > 0 ? Math.max(0, Math.round(Number(stages[index - 1].value) || 0)) : null;
+    const totalConversionText = row.exposureUsers > 0 ? `全链路 ${rateText(value / row.exposureUsers)}` : '全链路 -';
+    const conversionTitleText = stage.key === 'visit' ? '入店率' : stage.key === 'order' ? '下单率' : '';
+    const conversionRateText = prevValue === null ? '' : prevValue > 0 ? rateText(value / prevValue) : '-';
+    const conversionText = conversionTitleText ? `${conversionTitleText} ${conversionRateText}` : '起点';
+    return {
+      ...stage,
+      value,
+      valueText: `${value}`,
+      conversionTitleText,
+      conversionRateText,
+      conversionText,
+      totalConversionText
+    };
+  });
+}
+
+function businessCustomerFunnelChartRows(row: BusinessDataSummary, segment: 'new' | 'old'): BusinessFunnelChartRow[] {
+  if (!row.customerBreakdownProvided) return [];
+  const exposureUsers = segment === 'new' ? row.newExposureUsers : row.oldExposureUsers;
+  const visitUsers = segment === 'new' ? row.newVisitUsers : row.oldVisitUsers;
+  const orderUsers = segment === 'new' ? row.newOrderUsers : row.oldOrderUsers;
+  return businessFunnelChartRows({
+    exposureUsers,
+    visitUsers,
+    orderUsers,
+    validOrders: orderUsers,
+    visitRate: exposureUsers > 0 ? visitUsers / exposureUsers : null,
+    orderRate: visitUsers > 0 ? orderUsers / visitUsers : null
+  });
+}
+
+function businessPrimaryRepeatRate(row: Pick<BusinessDataSummary, 'repeatRate7d' | 'repeatRate30d' | 'platformRepeatRate'>) {
+  if (row.repeatRate30d !== null) return { label: '近30日复购率', value: row.repeatRate30d };
+  if (row.repeatRate7d !== null) return { label: '近7日复购率', value: row.repeatRate7d };
+  if (row.platformRepeatRate !== null) return { label: '平台复购率', value: row.platformRepeatRate };
+  return { label: '复购率', value: null };
+}
+
+function businessRepeatSummaryText(row: Pick<BusinessDataSummary, 'repeatUsers7d' | 'repeatRate7d' | 'repeatUsers30d' | 'repeatRate30d' | 'platformRepeatRate'>) {
+  const parts = [
+    row.repeatRate7d === null ? '' : `近7日 ${rateText(row.repeatRate7d)}${row.repeatUsers7d ? ` / ${row.repeatUsers7d}人` : ''}`,
+    row.repeatRate30d === null ? '' : `近30日 ${rateText(row.repeatRate30d)}${row.repeatUsers30d ? ` / ${row.repeatUsers30d}人` : ''}`,
+    row.platformRepeatRate === null ? '' : `平台原始 ${rateText(row.platformRepeatRate)}`
+  ].filter(Boolean);
+  return parts.length ? parts.join('；') : '日报未提供';
 }
 
 function businessChangeText(metric: BusinessDataMetricKey, current: number | null, baseline: number | null) {
   if (current === null || baseline === null || !Number.isFinite(current) || !Number.isFinite(baseline) || baseline <= 0) return '-';
   const diff = current - baseline;
   const relative = diff / baseline;
-  if (metric === 'visitRate' || metric === 'orderRate' || metric === 'tradedProductRate') {
+  if (metric === 'visitRate' || metric === 'orderRate' || metric === 'tradedProductRate' || metric === 'newOrderRate' || metric === 'oldOrderRate' || metric === 'repeatRate7d' || metric === 'repeatRate30d' || metric === 'platformRepeatRate') {
     return `${diff >= 0 ? '+' : ''}${(diff * 100).toFixed(2)}pp / ${relative >= 0 ? '+' : ''}${(relative * 100).toFixed(1)}%`;
   }
-  if (metric === 'validOrders' || metric === 'exposureUsers') {
+  if (metric === 'validOrders' || metric === 'exposureUsers' || metric === 'newOrderUsers' || metric === 'oldOrderUsers') {
     return `${diff >= 0 ? '+' : ''}${Math.round(diff)} / ${relative >= 0 ? '+' : ''}${(relative * 100).toFixed(1)}%`;
   }
   return `${diff >= 0 ? '+' : ''}¥${money(Math.abs(diff))} / ${relative >= 0 ? '+' : ''}${(relative * 100).toFixed(1)}%`;
@@ -7180,13 +7686,70 @@ function appendBusinessTrendDiagnostics(items: BusinessDiagnosticItem[], scopeNa
   });
 }
 
+function appendBusinessCustomerDiagnostics(items: BusinessDiagnosticItem[], scopeName: string, rows: BusinessDailyAggregate[], keyPrefix: string) {
+  const sorted = rows
+    .filter(row => row.customerBreakdownProvided || row.repeatDataProvided)
+    .slice()
+    .sort((a, b) => a.date.localeCompare(b.date));
+  if (sorted.length < 2) return;
+  const latest = sorted[sorted.length - 1];
+  const baselineRows = sorted.slice(0, -1);
+  const date = latest.date;
+  appendBusinessDropDiagnostic(items, scopeName, 'newOrderUsers', latest.newOrderUsers, averageBusinessMetric(baselineRows, 'newOrderUsers'), {
+    relativeDrop: 0.25,
+    absoluteDrop: 2,
+    key: `${keyPrefix}-new-customer-orders`,
+    date,
+    suggestion: '新客成交下降时优先检查平台新客曝光入口、新客券力度、起送价和主推商品首单吸引力。'
+  });
+  appendBusinessDropDiagnostic(items, scopeName, 'newOrderRate', latest.newOrderRate, averageBusinessMetric(baselineRows, 'newOrderRate'), {
+    relativeDrop: 0.2,
+    absoluteDrop: 0.03,
+    key: `${keyPrefix}-new-customer-order-rate`,
+    date,
+    suggestion: '新客下单率下降通常和首单价格感知、券门槛、配送费、爆品排序有关，优先看新客到店后的支付价是否有吸引力。'
+  });
+  appendBusinessDropDiagnostic(items, scopeName, 'oldOrderUsers', latest.oldOrderUsers, averageBusinessMetric(baselineRows, 'oldOrderUsers'), {
+    relativeDrop: 0.25,
+    absoluteDrop: 2,
+    key: `${keyPrefix}-old-customer-orders`,
+    date,
+    suggestion: '老客成交下降时优先检查复购商品稳定性、缺货、出餐体验、老客券和近期评价波动。'
+  });
+  appendBusinessDropDiagnostic(items, scopeName, 'oldOrderRate', latest.oldOrderRate, averageBusinessMetric(baselineRows, 'oldOrderRate'), {
+    relativeDrop: 0.2,
+    absoluteDrop: 0.03,
+    key: `${keyPrefix}-old-customer-order-rate`,
+    date,
+    suggestion: '老客下单率下降说明进店后的复购转化变弱，重点排查常购商品、价格变化、活动缩水和配送体验。'
+  });
+  const repeatMetric: BusinessDataMetricKey | null = latest.repeatRate30d !== null
+    ? 'repeatRate30d'
+    : latest.repeatRate7d !== null
+      ? 'repeatRate7d'
+      : latest.platformRepeatRate !== null
+        ? 'platformRepeatRate'
+        : null;
+  if (repeatMetric) {
+    appendBusinessDropDiagnostic(items, scopeName, repeatMetric, businessMetricValue(latest, repeatMetric), averageBusinessMetric(baselineRows, repeatMetric), {
+      relativeDrop: 0.15,
+      absoluteDrop: 0.01,
+      key: `${keyPrefix}-repeat-rate`,
+      date,
+      suggestion: '复购率下降时优先检查老客券、常购商品库存、活动连续性、差评投诉和出餐配送稳定性。'
+    });
+  }
+}
+
 function diagnoseBusinessRecords(records: BusinessDailyRecord[]): BusinessDiagnosticItem[] {
   const items: BusinessDiagnosticItem[] = [];
   const dailyRows = aggregateBusinessRecordsByDate(records);
   appendBusinessTrendDiagnostics(items, '全店', dailyRows, 'all');
+  appendBusinessCustomerDiagnostics(items, '全店', dailyRows, 'all-customer');
   PLATFORMS.forEach(platform => {
     const platformRows = aggregateBusinessRecordsByDate(records.filter(row => row.platform === platform));
     appendBusinessTrendDiagnostics(items, PLATFORM_NAMES[platform], platformRows, platform);
+    appendBusinessCustomerDiagnostics(items, PLATFORM_NAMES[platform], platformRows, `${platform}-customer`);
   });
 
   const summary = summarizeBusinessRecords(records);
@@ -7274,12 +7837,17 @@ function diagnoseBusinessRecords(records: BusinessDailyRecord[]): BusinessDiagno
   return items;
 }
 
-function businessReportExportRows(records: BusinessDailyRecord[]) {
+function businessReportExportRows(records: BusinessDailyRecord[], notes: BusinessAnalysisNote[] = []) {
   return records
     .slice()
     .sort((a, b) => a.date.localeCompare(b.date) || a.platform.localeCompare(b.platform))
     .map(row => {
       const funnel = businessFunnelMetrics(row);
+      const memoText = notes
+        .filter(note => businessNoteMatchesRecord(note, row))
+        .map(note => `${note.title}：${businessNoteItemsText(note)}`)
+        .filter(Boolean)
+        .join('；');
       return {
         日期: row.date,
         平台: row.platformName,
@@ -7296,6 +7864,21 @@ function businessReportExportRows(records: BusinessDailyRecord[]) {
         下单人数: row.orderUsers,
         入店率: row.visitRate === null ? '' : rateText(row.visitRate),
         下单率: row.orderRate === null ? '' : rateText(row.orderRate),
+        新客曝光人数: row.customerBreakdownProvided ? row.newExposureUsers : '',
+        新客入店人数: row.customerBreakdownProvided ? row.newVisitUsers : '',
+        新客下单人数: row.customerBreakdownProvided ? row.newOrderUsers : '',
+        新客入店率: row.newVisitRate === null ? '' : rateText(row.newVisitRate),
+        新客下单率: row.newOrderRate === null ? '' : rateText(row.newOrderRate),
+        老客曝光人数: row.customerBreakdownProvided ? row.oldExposureUsers : '',
+        老客入店人数: row.customerBreakdownProvided ? row.oldVisitUsers : '',
+        老客下单人数: row.customerBreakdownProvided ? row.oldOrderUsers : '',
+        老客入店率: row.oldVisitRate === null ? '' : rateText(row.oldVisitRate),
+        老客下单率: row.oldOrderRate === null ? '' : rateText(row.oldOrderRate),
+        近7日复购人数: row.repeatDataProvided ? row.repeatUsers7d : '',
+        近7日复购率: row.repeatRate7d === null ? '' : rateText(row.repeatRate7d),
+        近30日复购人数: row.repeatDataProvided ? row.repeatUsers30d : '',
+        近30日复购率: row.repeatRate30d === null ? '' : rateText(row.repeatRate30d),
+        平台复购率: row.platformRepeatRate === null ? '' : rateText(row.platformRepeatRate),
         曝光到入店流失: funnel.exposureVisitLoss,
         曝光到入店流失率: funnel.exposureVisitLossRate === null ? '' : rateText(funnel.exposureVisitLossRate),
         入店到下单流失: funnel.visitOrderLoss,
@@ -7310,6 +7893,7 @@ function businessReportExportRows(records: BusinessDailyRecord[]) {
         上架商品数: row.listedProducts || '',
         有交易商品数: row.tradedProducts || '',
         库存不足商品数: row.outOfStockProducts || '',
+        备注: memoText,
         来源文件: row.sourceFileName,
         导入时间: row.importedAt
       };
@@ -7951,21 +8535,6 @@ function PayBandAnalysisPanel({
   );
 }
 
-class ProductTableErrorBoundary extends React.Component<{ children: React.ReactNode; fallback: React.ReactNode }, { hasError: boolean }> {
-  constructor(props: { children: React.ReactNode; fallback: React.ReactNode }) {
-    super(props);
-    this.state = { hasError: false };
-  }
-
-  static getDerivedStateFromError() {
-    return { hasError: true };
-  }
-
-  render() {
-    return this.state.hasError ? this.props.fallback : this.props.children;
-  }
-}
-
 function WaimaiCalculatorInner() {
   const { message, modal } = AntApp.useApp();
   const router = useRouter();
@@ -7993,6 +8562,10 @@ function WaimaiCalculatorInner() {
   const [businessAnalysisPlatform, setBusinessAnalysisPlatform] = useState<Platform | 'all'>('all');
   const [businessAnalysisDateStart, setBusinessAnalysisDateStart] = useState('');
   const [businessAnalysisDateEnd, setBusinessAnalysisDateEnd] = useState('');
+  const [orderAnalysisPlatform, setOrderAnalysisPlatform] = useState<OrderAnalysisPlatformFilter>('all');
+  const [orderAnalysisDateStart, setOrderAnalysisDateStart] = useState('');
+  const [orderAnalysisDateEnd, setOrderAnalysisDateEnd] = useState('');
+  const [businessNoteEditor, setBusinessNoteEditor] = useState<BusinessNoteEditorState | null>(null);
   const [activityDesignFilters, setActivityDesignFilters] = useState<ActivityDesignPageFilters>(DEFAULT_ACTIVITY_DESIGN_PAGE_FILTERS);
   const [pricingSettings, setPricingSettings] = useState<PricingEvaluationSettings>(DEFAULT_PRICING_EVALUATION_SETTINGS);
   const [measurementSettings, setMeasurementSettings] = useState<MeasurementSettings>(DEFAULT_MEASUREMENT_SETTINGS);
@@ -8005,13 +8578,11 @@ function WaimaiCalculatorInner() {
   const [platformDraft, setPlatformDraft] = useState<FeeRule | null>(null);
   const [isSystemStrategyEditing, setIsSystemStrategyEditing] = useState(false);
   const [systemStrategyDraft, setSystemStrategyDraft] = useState<ActivityStrategySettings | null>(null);
-  const [systemOriginalDiscountTierDrafts, setSystemOriginalDiscountTierDrafts] = useState<Record<string, string>>({});
   const [activityDiscountTierEditor, setActivityDiscountTierEditor] = useState<ActivityDiscountTierEditorState | null>(null);
   const [activityDiscountTierDraft, setActivityDiscountTierDraft] = useState<ActivityOriginalDiscountTier[]>([]);
   const [activityDiscountTierBatchDraft, setActivityDiscountTierBatchDraft] = useState<ActivityDiscountTierBatchDraft>({ start: 0, end: 80, step: 10, rate: 30 });
   const [editingActivityPlatform, setEditingActivityPlatform] = useState<Platform | null>(null);
   const [activityDraft, setActivityDraft] = useState<Activities | null>(null);
-  const [storeOriginalDiscountTierDrafts, setStoreOriginalDiscountTierDrafts] = useState<Record<string, string>>({});
   const [isRiskEditing, setIsRiskEditing] = useState(false);
   const [riskDraft, setRiskDraft] = useState<number | null>(null);
   const [selectedProductRowKeys, setSelectedProductRowKeys] = useState<React.Key[]>([]);
@@ -8075,6 +8646,36 @@ function WaimaiCalculatorInner() {
     const dates = businessStoreRecords.map(row => row.date).sort();
     return { start: dates[0], end: dates[dates.length - 1] };
   }, [businessStoreRecords]);
+  const businessDateRangePickerValue = useMemo(() => {
+    const start = businessDateToDayjs(businessAnalysisDateStart);
+    const end = businessDateToDayjs(businessAnalysisDateEnd);
+    return start && end ? [start, end] as [Dayjs, Dayjs] : null;
+  }, [businessAnalysisDateEnd, businessAnalysisDateStart]);
+  const businessDateRangePresets = useMemo(() => {
+    const presets: Array<{ label: React.ReactNode; value: [Dayjs, Dayjs] }> = [];
+    const addPreset = (label: React.ReactNode, startText: string, endText: string) => {
+      const start = businessDateToDayjs(startText);
+      const end = businessDateToDayjs(endText);
+      if (start && end) presets.push({ label, value: [start, end] });
+    };
+    if (!businessDataDateBounds.start || !businessDataDateBounds.end) return presets;
+    addPreset('全部数据', businessDataDateBounds.start, businessDataDateBounds.end);
+    const latest7Start = businessAddDays(businessDataDateBounds.end, -6);
+    addPreset('最近7天', latest7Start < businessDataDateBounds.start ? businessDataDateBounds.start : latest7Start, businessDataDateBounds.end);
+    const latest30Start = businessAddDays(businessDataDateBounds.end, -29);
+    addPreset('最近30天', latest30Start < businessDataDateBounds.start ? businessDataDateBounds.start : latest30Start, businessDataDateBounds.end);
+    Array.from(new Set(businessStoreRecords.map(row => businessWeekStart(row.date)).filter(Boolean)))
+      .sort((a, b) => b.localeCompare(a))
+      .forEach(weekStart => addPreset(`周 ${businessWeekLabel(weekStart)}`, weekStart, businessAddDays(weekStart, 6)));
+    Array.from(new Set(businessStoreRecords.map(row => businessMonthStart(row.date)).filter(Boolean)))
+      .sort((a, b) => b.localeCompare(a))
+      .forEach(monthStart => addPreset(`${monthStart.slice(0, 7)} 月`, monthStart, businessMonthEnd(monthStart)));
+    return presets;
+  }, [businessDataDateBounds.end, businessDataDateBounds.start, businessStoreRecords]);
+  const updateBusinessAnalysisDateRange = (dateStrings: string[]) => {
+    setBusinessAnalysisDateStart(normalizeBusinessDate(dateStrings[0]));
+    setBusinessAnalysisDateEnd(normalizeBusinessDate(dateStrings[1]));
+  };
   const filteredBusinessRecords = useMemo(() => {
     return businessStoreRecords
       .filter(row => businessAnalysisPlatform === 'all' || row.platform === businessAnalysisPlatform)
@@ -8082,7 +8683,77 @@ function WaimaiCalculatorInner() {
       .filter(row => !businessAnalysisDateEnd || row.date <= businessAnalysisDateEnd)
       .sort((a, b) => a.date.localeCompare(b.date) || a.platform.localeCompare(b.platform));
   }, [businessAnalysisDateEnd, businessAnalysisDateStart, businessAnalysisPlatform, businessStoreRecords]);
+  const orderStoreRecords = useMemo(() => {
+    return state.orderAnalysis.records.filter(row => row.storeId === store.id && row.isValid);
+  }, [state.orderAnalysis.records, store.id]);
+  const orderDataDateBounds = useMemo(() => {
+    if (!orderStoreRecords.length) return { start: '', end: '' };
+    const dates = orderStoreRecords.map(row => row.orderDate).sort();
+    return { start: dates[0], end: dates[dates.length - 1] };
+  }, [orderStoreRecords]);
+  const orderDateRangePickerValue = useMemo(() => {
+    const start = businessDateToDayjs(orderAnalysisDateStart);
+    const end = businessDateToDayjs(orderAnalysisDateEnd);
+    return start && end ? [start, end] as [Dayjs, Dayjs] : null;
+  }, [orderAnalysisDateEnd, orderAnalysisDateStart]);
+  const orderDateRangePresets = useMemo(() => {
+    const presets: Array<{ label: React.ReactNode; value: [Dayjs, Dayjs] }> = [];
+    const addPreset = (label: React.ReactNode, startText: string, endText: string) => {
+      const start = businessDateToDayjs(startText);
+      const end = businessDateToDayjs(endText);
+      if (start && end) presets.push({ label, value: [start, end] });
+    };
+    if (!orderDataDateBounds.start || !orderDataDateBounds.end) return presets;
+    addPreset('全部订单', orderDataDateBounds.start, orderDataDateBounds.end);
+    const latest7Start = businessAddDays(orderDataDateBounds.end, -6);
+    addPreset('最近7天', latest7Start < orderDataDateBounds.start ? orderDataDateBounds.start : latest7Start, orderDataDateBounds.end);
+    const latest30Start = businessAddDays(orderDataDateBounds.end, -29);
+    addPreset('最近30天', latest30Start < orderDataDateBounds.start ? orderDataDateBounds.start : latest30Start, orderDataDateBounds.end);
+    return presets;
+  }, [orderDataDateBounds.end, orderDataDateBounds.start]);
+  const updateOrderAnalysisDateRange = (dateStrings: string[]) => {
+    setOrderAnalysisDateStart(normalizeBusinessDate(dateStrings[0]));
+    setOrderAnalysisDateEnd(normalizeBusinessDate(dateStrings[1]));
+  };
+  const filteredOrderRecords = useMemo(() => {
+    return orderStoreRecords
+      .filter(row => orderAnalysisPlatform === 'all' || row.platform === orderAnalysisPlatform)
+      .filter(row => !orderAnalysisDateStart || row.orderDate >= orderAnalysisDateStart)
+      .filter(row => !orderAnalysisDateEnd || row.orderDate <= orderAnalysisDateEnd)
+      .sort((a, b) => a.orderDate.localeCompare(b.orderDate) || a.orderTime.localeCompare(b.orderTime) || a.orderId.localeCompare(b.orderId));
+  }, [orderAnalysisDateEnd, orderAnalysisDateStart, orderAnalysisPlatform, orderStoreRecords]);
+  const orderSummary = useMemo(() => summarizeOrderRecords(filteredOrderRecords), [filteredOrderRecords]);
+  const orderActiveDateRangeText = businessDateRangeText(
+    orderAnalysisDateStart || orderSummary.dateStart,
+    orderAnalysisDateEnd || orderSummary.dateEnd
+  );
+  const orderPlatformRows = useMemo(() => aggregateOrdersByPlatform(filteredOrderRecords), [filteredOrderRecords]);
+  const orderPayBandRows = useMemo(() => aggregateOrdersByPayBand(filteredOrderRecords), [filteredOrderRecords]);
+  const orderMealPeriodRows = useMemo(() => aggregateOrdersByMealPeriod(filteredOrderRecords), [filteredOrderRecords]);
+  const orderHourRows = useMemo(() => aggregateOrdersByHour(filteredOrderRecords), [filteredOrderRecords]);
+  const orderActivityRows = useMemo(() => aggregateOrdersByActivityType(filteredOrderRecords), [filteredOrderRecords]);
+  const enrichedOrderRecords = useMemo(() => enrichOrderRecords(filteredOrderRecords, store.products), [filteredOrderRecords, store.products]);
+  const orderProfitSummary = useMemo(() => summarizeOrderProfit(enrichedOrderRecords), [enrichedOrderRecords]);
+  const orderActivityComboRows = useMemo(() => aggregateOrdersByActivityCombo(enrichedOrderRecords), [enrichedOrderRecords]);
+  const orderPlatformPayBandRows = useMemo(() => aggregateOrdersByPlatformPayBand(enrichedOrderRecords), [enrichedOrderRecords]);
+  const orderMealPayBandRows = useMemo(() => aggregateOrdersByMealPeriodPayBand(enrichedOrderRecords), [enrichedOrderRecords]);
+  const orderActivityComboPayBandRows = useMemo(() => aggregateOrdersByActivityComboPayBand(enrichedOrderRecords), [enrichedOrderRecords]);
+  const orderProductRows = useMemo(() => aggregateEnrichedOrdersByProduct(enrichedOrderRecords, store.products), [enrichedOrderRecords, store.products]);
+  const orderOperationRecommendations = useMemo(
+    () => buildOrderOperationRecommendations(orderSummary, orderProfitSummary, orderPayBandRows, orderPlatformPayBandRows, orderMealPayBandRows, orderActivityComboRows, orderProductRows),
+    [orderActivityComboRows, orderMealPayBandRows, orderPayBandRows, orderPlatformPayBandRows, orderProductRows, orderProfitSummary, orderSummary]
+  );
+  const orderInsights = useMemo(() => buildOrderInsights(orderSummary, orderPayBandRows, orderMealPeriodRows, orderActivityRows), [orderActivityRows, orderMealPeriodRows, orderPayBandRows, orderSummary]);
+  const orderImportRows = useMemo(() => {
+    return state.orderAnalysis.imports
+      .filter(row => row.storeId === store.id)
+      .sort((a, b) => b.importedAt.localeCompare(a.importedAt));
+  }, [state.orderAnalysis.imports, store.id]);
   const businessSummary = useMemo(() => summarizeBusinessRecords(filteredBusinessRecords), [filteredBusinessRecords]);
+  const businessActiveDateRangeText = businessDateRangeText(
+    businessAnalysisDateStart || businessSummary.dateStart,
+    businessAnalysisDateEnd || businessSummary.dateEnd
+  );
   const businessPlatformRows = useMemo(() => aggregateBusinessRecordsByPlatform(filteredBusinessRecords), [filteredBusinessRecords]);
   const businessDailyRows = useMemo(() => aggregateBusinessRecordsByDate(filteredBusinessRecords), [filteredBusinessRecords]);
   const businessWeeklyRows = useMemo(() => aggregateBusinessRecordsByWeekday(filteredBusinessRecords), [filteredBusinessRecords]);
@@ -8097,6 +8768,11 @@ function WaimaiCalculatorInner() {
       .filter(row => row.storeId === store.id)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
   }, [state.businessData.notes, store.id]);
+  const businessVisibleNotes = useMemo(() => {
+    return businessNotes
+      .filter(row => businessNoteMatchesPlatformFilter(row, businessAnalysisPlatform))
+      .filter(row => businessNoteOverlapsDateRange(row, businessAnalysisDateStart, businessAnalysisDateEnd));
+  }, [businessAnalysisDateEnd, businessAnalysisDateStart, businessAnalysisPlatform, businessNotes]);
   const storeActivityDesignSettings = useMemo(() => effectiveActivityDesignSettingsFromStore(store, state.activityStrategySettings), [state.activityStrategySettings, store]);
   const routeObjectiveOptionsFromSettings = useMemo(() => activityObjectiveOptionsFromSettings(storeActivityDesignSettings), [storeActivityDesignSettings]);
   const routeObjectiveStrategiesFromSettings = useMemo(() => normalizeActivityObjectiveStrategies(
@@ -8474,7 +9150,6 @@ function WaimaiCalculatorInner() {
     cancelPlatformEdit();
     cancelActivityEdit();
     setStoreDraft(deepClone(store));
-    setStoreOriginalDiscountTierDrafts({});
     setIsStoreEditing(true);
   }
 
@@ -8489,7 +9164,6 @@ function WaimaiCalculatorInner() {
   function cancelStoreEdit() {
     setIsStoreEditing(false);
     setStoreDraft(null);
-    setStoreOriginalDiscountTierDrafts({});
   }
 
   async function saveStoreEdit() {
@@ -8507,7 +9181,6 @@ function WaimaiCalculatorInner() {
     }, '门店信息已保存到浏览器数据库。');
     setIsStoreEditing(false);
     setStoreDraft(null);
-    setStoreOriginalDiscountTierDrafts({});
     clearCalculatedState();
   }
 
@@ -8562,7 +9235,6 @@ function WaimaiCalculatorInner() {
     cancelActivityEdit();
     cancelRiskEdit();
     setSystemStrategyDraft(normalizeActivityStrategySettings(state.activityStrategySettings));
-    setSystemOriginalDiscountTierDrafts({});
     setIsSystemStrategyEditing(true);
   }
 
@@ -8577,7 +9249,6 @@ function WaimaiCalculatorInner() {
   function cancelSystemStrategyEdit() {
     setIsSystemStrategyEditing(false);
     setSystemStrategyDraft(null);
-    setSystemOriginalDiscountTierDrafts({});
   }
 
   async function saveSystemStrategyEdit() {
@@ -8593,7 +9264,6 @@ function WaimaiCalculatorInner() {
     if (!saved) return;
     setIsSystemStrategyEditing(false);
     setSystemStrategyDraft(null);
-    setSystemOriginalDiscountTierDrafts({});
     clearCalculatedState();
   }
 
@@ -8898,34 +9568,6 @@ function WaimaiCalculatorInner() {
   function closeActivityDiscountTierEditor() {
     setActivityDiscountTierEditor(null);
     setActivityDiscountTierDraft([]);
-  }
-
-  function updateActivityDiscountTierDraft(index: number, patch: Partial<ActivityOriginalDiscountTier>) {
-    setActivityDiscountTierDraft(prev => prev.map((row, rowIndex) => {
-      if (rowIndex !== index) return row;
-      const next = { ...row, ...patch };
-      const originalMin = Math.max(0, Number(next.originalMin) || 0);
-      const originalMax = Math.max(originalMin + 1, Number(next.originalMax) || originalMin + 1);
-      return {
-        originalMin: roundMoney(originalMin),
-        originalMax: originalMax >= 999 ? 999 : roundMoney(originalMax),
-        discountRate: Math.max(0, Math.min(95, roundMoney(Number(next.discountRate) || 0)))
-      };
-    }));
-  }
-
-  function addActivityDiscountTierDraftRow() {
-    setActivityDiscountTierDraft(prev => {
-      const sorted = normalizeActivityOriginalDiscountTiers(prev, activityDiscountTierEditor?.fallback || []);
-      const last = sorted[sorted.length - 1];
-      const originalMin = last ? (last.originalMax >= 999 ? last.originalMin + 10 : last.originalMax) : 0;
-      const originalMax = originalMin + 10;
-      return normalizeActivityOriginalDiscountTiers(sorted.concat({
-        originalMin: roundMoney(originalMin),
-        originalMax: roundMoney(originalMax),
-        discountRate: last?.discountRate ?? 30
-      }), sorted);
-    });
   }
 
   function saveActivityDiscountTierEditor() {
@@ -9344,8 +9986,178 @@ function WaimaiCalculatorInner() {
   }
 
   function exportBusinessAnalysis() {
-    const ok = downloadCsv(`${store.name}_经营数据_${businessDateRangeText(businessSummary.dateStart, businessSummary.dateEnd)}.csv`, businessReportExportRows(filteredBusinessRecords));
+    const ok = downloadCsv(
+      `${store.name}_经营数据_${businessDateRangeText(businessSummary.dateStart, businessSummary.dateEnd)}.csv`,
+      businessReportExportRows(filteredBusinessRecords, businessNotes)
+    );
     if (!ok) message.warning('当前筛选范围没有可导出的经营数据。');
+  }
+
+  async function importOrderAnalysisFile(file: File) {
+    try {
+      const parsed = parseOrderWorkbook(await readOrderWorkbook(file), file.name);
+      const rowsByOrderId = new Map<string, ParsedOrderWorkbook['records'][number]>();
+      parsed.records.forEach(row => {
+        rowsByOrderId.set(row.orderId, row);
+      });
+      const sourceRows = Array.from(rowsByOrderId.values())
+        .sort((a, b) => a.orderDate.localeCompare(b.orderDate) || a.orderTime.localeCompare(b.orderTime));
+      if (!sourceRows.length) {
+        message.warning('没有识别到有效订单，请确认文件是美团或饿了么订单明细导出。');
+        return;
+      }
+      const importedAt = new Date().toISOString();
+      const importBatchId = uid('order-import');
+      const orderIds = new Set(sourceRows.map(row => row.orderId));
+      const replacedOrders = state.orderAnalysis.records
+        .filter(row => row.storeId === store.id && orderIds.has(row.orderId))
+        .length;
+      const warnings = Array.from(new Set(parsed.warnings)).filter(Boolean);
+      const nextRecords = sourceRows
+        .map(row => normalizeOrderDetailRecord({
+          ...row,
+          key: row.orderId,
+          storeId: store.id,
+          storeName: store.name,
+          sourceFileName: file.name,
+          importBatchId,
+          importedAt
+        }))
+        .filter((row): row is OrderDetailRecord => Boolean(row));
+      const dateStart = nextRecords[0]?.orderDate || '';
+      const dateEnd = nextRecords[nextRecords.length - 1]?.orderDate || '';
+      await commitState(draft => {
+        draft.orderAnalysis.records = draft.orderAnalysis.records
+          .filter(row => !(row.storeId === store.id && orderIds.has(row.orderId)))
+          .concat(nextRecords)
+          .sort((a, b) => a.storeId.localeCompare(b.storeId) || a.orderDate.localeCompare(b.orderDate) || a.orderTime.localeCompare(b.orderTime));
+        draft.orderAnalysis.imports = [{
+          id: importBatchId,
+          storeId: store.id,
+          storeName: store.name,
+          platform: parsed.platform,
+          platformName: PLATFORM_NAMES[parsed.platform],
+          fileName: file.name,
+          importedAt,
+          dateStart,
+          dateEnd,
+          rowCount: nextRecords.length,
+          replacedOrders,
+          skippedRows: parsed.skippedRows,
+          warnings
+        }, ...draft.orderAnalysis.imports].slice(0, 100);
+      }, `已导入${PLATFORM_NAMES[parsed.platform]}订单：${nextRecords.length} 单，覆盖 ${replacedOrders} 单。`);
+      if (warnings.length) message.warning(warnings.slice(0, 2).join('；'));
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '导入订单明细失败，请确认文件格式。');
+    }
+  }
+
+  function exportOrderAnalysis() {
+    const ok = downloadCsv(
+      `${store.name}_订单分析_${businessDateRangeText(orderSummary.dateStart, orderSummary.dateEnd)}.csv`,
+      orderAnalysisExportRows(
+        orderSummary,
+        orderPayBandRows,
+        orderMealPeriodRows,
+        orderActivityRows,
+        orderProductRows,
+        orderProfitSummary,
+        orderActivityComboRows,
+        orderPlatformPayBandRows,
+        orderMealPayBandRows,
+        orderOperationRecommendations
+      )
+    );
+    if (!ok) message.warning('当前筛选范围没有可导出的订单分析。');
+  }
+
+  function openBusinessMemoNoteEditor(note?: BusinessAnalysisNote) {
+    if (note) {
+      setBusinessNoteEditor({
+        id: note.id,
+        dateStart: note.dateStart,
+        dateEnd: note.dateEnd,
+        platform: note.platform,
+        title: note.title,
+        content: businessNoteItemsText(note)
+      });
+      return;
+    }
+    const fallbackStart = businessAnalysisDateStart || businessSummary.dateStart || businessDataDateBounds.end || '';
+    const fallbackEnd = businessAnalysisDateEnd || businessSummary.dateEnd || fallbackStart;
+    const range = normalizeBusinessDateRange(fallbackStart, fallbackEnd);
+    setBusinessNoteEditor({
+      ...range,
+      platform: businessAnalysisPlatform,
+      title: '经营备忘',
+      content: ''
+    });
+  }
+
+  function openBusinessMemoNoteEditorWithContext(context: BusinessNoteEditorState) {
+    const range = normalizeBusinessDateRange(context.dateStart, context.dateEnd);
+    if (!range.dateStart || !range.dateEnd) {
+      message.warning('没有识别到图表日期，无法新增备忘。');
+      return;
+    }
+    setBusinessNoteEditor({
+      ...context,
+      ...range,
+      title: context.title.trim() || '经营备忘'
+    });
+  }
+
+  function updateBusinessMemoNoteDateRange(dateStrings: string[]) {
+    const range = normalizeBusinessDateRange(dateStrings[0], dateStrings[1]);
+    setBusinessNoteEditor(prev => prev ? { ...prev, ...range } : prev);
+  }
+
+  async function saveBusinessMemoNote() {
+    if (!businessNoteEditor) return;
+    const range = normalizeBusinessDateRange(businessNoteEditor.dateStart, businessNoteEditor.dateEnd);
+    if (!range.dateStart || !range.dateEnd) {
+      message.warning('请选择备忘日期。');
+      return;
+    }
+    const content = businessNoteEditor.content.trim();
+    if (!content) {
+      message.warning('请填写备忘内容。');
+      return;
+    }
+    const title = businessNoteEditor.title.trim() || '经营备忘';
+    const nextNote: BusinessAnalysisNote = {
+      id: businessNoteEditor.id || uid('business-note'),
+      storeId: store.id,
+      kind: 'memo',
+      title,
+      createdAt: businessNoteEditor.id
+        ? businessNotes.find(row => row.id === businessNoteEditor.id)?.createdAt || new Date().toISOString()
+        : new Date().toISOString(),
+      dateStart: range.dateStart,
+      dateEnd: range.dateEnd,
+      platform: businessNoteEditor.platform,
+      items: [content]
+    };
+    await commitState(draft => {
+      draft.businessData.notes = businessNoteEditor.id
+        ? draft.businessData.notes.map(row => row.id === businessNoteEditor.id ? nextNote : row)
+        : [nextNote, ...draft.businessData.notes].slice(0, BUSINESS_NOTE_LIMIT);
+    }, businessNoteEditor.id ? '备忘录已更新。' : '备忘录已保存。');
+    setBusinessNoteEditor(null);
+  }
+
+  function deleteBusinessAnalysisNote(note: BusinessAnalysisNote) {
+    modal.confirm({
+      title: note.kind === 'memo' ? '删除备忘录' : '删除诊断记录',
+      content: `确定删除「${note.title}」吗？`,
+      okText: '删除',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => commitState(draft => {
+        draft.businessData.notes = draft.businessData.notes.filter(row => row.id !== note.id);
+      }, note.kind === 'memo' ? '备忘录已删除。' : '诊断记录已删除。')
+    });
   }
 
   async function saveBusinessAnalysisNote() {
@@ -9357,17 +10169,19 @@ function WaimaiCalculatorInner() {
     const dateEnd = businessSummary.dateEnd;
     const platform = businessAnalysisPlatform;
     const items = businessDiagnostics.map(row => `${row.title}：${row.description} 建议：${row.suggestion}`);
+    const note: BusinessAnalysisNote = {
+      id: uid('business-note'),
+      storeId: store.id,
+      kind: 'diagnostic',
+      title: `${store.name} ${businessDateRangeText(dateStart, dateEnd)} 经营诊断`,
+      createdAt: new Date().toISOString(),
+      dateStart,
+      dateEnd,
+      platform,
+      items
+    };
     await commitState(draft => {
-      draft.businessData.notes = [{
-        id: uid('business-note'),
-        storeId: store.id,
-        title: `${store.name} ${businessDateRangeText(dateStart, dateEnd)} 经营诊断`,
-        createdAt: new Date().toISOString(),
-        dateStart,
-        dateEnd,
-        platform,
-        items
-      }, ...draft.businessData.notes].slice(0, 100);
+      draft.businessData.notes = [note, ...draft.businessData.notes].slice(0, BUSINESS_NOTE_LIMIT);
     }, '当前经营诊断已保存。');
   }
 
@@ -10672,7 +11486,7 @@ function WaimaiCalculatorInner() {
                 padding: 10
               }}
             >
-              <Space direction="vertical" style={{ width: '100%' }} size={4}>
+              <Space orientation="vertical" style={{ width: '100%' }} size={4}>
                 <Space wrap size={[6, 6]}>
                   <Tag color={activityFullReductionLogTypeColor(segment.type)}>{segment.type}</Tag>
                   <Text type="secondary">#{index + 1}</Text>
@@ -10949,158 +11763,27 @@ function WaimaiCalculatorInner() {
       ...option,
       strategy: objectiveStrategies[option.value]
     }));
-    const optionText = <T extends string>(options: Array<{ value: T; label: string }>, value: T) => options.find(option => option.value === value)?.label || value;
-    const strategyTitle = (title: string, help: string) => (
-      <Space size={4}>
-        <span>{title}</span>
-        <Tooltip title={help}>
-          <QuestionCircleOutlined />
-        </Tooltip>
-      </Space>
-    );
-    const renderEnabled = (enabled: boolean) => <Tag color={enabled ? 'green' : 'default'}>{enabled ? '启用' : '停用'}</Tag>;
-    const commitSystemOriginalDiscountTiers = (objective: RedesignedActivityDesignObjective, fallback: ActivityOriginalDiscountTier[]) => {
-      const rawValue = systemOriginalDiscountTierDrafts[objective];
-      if (rawValue === undefined) return;
-      updateObjectiveStrategy(objective, {
-        originalDiscountTiers: parseActivityOriginalDiscountTiers(rawValue, fallback)
-      });
-      setSystemOriginalDiscountTierDrafts(prev => {
-        const next = { ...prev };
-        delete next[objective];
-        return next;
-      });
-    };
-    const objectiveStrategyColumns: TableColumnsType<(typeof objectiveStrategyRows)[number]> = [
-      {
-        title: '启用',
-        dataIndex: 'enabled',
-        width: 70,
-        fixed: 'left',
-        render: (_, row) => isSystemStrategyEditing
-          ? <Switch checked={row.enabled} onChange={checked => updateObjectiveTemplate(row.value, { enabled: checked })} />
-          : renderEnabled(row.enabled)
-      },
-      {
-        title: '经营目标',
-        dataIndex: 'label',
-        width: 150,
-        fixed: 'left',
-        render: (_, row) => isSystemStrategyEditing
-          ? <Input value={row.label} onChange={event => updateObjectiveTemplate(row.value, { name: event.target.value })} />
-          : <Text strong>{row.label}</Text>
-      },
-      {
-        title: '目标类型',
-        dataIndex: 'group',
-        width: 120,
-        render: (_, row) => isSystemStrategyEditing
-          ? <Select value={row.group} options={[{ value: 'stable', label: '稳定目标' }, { value: 'marketing', label: '营销目标' }]} onChange={value => updateObjectiveTemplate(row.value, { group: value })} />
-          : <Tag color={row.group === 'stable' ? 'blue' : 'purple'}>{row.group === 'stable' ? '稳定目标' : '营销目标'}</Tag>
-      },
-      {
-        title: '活动倾向',
-        dataIndex: 'description',
-        width: 220,
-        render: (_, row) => isSystemStrategyEditing
-          ? <Input value={row.description} onChange={event => updateObjectiveTemplate(row.value, { description: event.target.value })} />
-          : <Text className="table-text-wrap">{row.description || '-'}</Text>
-      },
-      { title: strategyTitle('阶梯覆盖', '按原价桶覆盖全路线基准让利率，命中阶梯用阶梯让利率，未命中用基准让利率。'), width: 300, render: (_, row) => (
-        isSystemStrategyEditing ? (
-          <Space direction="vertical" size={4} style={{ width: '100%' }}>
-            <Text className="table-text-wrap">{formatActivityOriginalDiscountTiers(row.strategy.originalDiscountTiers)}</Text>
-            <Button
-              size="small"
-              onClick={() => {
-                const fallbackStrategy = defaultActivityObjectiveStrategies(DEFAULT_ACTIVITY_DESIGN_SETTINGS.targetProfitRate, objectiveOptions)[row.value] || row.strategy;
-                openActivityDiscountTierEditor(
-                  'system',
-                  row.value,
-                  `${row.label} 原价让利设置`,
-                  row.strategy.originalDiscountTiers,
-                  fallbackStrategy.originalDiscountTiers
-                );
-              }}
-            >
-              编辑阶梯
-            </Button>
-          </Space>
-        ) : <Text className="table-text-wrap">{formatActivityOriginalDiscountTiers(row.strategy.originalDiscountTiers)}</Text>
-      ) },
-      { title: strategyTitle('满减占比%', '当前原价桶可设计活动空间中，优先分给公开满减底盘的比例。'), width: 110, render: (_, row) => isSystemStrategyEditing ? <InputNumber min={0} max={100} precision={2} value={row.strategy.fullDiscountShare} onChange={value => updateObjectiveStrategy(row.value, { fullDiscountShare: Number(value) || 0 })} /> : `${money(row.strategy.fullDiscountShare)}%` },
-      { title: strategyTitle('券占比%', '当前原价桶可设计活动空间中，分给订单券建议和最终推荐券的比例参考。'), width: 95, render: (_, row) => isSystemStrategyEditing ? <InputNumber min={0} max={100} precision={2} value={row.strategy.couponDiscountShare} onChange={value => updateObjectiveStrategy(row.value, { couponDiscountShare: Number(value) || 0 })} /> : `${money(row.strategy.couponDiscountShare)}%` },
-      { title: strategyTitle('预留占比%', '不直接发放的活动空间，可用于神券/爆红包加码、人工调整或安全冗余。'), width: 105, render: (_, row) => isSystemStrategyEditing ? <InputNumber min={0} max={100} precision={2} value={row.strategy.reserveDiscountShare} onChange={value => updateObjectiveStrategy(row.value, { reserveDiscountShare: Number(value) || 0 })} /> : `${money(row.strategy.reserveDiscountShare)}%` },
-      { title: '占比合计', width: 90, render: (_, row) => {
-        const total = row.strategy.fullDiscountShare + row.strategy.couponDiscountShare + row.strategy.reserveDiscountShare;
-        return <Tag color={Math.abs(total - 100) <= 1e-9 ? 'green' : 'orange'}>{money(total)}%</Tag>;
-      } },
-      { title: strategyTitle('窗口桶数', '每一档从起始原价桶向上取多少个有效原价桶，用这些桶的活动空间计算该档满减金额。'), width: 105, render: (_, row) => isSystemStrategyEditing ? <InputNumber min={1} precision={0} value={row.strategy.fullThresholdWindow} onChange={value => updateObjectiveStrategy(row.value, { fullThresholdWindow: Math.max(1, Number(value) || 1) })} /> : money(row.strategy.fullThresholdWindow) },
-      { title: strategyTitle('梯度间距', '生成一档后，下一档从当前门槛加该间距开始向上寻找；找不到合适金额则继续后移窗口。'), width: 105, render: (_, row) => isSystemStrategyEditing ? (
-        <InputNumber min={1} precision={0} value={row.strategy.fullThresholdMinGap} onChange={value => updateObjectiveStrategy(row.value, { fullThresholdMinGap: Math.max(1, Number(value) || 1) })} />
-      ) : money(row.strategy.fullThresholdMinGap) },
-      { title: strategyTitle('满减增量', '候选减额未高于上一档时，优先尝试抬升到该增量；抬升受安全空间限制。'), width: 105, render: (_, row) => isSystemStrategyEditing ? (
-        <InputNumber min={0} precision={1} value={row.strategy.minFullAmountIncrease} onChange={value => updateObjectiveStrategy(row.value, { minFullAmountIncrease: Number(value) || 0 })} />
-      ) : money(row.strategy.minFullAmountIncrease) },
-      { title: strategyTitle('金额口径', '满减金额取当前阶梯活动空间的统计口径。'), width: 120, render: (_, row) => isSystemStrategyEditing
-        ? <Select value={row.strategy.fullAmountBasis} options={ACTIVITY_FULL_AMOUNT_BASIS_OPTIONS} onChange={value => updateObjectiveStrategy(row.value, { fullAmountBasis: value })} />
-        : optionText(ACTIVITY_FULL_AMOUNT_BASIS_OPTIONS, row.strategy.fullAmountBasis)
-      },
-      { title: strategyTitle('到手核验线', '不参与路线生成；仅在路线评分和支付价核验中标记低到手风险。'), width: 115, render: (_, row) => isSystemStrategyEditing ? <InputNumber min={0} precision={2} value={row.strategy.minNetPayFloor} onChange={value => updateObjectiveStrategy(row.value, { minNetPayFloor: Number(value) || 0 })} /> : `¥${money(row.strategy.minNetPayFloor)}` },
-      { title: strategyTitle('券策略', '只决定最终建议券的稀疏度、代表门槛和风险容忍；桶级券空间仍按原逻辑生成。'), width: 115, render: (_, row) => {
-        const mode = row.strategy.couponRecommendationPolicy?.mode || row.strategy.couponScoringMode;
-        return isSystemStrategyEditing
-          ? <Select style={{ width: 100 }} value={mode} options={ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS} onChange={value => updateObjectiveStrategy(row.value, { couponRecommendationPolicy: defaultActivityCouponRecommendationPolicy(value), couponScoringMode: value })} />
-          : optionText(ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS, mode);
-      } },
-      { title: strategyTitle('最大阶梯', '当前经营目标最多生成多少档满减。'), width: 95, render: (_, row) => isSystemStrategyEditing ? <InputNumber min={1} max={10} precision={0} value={row.strategy.maxFullRuleCount} onChange={value => updateObjectiveStrategy(row.value, { maxFullRuleCount: Math.max(1, Math.floor(Number(value) || 1)) })} /> : row.strategy.maxFullRuleCount },
-      { title: strategyTitle('最小命中', '分段样本不足时会扩大附近桶取样，避免极少数组合决定满减金额。'), width: 95, render: (_, row) => isSystemStrategyEditing ? <InputNumber min={0} precision={0} value={row.strategy.minFullHitCount} onChange={value => updateObjectiveStrategy(row.value, { minFullHitCount: Math.max(0, Math.floor(Number(value) || 0)) })} /> : row.strategy.minFullHitCount }
-    ];
     return (
-      <div className="section-stack">
-        <Card
-          title="系统活动策略"
-          extra={isSystemStrategyEditing ? (
-            <Space>
-              <Button onClick={() => setSystemStrategyDraft(deepClone(DEFAULT_ACTIVITY_STRATEGY_SETTINGS))}>恢复默认策略</Button>
-              <Button icon={<PlusOutlined />} onClick={addObjectiveStrategy}>新增经营目标</Button>
-              <Button onClick={cancelSystemStrategyEdit}>取消</Button>
-              <Button type="primary" icon={<SaveOutlined />} onClick={saveSystemStrategyEdit}>保存系统策略</Button>
-            </Space>
-          ) : (
-            <Button type="primary" icon={<EditOutlined />} onClick={startSystemStrategyEdit}>编辑系统策略</Button>
-          )}
-        >
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <Text type="secondary">系统策略是全局默认值。活动路线会先按经营目标生成满减底盘，再按券策略从桶级券空间生成金额阶梯推荐券。</Text>
-          <Row gutter={[12, 12]}>
-            <Col xs={24} md={6}>
-              <div className="field">
-                <Text type="secondary">全路线基准让利率</Text>
-                {isSystemStrategyEditing ? (
-                  <InputNumber
-                    min={0}
-                    max={95}
-                    precision={2}
-                    value={strategySettings.baseOriginalDiscountRate}
-                    onChange={value => updateStrategySettings(settings => {
-                      settings.baseOriginalDiscountRate = Math.max(0, Math.min(95, Number(value) || 0));
-                    })}
-                  />
-                ) : <div className="field-value">{money(strategySettings.baseOriginalDiscountRate)}%</div>}
-              </div>
-            </Col>
-            <Col xs={24} md={18}>
-              <div className="field">
-                <Text type="secondary">使用方式</Text>
-                <div className="field-value">未命中经营目标阶梯时，全路线统一按该比例计算可活动空间；系统默认 50%，用于最大化暴露活动机会。</div>
-              </div>
-            </Col>
-          </Row>
-          <Table rowKey="value" size="small" columns={objectiveStrategyColumns} dataSource={objectiveStrategyRows} pagination={false} scroll={{ x: 2920 }} tableLayout="fixed" />
-        </Space>
-      </Card>
-      </div>
+      <SystemStrategyPage
+        strategySettings={strategySettings}
+        rows={objectiveStrategyRows}
+        isEditing={isSystemStrategyEditing}
+        fullAmountBasisOptions={ACTIVITY_FULL_AMOUNT_BASIS_OPTIONS}
+        couponRecommendationModeOptions={ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS}
+        money={money}
+        formatActivityOriginalDiscountTiers={formatActivityOriginalDiscountTiers}
+        defaultActivityCouponRecommendationPolicy={defaultActivityCouponRecommendationPolicy}
+        startEdit={startSystemStrategyEdit}
+        cancelEdit={cancelSystemStrategyEdit}
+        saveEdit={saveSystemStrategyEdit}
+        restoreDefault={() => setSystemStrategyDraft(deepClone(DEFAULT_ACTIVITY_STRATEGY_SETTINGS))}
+        addObjective={addObjectiveStrategy}
+        updateSettings={updateStrategySettings}
+        updateObjectiveTemplate={updateObjectiveTemplate}
+        updateObjectiveStrategy={updateObjectiveStrategy}
+        openActivityDiscountTierEditor={(objective, title, value, fallback) => openActivityDiscountTierEditor('system', objective, title, value, fallback)}
+        fallbackStrategyForObjective={objective => defaultActivityObjectiveStrategies(DEFAULT_ACTIVITY_DESIGN_SETTINGS.targetProfitRate, objectiveOptions)[objective]}
+      />
     );
   }
 
@@ -11144,7 +11827,6 @@ function WaimaiCalculatorInner() {
           settings.objectiveStrategies = effectiveObjectiveStrategies;
         }
       });
-      setStoreOriginalDiscountTierDrafts({});
     };
     const updateStoreObjectiveStrategy = (objective: RedesignedActivityDesignObjective, patch: Partial<ActivityObjectiveStrategy>) => {
       updateActivityDesignDraft(settings => {
@@ -11166,834 +11848,150 @@ function WaimaiCalculatorInner() {
         }));
       });
     };
-    const commitStoreOriginalDiscountTiers = (objective: RedesignedActivityDesignObjective, fallback: ActivityOriginalDiscountTier[]) => {
-      const rawValue = storeOriginalDiscountTierDrafts[objective];
-      if (rawValue === undefined) return;
-      updateStoreObjectiveStrategy(objective, {
-        originalDiscountTiers: parseActivityOriginalDiscountTiers(rawValue, fallback)
-      });
-      setStoreOriginalDiscountTierDrafts(prev => {
-        const next = { ...prev };
-        delete next[objective];
-        return next;
-      });
-    };
-    const optionText = <T extends string>(options: Array<{ value: T; label: string }>, value: T) => options.find(option => option.value === value)?.label || value;
-    const renderField = (label: string, value: React.ReactNode, control: React.ReactNode, span: { xs?: number; md?: number } = { xs: 12, md: 4 }) => (
-      <Col xs={span.xs ?? 12} md={span.md ?? 4}>
-        <div className="field">
-          <Text type="secondary">{label}</Text>
-          {isStoreEditing ? control : <div className="field-value">{value}</div>}
-        </div>
-      </Col>
-    );
-    const canEditStoreObjectiveModel = isStoreEditing && !storeUsesDefaultObjectiveStrategies;
-    const activityObjectiveStrategyColumns: TableColumnsType<(typeof pageObjectiveOptions)[number]> = [
-      { title: '经营目标', dataIndex: 'label', width: 120, render: value => <Tag color="blue">{String(value)}</Tag> },
-      { title: '活动倾向', dataIndex: 'description', width: 240, render: value => <Text className="table-text-wrap">{String(value)}</Text> },
-      {
-        title: '阶梯覆盖',
-        width: 300,
-        render: (_, row) => {
-          const target = effectiveObjectiveStrategies[row.value];
-          return canEditStoreObjectiveModel ? (
-            <Space direction="vertical" size={4} style={{ width: '100%' }}>
-              <Text className="table-text-wrap">{formatActivityOriginalDiscountTiers(target.originalDiscountTiers)}</Text>
-              <Button
-                size="small"
-                onClick={() => {
-                  const fallbackStrategy = normalizeActivityObjectiveStrategies(systemStrategySettings.objectiveStrategies, effectivePageActivityDesignSettings.targetProfitRate, pageObjectiveOptions)[row.value] || target;
-                  openActivityDiscountTierEditor(
-                    'store',
-                    row.value,
-                    `${row.label} 原价让利设置`,
-                    target.originalDiscountTiers,
-                    fallbackStrategy.originalDiscountTiers
-                  );
-                }}
-              >
-                编辑阶梯
-              </Button>
-            </Space>
-          ) : <Text className="table-text-wrap">{formatActivityOriginalDiscountTiers(target.originalDiscountTiers)}</Text>;
-        }
-      },
-      {
-        title: '满减占比%',
-        width: 120,
-        render: (_, row) => {
-          const target = effectiveObjectiveStrategies[row.value];
-          return canEditStoreObjectiveModel
-            ? <InputNumber min={0} max={100} precision={2} value={target.fullDiscountShare} onChange={value => updateStoreObjectiveStrategy(row.value, { fullDiscountShare: Number(value) || 0 })} />
-            : `${money(target.fullDiscountShare)}%`;
-        }
-      },
-      {
-        title: '券占比%',
-        width: 105,
-        render: (_, row) => {
-          const target = effectiveObjectiveStrategies[row.value];
-          return canEditStoreObjectiveModel
-            ? <InputNumber min={0} max={100} precision={2} value={target.couponDiscountShare} onChange={value => updateStoreObjectiveStrategy(row.value, { couponDiscountShare: Number(value) || 0 })} />
-            : `${money(target.couponDiscountShare)}%`;
-        }
-      },
-      {
-        title: '窗口桶数',
-        width: 105,
-        render: (_, row) => {
-          const target = effectiveObjectiveStrategies[row.value];
-          return canEditStoreObjectiveModel
-            ? <InputNumber min={1} precision={0} value={target.fullThresholdWindow} onChange={value => updateStoreObjectiveStrategy(row.value, { fullThresholdWindow: Math.max(1, Number(value) || 1) })} />
-            : money(target.fullThresholdWindow);
-        }
-      },
-      {
-        title: '梯度间距',
-        width: 105,
-        render: (_, row) => {
-          const target = effectiveObjectiveStrategies[row.value];
-          return canEditStoreObjectiveModel
-            ? <InputNumber min={1} precision={0} value={target.fullThresholdMinGap} onChange={value => updateStoreObjectiveStrategy(row.value, { fullThresholdMinGap: Math.max(1, Number(value) || 1) })} />
-            : money(target.fullThresholdMinGap);
-        }
-      },
-      {
-        title: '最大阶梯',
-        width: 95,
-        render: (_, row) => {
-          const target = effectiveObjectiveStrategies[row.value];
-          return canEditStoreObjectiveModel
-            ? <InputNumber min={1} max={10} precision={0} value={target.maxFullRuleCount} onChange={value => updateStoreObjectiveStrategy(row.value, { maxFullRuleCount: Math.max(1, Math.floor(Number(value) || 1)) })} />
-            : target.maxFullRuleCount;
-        }
-      },
-      {
-        title: '金额口径',
-        width: 110,
-        render: (_, row) => {
-          const target = effectiveObjectiveStrategies[row.value];
-          return canEditStoreObjectiveModel
-            ? <Select style={{ width: 100 }} value={target.fullAmountBasis} options={ACTIVITY_FULL_AMOUNT_BASIS_OPTIONS} onChange={value => updateStoreObjectiveStrategy(row.value, { fullAmountBasis: value })} />
-            : optionText(ACTIVITY_FULL_AMOUNT_BASIS_OPTIONS, target.fullAmountBasis);
-        }
-      },
-      {
-        title: '核验/券',
-        width: 170,
-        render: (_, row) => {
-          const target = effectiveObjectiveStrategies[row.value];
-          const couponMode = target.couponRecommendationPolicy?.mode || target.couponScoringMode;
-          return canEditStoreObjectiveModel ? (
-            <Space.Compact>
-              <InputNumber style={{ width: 80 }} min={0} precision={2} value={target.minNetPayFloor} onChange={value => updateStoreObjectiveStrategy(row.value, { minNetPayFloor: Number(value) || 0 })} />
-              <Select style={{ width: 90 }} value={couponMode} options={ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS} onChange={value => updateStoreObjectiveStrategy(row.value, { couponRecommendationPolicy: defaultActivityCouponRecommendationPolicy(value), couponScoringMode: value })} />
-            </Space.Compact>
-          ) : `到手核验¥${money(target.minNetPayFloor)} / 券策略${optionText(ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS, couponMode)}`;
-        }
-      }
-    ];
     return (
-      <div className="section-stack">
-        <Card
-          title="门店维护"
-          extra={
-            <Space>
-              {isStoreEditing ? (
-                <>
-                  <Button onClick={cancelStoreEdit}>取消</Button>
-                  <Button type="primary" icon={<SaveOutlined />} onClick={saveStoreEdit}>保存门店</Button>
-                </>
-              ) : (
-                <Button type="primary" onClick={startStoreEdit}>编辑门店</Button>
-              )}
-              <Button icon={<CopyOutlined />} onClick={duplicateStore}>复制门店</Button>
-              <Button danger icon={<DeleteOutlined />} onClick={deleteStore}>删除门店</Button>
-            </Space>
-          }
-        >
-          <Row gutter={[12, 12]}>
-            {renderField('门店名称', pageStore.name, <Input value={pageStore.name} onChange={e => updateStoreDraft(draft => { draft.name = e.target.value; })} />, { xs: 24, md: 8 })}
-            {renderField('起送价', `¥${money(pageStore.startPrice)}`, <InputNumber min={0} precision={2} value={pageStore.startPrice} onChange={value => updateStoreDraft(draft => { draft.startPrice = Number(value) || 0; })} />)}
-            {renderField('测算最低总价', `¥${money(pageStore.calculationTotalMin)}`, <InputNumber min={0} precision={2} value={pageStore.calculationTotalMin} onChange={value => updateStoreDraft(draft => { draft.calculationTotalMin = Number(value) || 0; })} />)}
-            {renderField('测算最高总价', pageStore.calculationTotalMax === '' ? '不限' : `¥${money(pageStore.calculationTotalMax)}`, <InputNumber min={0} precision={2} placeholder="空=不限" value={pageStore.calculationTotalMax === '' ? null : pageStore.calculationTotalMax} onChange={value => updateStoreDraft(draft => { draft.calculationTotalMax = value === null ? '' : Number(value) || 0; })} />)}
-            {renderField('主食份数最低', pageStore.stapleCountMin, <InputNumber min={0} precision={0} value={pageStore.stapleCountMin} onChange={value => updateStoreDraft(draft => { draft.stapleCountMin = Number(value) || 0; })} />)}
-            {renderField('主食份数最高', pageStore.stapleCountMax === '' ? '不限' : pageStore.stapleCountMax, <InputNumber min={0} precision={0} placeholder="空=不限" value={pageStore.stapleCountMax === '' ? null : pageStore.stapleCountMax} onChange={value => updateStoreDraft(draft => { draft.stapleCountMax = value === null ? '' : Number(value) || 0; })} />)}
-            {renderField('配送距离', `${pageStore.deliveryDistance} 公里`, <InputNumber min={0} precision={1} value={pageStore.deliveryDistance} onChange={value => updateStoreDraft(draft => { draft.deliveryDistance = Number(value) || 0; })} />)}
-            {renderField('下单时段', pageStore.orderTime, <Input value={pageStore.orderTime} onChange={e => updateStoreDraft(draft => { draft.orderTime = e.target.value; })} />)}
-            {renderField('最多商品件数', pageStore.maxItems, <InputNumber min={1} max={10} value={pageStore.maxItems} onChange={value => updateStoreDraft(draft => { draft.maxItems = Number(value) || 1; })} />)}
-            {renderField('单SKU最多数量', pageStore.maxQtyPerSku, <InputNumber min={1} max={10} value={pageStore.maxQtyPerSku} onChange={value => updateStoreDraft(draft => { draft.maxQtyPerSku = Number(value) || 1; })} />)}
-            {renderField('最多优惠券张数', pageStore.maxCoupons, <InputNumber min={0} max={8} value={pageStore.maxCoupons} onChange={value => updateStoreDraft(draft => { draft.maxCoupons = Number(value) || 0; })} />)}
-            {renderField('整单折扣商品上限', pageStore.maxDiscountItems === '' ? '不限' : pageStore.maxDiscountItems, <InputNumber min={0} placeholder="空=不限" value={pageStore.maxDiscountItems === '' ? null : pageStore.maxDiscountItems} onChange={value => updateStoreDraft(draft => { draft.maxDiscountItems = value === null ? '' : Number(value) || 0; })} />)}
-            {renderField('最多检查组合数', pageStore.maxChecks, <InputNumber min={1000} step={1000} value={pageStore.maxChecks} onChange={value => updateStoreDraft(draft => { draft.maxChecks = Number(value) || 1000; })} />)}
-          </Row>
-        </Card>
-
-        <Card title="活动设计配置">
-          <Row gutter={[12, 12]}>
-            {renderField('饭团最大组合数', pageActivityDesignSettings.stapleMaxCount, <InputNumber min={1} precision={0} value={pageActivityDesignSettings.stapleMaxCount ?? 2} onChange={value => updateActivityDesignDraft(settings => { settings.stapleMaxCount = Math.max(1, Math.floor(Number(value) || 2)); })} />)}
-            {renderField('凑单小吃最多件数', pageActivityDesignSettings.addOnMaxCount === '' ? '不限' : pageActivityDesignSettings.addOnMaxCount, <InputNumber min={0} precision={0} placeholder="空=不限" value={pageActivityDesignSettings.addOnMaxCount === '' ? null : pageActivityDesignSettings.addOnMaxCount} onChange={value => updateActivityDesignDraft(settings => { settings.addOnMaxCount = value === null ? '' : Math.max(0, Math.floor(Number(value) || 0)); })} />)}
-            {renderField('神券/爆红包加码空间', `¥${money(pageActivityDesignSettings.redAddOnSpace)}`, <InputNumber min={0} precision={2} value={pageActivityDesignSettings.redAddOnSpace} onChange={value => updateActivityDesignDraft(settings => { settings.redAddOnSpace = Number(value) || 0; })} />)}
-            {renderField('全路线基准让利率', `${money(effectivePageActivityDesignSettings.baseOriginalDiscountRate ?? 50)}%${storeUsesDefaultObjectiveStrategies ? '（通用）' : ''}`, <InputNumber disabled={storeUsesDefaultObjectiveStrategies} min={0} max={95} precision={2} value={effectivePageActivityDesignSettings.baseOriginalDiscountRate ?? 50} onChange={value => updateActivityDesignDraft(settings => { settings.useDefaultObjectiveStrategies = false; settings.baseOriginalDiscountRate = Math.max(0, Math.min(95, Number(value) || 0)); })} />)}
-            {renderField('优惠券设计基准', pageActivityDesignSettings.couponDesignBasis === 'pay' ? '支付价' : '商品原价', <Select value={pageActivityDesignSettings.couponDesignBasis} onChange={value => updateActivityDesignDraft(settings => { settings.couponDesignBasis = value; })} options={[{ value: 'original', label: '商品原价' }, { value: 'pay', label: '支付价' }]} />)}
-            {renderField('活动设计模式', activityDesignModeName(pageActivityDesignSettings.designMode), <Select value={pageActivityDesignSettings.designMode} onChange={value => updateActivityDesignDraft(settings => { settings.designMode = value; })} options={[{ value: 'auto', label: '自动' }, { value: 'full', label: '只看满减' }, { value: 'coupon', label: '只看优惠券' }, { value: 'stacked', label: '满减+券' }]} />)}
-            {renderField('默认关注目标', pageObjectiveOptions.find(option => option.value === (pageActivityDesignSettings.objective || 'longTerm'))?.label || (pageActivityDesignSettings.objective || 'longTerm'), <Select value={pageActivityDesignSettings.objective || 'longTerm'} onChange={value => updateActivityDesignDraft(settings => { settings.objective = value; })} options={pageObjectiveOptions.map(option => ({ value: option.value, label: option.label }))} />)}
-            {renderField('门槛步长', pageActivityDesignSettings.couponDesignThresholdStep, <InputNumber min={1} precision={0} value={pageActivityDesignSettings.couponDesignThresholdStep} onChange={value => updateActivityDesignDraft(settings => { settings.couponDesignThresholdStep = Math.max(1, Math.floor(Number(value) || 1)); })} />)}
-            {renderField('满减最大减额', pageActivityDesignSettings.couponDesignMaxFullAmount === '' ? '不限' : `¥${money(pageActivityDesignSettings.couponDesignMaxFullAmount)}`, <InputNumber min={0} precision={2} placeholder="空=不限" value={pageActivityDesignSettings.couponDesignMaxFullAmount === '' ? null : pageActivityDesignSettings.couponDesignMaxFullAmount} onChange={value => updateActivityDesignDraft(settings => { settings.couponDesignMaxFullAmount = value === null ? '' : Number(value) || 0; })} />)}
-            {renderField('券最大减额', pageActivityDesignSettings.couponDesignMaxCouponAmount === '' ? '不限' : `¥${money(pageActivityDesignSettings.couponDesignMaxCouponAmount)}`, <InputNumber min={0} precision={2} placeholder="空=不限" value={pageActivityDesignSettings.couponDesignMaxCouponAmount === '' ? null : pageActivityDesignSettings.couponDesignMaxCouponAmount} onChange={value => updateActivityDesignDraft(settings => { settings.couponDesignMaxCouponAmount = value === null ? '' : Number(value) || 0; })} />)}
-            {renderField('原价区间步长', pageActivityDesignSettings.originalBandSize ?? 5, <InputNumber min={1} precision={0} value={pageActivityDesignSettings.originalBandSize ?? 5} onChange={value => updateActivityDesignDraft(settings => { settings.originalBandSize = Math.max(1, Math.floor(Number(value) || 5)); })} />)}
-            {renderField('支付价区间步长', pageActivityDesignSettings.payBandSize ?? 5, <InputNumber min={1} precision={0} value={pageActivityDesignSettings.payBandSize ?? 5} onChange={value => updateActivityDesignDraft(settings => { settings.payBandSize = Math.max(1, Math.floor(Number(value) || 5)); })} />)}
-          </Row>
-          <Space direction="vertical" style={{ width: '100%', marginTop: 16 }} size="small">
-            <Space wrap>
-              <Text strong>经营目标模型</Text>
-              {isStoreEditing ? (
-                <Checkbox
-                  checked={storeUsesDefaultObjectiveStrategies}
-                  onChange={event => setStoreUsesDefaultObjectiveStrategies(event.target.checked)}
-                >
-                  使用门店通用规则
-                </Checkbox>
-              ) : (
-                <Tag color={storeUsesDefaultObjectiveStrategies ? 'green' : 'orange'}>
-                  {storeUsesDefaultObjectiveStrategies ? '使用门店通用规则' : '门店自定义规则'}
-                </Tag>
-              )}
-            <Text type="secondary">满减按全路线基准让利率和目标阶梯覆盖生成公开优惠底盘，优惠券按券策略从桶级券空间生成金额阶梯推荐券；商家到手价最低 ¥{money(ACTIVITY_MIN_NET_PAY)} 只在后续核验中标记。</Text>
-            </Space>
-            <Table
-              rowKey="value"
-              size="small"
-              columns={activityObjectiveStrategyColumns}
-              dataSource={pageObjectiveOptions}
-              pagination={false}
-              scroll={{ x: 2110 }}
-              tableLayout="fixed"
-            />
-          </Space>
-        </Card>
-
-        <Row gutter={[16, 16]}>
-          <Col xs={24} lg={12}>
-            <Card title="费用规则" extra={isStoreEditing ? <Button onClick={() => updateStoreDraft(draft => { draft.usePlatformFee = true; draft.customFeeRule = null; })}>重置到平台规则</Button> : null}>
-              <Space direction="vertical" style={{ width: '100%' }}>
-                {isStoreEditing ? (
-                  <Checkbox checked={pageStore.usePlatformFee} onChange={e => updateStoreDraft(draft => { draft.usePlatformFee = e.target.checked; if (e.target.checked) draft.customFeeRule = null; else draft.customFeeRule = feeRule; })}>继承平台费用规则</Checkbox>
-                ) : (
-                  <Tag color={pageStore.usePlatformFee ? 'green' : 'blue'}>{pageStore.usePlatformFee ? '继承平台费用规则' : '门店自定义费用规则'}</Tag>
-                )}
-                <Row gutter={[12, 12]}>
-                  {[
-                    ['commissionRate', '佣金率%'],
-                    ['minCommission', '保底佣金'],
-                    ['baseDeliveryFee', '3公里内配送费'],
-                    ['extraDeliveryFee', '超3公里每0.1公里'],
-                    ['freightWithin3', '3公里内运费补贴'],
-                    ['freightWithin5', '3-5公里运费补贴'],
-                    ['freightAbove5', '5公里以上运费补贴']
-                  ].map(([field, label]) => (
-                    <Col xs={12} md={8} key={field}>
-                      <div className="field">
-                        <Text type="secondary">{label}</Text>
-                        {isStoreEditing ? (
-                          <InputNumber disabled={pageStore.usePlatformFee} precision={2} value={Number((feeRule as unknown as Record<string, number>)[field])} onChange={value => updateStoreDraft(draft => { draft.customFeeRule = { ...(draft.customFeeRule || {}), [field]: Number(value) || 0 }; })} />
-                        ) : (
-                          <div className="field-value">{money((feeRule as unknown as Record<string, number>)[field])}</div>
-                        )}
-                      </div>
-                    </Col>
-                  ))}
-                </Row>
-              </Space>
-            </Card>
-          </Col>
-          <Col xs={24} lg={12}>
-            {renderProfitTargetsCard('门店利润率阶梯', pageStore.usePlatformTargets ? state.platformRules.profitTargets : pageStore.profitTargets, !isStoreEditing || pageStore.usePlatformTargets, {
-              extra: isStoreEditing ? <Checkbox checked={pageStore.usePlatformTargets} onChange={e => updateStoreDraft(draft => { draft.usePlatformTargets = e.target.checked; })}>继承平台阶梯</Checkbox> : <Tag color={pageStore.usePlatformTargets ? 'green' : 'blue'}>{pageStore.usePlatformTargets ? '继承平台阶梯' : '门店自定义阶梯'}</Tag>,
-              onChange: rows => updateStoreDraft(draft => { draft.profitTargets = rows; }),
-              onAdd: () => updateStoreDraft(draft => { draft.profitTargets.push({ enabled: true, payMin: 0, payMax: 20, rateMin: 20, rateMax: 30 }); })
-            })}
-          </Col>
-        </Row>
-      </div>
+      <StorePage
+        pageStore={pageStore}
+        platformProfitTargets={state.platformRules.profitTargets}
+        feeRule={feeRule}
+        isEditing={isStoreEditing}
+        activityDesignSettings={pageActivityDesignSettings}
+        effectiveActivityDesignSettings={effectivePageActivityDesignSettings}
+        objectiveOptions={pageObjectiveOptions}
+        effectiveObjectiveStrategies={effectiveObjectiveStrategies}
+        systemStrategySettings={systemStrategySettings}
+        usesDefaultObjectiveStrategies={storeUsesDefaultObjectiveStrategies}
+        fullAmountBasisOptions={ACTIVITY_FULL_AMOUNT_BASIS_OPTIONS}
+        couponRecommendationModeOptions={ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS}
+        activityMinNetPay={ACTIVITY_MIN_NET_PAY}
+        money={money}
+        activityDesignModeName={activityDesignModeName}
+        formatActivityOriginalDiscountTiers={formatActivityOriginalDiscountTiers}
+        defaultActivityCouponRecommendationPolicy={defaultActivityCouponRecommendationPolicy}
+        normalizeActivityObjectiveStrategies={normalizeActivityObjectiveStrategies}
+        startEdit={startStoreEdit}
+        cancelEdit={cancelStoreEdit}
+        saveEdit={saveStoreEdit}
+        duplicateStore={duplicateStore}
+        deleteStore={deleteStore}
+        updateStore={updateStoreDraft}
+        updateActivityDesign={updateActivityDesignDraft}
+        setUsesDefaultObjectiveStrategies={setStoreUsesDefaultObjectiveStrategies}
+        updateObjectiveStrategy={updateStoreObjectiveStrategy}
+        openActivityDiscountTierEditor={(objective, title, value, fallback) => openActivityDiscountTierEditor('store', objective, title, value, fallback)}
+      />
     );
   }
 
-  function renderProfitTargetsCard(title: string, rows: ProfitTarget[], disabled: boolean, options: { extra?: React.ReactNode; onChange: (rows: ProfitTarget[]) => void; onAdd: () => void }) {
-    const columns: TableColumnsType<ProfitTarget> = [
-      {
-        title: '启用',
-        dataIndex: 'enabled',
-        width: 70,
-        render: (_, row, index) => disabled
-          ? <Tag color={row.enabled ? 'green' : 'default'}>{row.enabled ? '启用' : '停用'}</Tag>
-          : <Switch checked={row.enabled} onChange={checked => options.onChange(rows.map((item, i) => i === index ? { ...item, enabled: checked } : item))} />
-      },
-      {
-        title: '实付最低',
-        dataIndex: 'payMin',
-        render: (_, row, index) => disabled
-          ? `¥${money(row.payMin)}`
-          : <InputNumber precision={2} value={row.payMin} onChange={value => options.onChange(rows.map((item, i) => i === index ? { ...item, payMin: Number(value) || 0 } : item))} />
-      },
-      {
-        title: '实付最高',
-        dataIndex: 'payMax',
-        render: (_, row, index) => disabled
-          ? `¥${money(row.payMax)}`
-          : <InputNumber precision={2} value={row.payMax} onChange={value => options.onChange(rows.map((item, i) => i === index ? { ...item, payMax: Number(value) || 0 } : item))} />
-      },
-      {
-        title: '利润率低%',
-        dataIndex: 'rateMin',
-        render: (_, row, index) => disabled
-          ? `${money(row.rateMin)}%`
-          : <InputNumber precision={2} value={row.rateMin} onChange={value => options.onChange(rows.map((item, i) => i === index ? { ...item, rateMin: Number(value) || 0 } : item))} />
-      },
-      {
-        title: '利润率高%',
-        dataIndex: 'rateMax',
-        render: (_, row, index) => disabled
-          ? `${money(row.rateMax)}%`
-          : <InputNumber precision={2} value={row.rateMax} onChange={value => options.onChange(rows.map((item, i) => i === index ? { ...item, rateMax: Number(value) || 0 } : item))} />
-      },
-      ...(disabled ? [] : [{ title: '', width: 70, render: (_: unknown, __: ProfitTarget, index: number) => <Button danger icon={<DeleteOutlined />} onClick={() => options.onChange(rows.filter((_, i) => i !== index))} /> }])
-    ];
-    return (
-      <Card title={title} extra={<Space>{options.extra}{disabled ? null : <Button icon={<PlusOutlined />} onClick={options.onAdd}>添加阶梯</Button>}</Space>}>
-        <Table size="small" rowKey={(_, index) => String(index)} columns={columns} dataSource={rows} pagination={false} scroll={{ x: 760 }} />
-      </Card>
-    );
-  }
-
-  function renderPricingStrategyCard(title: string, strategy: Record<StapleScenario, PricingStrategyTier[]>, disabled: boolean, onChange: (strategy: Record<StapleScenario, PricingStrategyTier[]>) => void) {
-    const normalized = normalizePricingStrategy(strategy);
-    const updateRows = (scenario: StapleScenario, rows: PricingStrategyTier[]) => {
-      onChange({ ...normalized, [scenario]: rows });
-    };
-    const columnsFor = (scenario: StapleScenario): TableColumnsType<PricingStrategyTier> => {
-      const rows = normalized[scenario];
-      return [
-        {
-          title: '启用',
-          dataIndex: 'enabled',
-          width: 70,
-          render: (_, row, index) => disabled
-            ? <Tag color={row.enabled ? 'green' : 'default'}>{row.enabled ? '启用' : '停用'}</Tag>
-            : <Switch checked={row.enabled} onChange={checked => updateRows(scenario, rows.map((item, i) => i === index ? { ...item, enabled: checked } : item))} />
-        },
-        {
-          title: '实付最低',
-          dataIndex: 'payMin',
-          width: 115,
-          render: (_, row, index) => disabled
-            ? `¥${money(row.payMin)}`
-            : <InputNumber min={0} precision={2} value={row.payMin} onChange={value => updateRows(scenario, rows.map((item, i) => i === index ? { ...item, payMin: Number(value) || 0 } : item))} />
-        },
-        {
-          title: '实付最高',
-          dataIndex: 'payMax',
-          width: 115,
-          render: (_, row, index) => disabled
-            ? (row.payMax >= 9999 ? '不限' : `¥${money(row.payMax)}`)
-            : <InputNumber min={0} precision={2} value={row.payMax} onChange={value => updateRows(scenario, rows.map((item, i) => i === index ? { ...item, payMax: Number(value) || 0 } : item))} />
-        },
-        {
-          title: '实付下限%',
-          dataIndex: 'payRateMin',
-          width: 115,
-          render: (_, row, index) => disabled
-            ? `${money(row.payRateMin)}%`
-            : <InputNumber min={0} precision={2} value={row.payRateMin} onChange={value => updateRows(scenario, rows.map((item, i) => i === index ? { ...item, payRateMin: Number(value) || 0 } : item))} />
-        },
-        {
-          title: '实付目标%',
-          dataIndex: 'payRateTarget',
-          width: 115,
-          render: (_, row, index) => disabled
-            ? `${money(row.payRateTarget)}%`
-            : <InputNumber min={0} precision={2} value={row.payRateTarget} onChange={value => updateRows(scenario, rows.map((item, i) => i === index ? { ...item, payRateTarget: Number(value) || 0 } : item))} />
-        },
-        {
-          title: '到手下限%',
-          dataIndex: 'netRateMin',
-          width: 115,
-          render: (_, row, index) => disabled
-            ? `${money(row.netRateMin)}%`
-            : <InputNumber min={0} precision={2} value={row.netRateMin} onChange={value => updateRows(scenario, rows.map((item, i) => i === index ? { ...item, netRateMin: Number(value) || 0 } : item))} />
-        },
-        {
-          title: '到手目标%',
-          dataIndex: 'netRateTarget',
-          width: 115,
-          render: (_, row, index) => disabled
-            ? `${money(row.netRateTarget)}%`
-            : <InputNumber min={0} precision={2} value={row.netRateTarget} onChange={value => updateRows(scenario, rows.map((item, i) => i === index ? { ...item, netRateTarget: Number(value) || 0 } : item))} />
-        },
-        ...(disabled ? [] : [{
-          title: '',
-          width: 70,
-          render: (_: unknown, __: PricingStrategyTier, index: number) => <Button danger icon={<DeleteOutlined />} onClick={() => updateRows(scenario, rows.filter((_, i) => i !== index))} />
-        }])
-      ];
-    };
-    return (
-      <Card title={title}>
-        <Text type="secondary">按用户实付匹配阶梯；下限用于预警，目标用于定价建议和活动设计。最后一档可把实付最高设置为 9999 表示不限。</Text>
-        <Tabs
-          items={STAPLE_SCENARIOS.map(scenario => ({
-            key: scenario,
-            label: stapleScenarioName(scenario),
-            children: (
-              <Space direction="vertical" style={{ width: '100%' }}>
-                {disabled ? null : <Button icon={<PlusOutlined />} onClick={() => updateRows(scenario, normalized[scenario].concat({ enabled: true, payMin: 0, payMax: 9999, payRateMin: 0, payRateTarget: 0, netRateMin: 0, netRateTarget: 0 }))}>添加{stapleScenarioName(scenario)}阶梯</Button>}
-                <Table size="small" rowKey={(_, index) => String(index)} columns={columnsFor(scenario)} dataSource={normalized[scenario]} pagination={false} scroll={{ x: 850 }} />
-              </Space>
-            )
-          }))}
-        />
-      </Card>
-    );
-  }
-
-  function renderProductBulkToolbar() {
-    const disabled = selectedProductCount === 0;
-    const pricePlaceholder = bulkPriceMode === 'discount' ? '如 8.8 表示 8.8折' : bulkPriceMode === 'increase' ? '可输入负数' : '输入金额';
-    return (
-      <Card size="small" title="批量操作">
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <Space wrap>
-            <Tag color={selectedProductCount ? 'blue' : 'default'}>已选 {selectedProductCount} 个商品</Tag>
-            <Tag color={productDuplicateGroups.length ? 'orange' : 'green'}>疑似重复 {productDuplicateGroups.length} 组</Tag>
-            <Button onClick={() => setSelectedProductRowKeys(displayedProducts.map(product => product.id))}>全选全部商品</Button>
-            <Button onClick={() => setSelectedProductRowKeys(displayedProducts.filter(product => product.cost <= 0).map(product => product.id))}>选择缺成本商品</Button>
-            <Button disabled={!productDuplicateGroups.length} onClick={selectFirstDuplicateProductGroup}>选择首组疑似重复</Button>
-            <Button disabled={selectedProductCount < 2} onClick={mergeSelectedDuplicateProducts}>合并选中商品</Button>
-            <Button disabled={!selectedProductCount} onClick={() => setSelectedProductRowKeys([])}>清空选择</Button>
-          </Space>
-
-          <Space wrap>
-            <Text type="secondary">状态</Text>
-            <Button disabled={disabled} onClick={() => bulkSetProductFlag('meituanEnabled', true)}>美团上架</Button>
-            <Button disabled={disabled} onClick={() => bulkSetProductFlag('meituanEnabled', false)}>美团下架</Button>
-            <Button disabled={disabled} onClick={() => bulkSetProductFlag('elemeEnabled', true)}>饿了么上架</Button>
-            <Button disabled={disabled} onClick={() => bulkSetProductFlag('elemeEnabled', false)}>饿了么下架</Button>
-            <Button disabled={disabled} onClick={() => bulkSetProductFlag('nonStandalone', true)}>设为单点不送</Button>
-            <Button disabled={disabled} onClick={() => bulkSetProductFlag('nonStandalone', false)}>允许单点</Button>
-          </Space>
-
-          <Space wrap>
-            <Text type="secondary">分类</Text>
-            <Select
-              style={{ width: 130 }}
-              value={bulkProductCategory}
-              onChange={setBulkProductCategory}
-              options={PRODUCT_CATEGORIES.map(category => ({ value: category, label: productCategoryName(category) }))}
-            />
-            <Button disabled={disabled} onClick={bulkSetProductCategory}>设置分类</Button>
-            <InputNumber min={0} precision={0} placeholder="主食份数" value={bulkStapleServingCount} onChange={value => setBulkStapleServingCount(value === null ? null : Number(value))} />
-            <Button disabled={disabled} onClick={bulkSetStapleServingCount}>设置主食份数</Button>
-          </Space>
-
-          <Space wrap>
-            <Text type="secondary">价格</Text>
-            <Select
-              style={{ width: 150 }}
-              value={bulkPriceField}
-              onChange={value => setBulkPriceField(value)}
-              options={[
-                { value: 'price', label: '销售价' },
-                { value: 'cost', label: '成本价' },
-                { value: 'packageFee', label: '统一打包费' },
-                { value: 'meituanPrice', label: '美团价' },
-                { value: 'elemePrice', label: '饿了么价' },
-                { value: 'meituanPackageFee', label: '美团打包费' },
-                { value: 'elemePackageFee', label: '饿了么打包费' }
-              ]}
-            />
-            <Select
-              style={{ width: 130 }}
-              value={bulkPriceMode}
-              onChange={value => setBulkPriceMode(value)}
-              options={[
-                { value: 'set', label: '设置为' },
-                { value: 'increase', label: '加减金额' },
-                { value: 'discount', label: '按折扣' }
-              ]}
-            />
-            <InputNumber placeholder={pricePlaceholder} precision={2} value={bulkPriceValue} onChange={value => setBulkPriceValue(value === null ? null : Number(value))} />
-            <Button type="primary" disabled={disabled} onClick={applyBulkPriceEdit}>应用价格调整</Button>
-            <Button disabled={disabled} onClick={() => bulkClearPlatformOverride('meituanPrice')}>清空美团价</Button>
-            <Button disabled={disabled} onClick={() => bulkClearPlatformOverride('elemePrice')}>清空饿了么价</Button>
-            <Button disabled={disabled} onClick={() => bulkClearPlatformOverride('meituanPackageFee')}>清空美团打包费</Button>
-            <Button disabled={disabled} onClick={() => bulkClearPlatformOverride('elemePackageFee')}>清空饿了么打包费</Button>
-          </Space>
-
-          <Space wrap>
-            <Text type="secondary">危险操作</Text>
-            <Button danger icon={<DeleteOutlined />} onClick={deleteZeroPriceProducts}>删除0元商品</Button>
-            <Button danger disabled={disabled} icon={<DeleteOutlined />} onClick={bulkDeleteProducts}>删除选中商品</Button>
-            <Text type="secondary">批量操作只修改当前草稿，保存商品后才会生效。</Text>
-          </Space>
-        </Space>
-      </Card>
-    );
+  function clearProductFilters() {
+    setProductSearchText('');
+    setProductCategoryFilter('all');
+    setProductStatusFilter('all');
+    setProductSortField('name');
+    setProductSortAsc(true);
   }
 
   function renderProductsPage() {
     return (
-      <Card title="商品维护" extra={
-        <Space wrap>
-          {isProductsEditing ? (
-            <>
-              <Upload {...uploadProps(file => importPlatformProducts(file, 'meituan'))}><Button icon={<UploadOutlined />}>导入美团商品表</Button></Upload>
-              <Upload {...uploadProps(file => importPlatformProducts(file, 'eleme'))}><Button icon={<UploadOutlined />}>导入饿了么商品表</Button></Upload>
-              <Upload {...uploadProps(importCostFile)}><Button icon={<UploadOutlined />}>导入成本表</Button></Upload>
-              <Upload {...uploadProps(importProductsFile)}><Button icon={<UploadOutlined />}>导入商品CSV</Button></Upload>
-              <Button icon={<PlusOutlined />} onClick={() => updateProductsDraft(draft => { draft.push(normalizeProduct({ id: uid('p'), name: '新商品', price: 0, cost: 0, meituanEnabled: true, elemeEnabled: true })); })}>添加商品</Button>
-              <Button onClick={cancelProductsEdit}>取消</Button>
-              <Button type="primary" icon={<SaveOutlined />} onClick={saveProductsEdit}>保存商品</Button>
-            </>
-          ) : (
-            <Button type="primary" onClick={startProductsEdit}>编辑商品</Button>
-          )}
-        </Space>
-      }>
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <Text type="secondary">当前门店商品 {productSource.length} 个，当前展示 {displayedProducts.length} 个。平台商品表按商品名称更新对应平台价，并会对高置信相似名称做合并；低置信重复可在编辑状态下选择疑似重复组后手动合并。</Text>
-          <Card size="small" title="搜索和排序">
-            <Space wrap>
-              <Input.Search
-                allowClear
-                style={{ width: 260 }}
-                placeholder="搜索商品名、分类、价格、成本"
-                value={productSearchText}
-                onChange={event => setProductSearchText(event.target.value)}
-              />
-              <Select
-                style={{ width: 140 }}
-                value={productCategoryFilter}
-                onChange={setProductCategoryFilter}
-                options={[
-                  { value: 'all', label: '全部分类' },
-                  ...PRODUCT_CATEGORIES.map(category => ({ value: category, label: productCategoryName(category) }))
-                ]}
-              />
-              <Select
-                style={{ width: 150 }}
-                value={productStatusFilter}
-                onChange={setProductStatusFilter}
-                options={[
-                  { value: 'all', label: '全部状态' },
-                  { value: 'meituanEnabled', label: '美团上架' },
-                  { value: 'meituanDisabled', label: '美团下架' },
-                  { value: 'elemeEnabled', label: '饿了么上架' },
-                  { value: 'elemeDisabled', label: '饿了么下架' },
-                  { value: 'nonStandalone', label: '单点不送' },
-                  { value: 'missingCost', label: '缺成本价' }
-                ]}
-              />
-              <Select
-                style={{ width: 160 }}
-                value={productSortField}
-                onChange={setProductSortField}
-                options={[
-                  { value: 'name', label: '按商品名' },
-                  { value: 'category', label: '按分类' },
-                  { value: 'stapleServingCount', label: '按主食份数' },
-                  { value: 'price', label: '按销售价' },
-                  { value: 'cost', label: '按成本价' },
-                  { value: 'packageFee', label: '按统一打包费' },
-                  { value: 'meituanPrice', label: '按美团价' },
-                  { value: 'elemePrice', label: '按饿了么价' },
-                  { value: 'meituanPackageFee', label: '按美团打包费' },
-                  { value: 'elemePackageFee', label: '按饿了么打包费' }
-                ]}
-              />
-              <Select
-                style={{ width: 100 }}
-                value={productSortAsc ? 'asc' : 'desc'}
-                onChange={value => setProductSortAsc(value === 'asc')}
-                options={[
-                  { value: 'asc', label: '升序' },
-                  { value: 'desc', label: '降序' }
-                ]}
-              />
-              <Button onClick={() => {
-                setProductSearchText('');
-                setProductCategoryFilter('all');
-                setProductStatusFilter('all');
-                setProductSortField('name');
-                setProductSortAsc(true);
-              }}>清空筛选</Button>
-            </Space>
-          </Card>
-          {isProductsEditing ? (
-            <>
-              {renderProductBulkToolbar()}
-              <Input.TextArea rows={4} value={bulkText} onChange={e => setBulkText(e.target.value)} placeholder={'商品名,销售价,成本价,美团价,饿了么价,单点不送,美团上架,饿了么上架,统一打包费,美团打包费,饿了么打包费,商品分类,主食份数\n海鸭蛋和风饭团,15,6,,,否,是,是,0,,,主食,1'} />
-              <Space><Button onClick={() => applyBulkProducts('append')}>追加批量商品</Button><Button danger onClick={() => applyBulkProducts('replace')}>替换当前商品</Button></Space>
-            </>
-          ) : null}
-          <ProductTableErrorBoundary
-            key={`${store.id}-${isProductsEditing ? 'edit' : 'view'}-${productSource.length}-${productSearchText}-${productCategoryFilter}-${productStatusFilter}-${productSortField}-${productSortAsc ? 'asc' : 'desc'}`}
-            fallback={
-              <Card size="small">
-                <Space direction="vertical">
-                  <Text type="danger">商品列表渲染异常，已阻止页面继续崩溃。</Text>
-                  <Text type="secondary">请先清空筛选或退出编辑后重新进入；异常通常来自重复商品标识或导入数据字段异常。</Text>
-                  <Space>
-                    <Button onClick={() => {
-                      setProductSearchText('');
-                      setProductCategoryFilter('all');
-                      setProductStatusFilter('all');
-                      setProductSortField('name');
-                      setProductSortAsc(true);
-                    }}>清空筛选</Button>
-                    {isProductsEditing ? <Button onClick={cancelProductsEdit}>退出编辑</Button> : null}
-                  </Space>
-                </Space>
-              </Card>
-            }
-          >
-            <Table
-              rowKey={row => row.id}
-              size="small"
-              rowSelection={productRowSelection}
-              columns={productColumns}
-              dataSource={displayedProducts}
-              pagination={tablePagination(30)}
-              scroll={{ x: 1800, y: 620 }}
-              virtual
-              tableLayout="fixed"
-            />
-          </ProductTableErrorBoundary>
-        </Space>
-      </Card>
+      <ProductsPage
+        storeId={store.id}
+        isEditing={isProductsEditing}
+        productSource={productSource}
+        displayedProducts={displayedProducts}
+        selectedProductCount={selectedProductCount}
+        duplicateGroupCount={productDuplicateGroups.length}
+        productSearchText={productSearchText}
+        productCategoryFilter={productCategoryFilter}
+        productStatusFilter={productStatusFilter}
+        productSortField={productSortField}
+        productSortAsc={productSortAsc}
+        productCategories={PRODUCT_CATEGORIES}
+        productColumns={productColumns}
+        productRowSelection={productRowSelection}
+        bulkText={bulkText}
+        bulkProductCategory={bulkProductCategory}
+        bulkStapleServingCount={bulkStapleServingCount}
+        bulkPriceField={bulkPriceField}
+        bulkPriceMode={bulkPriceMode}
+        bulkPriceValue={bulkPriceValue}
+        uploadProps={uploadProps}
+        importPlatformProducts={importPlatformProducts}
+        importCostFile={importCostFile}
+        importProductsFile={importProductsFile}
+        addProduct={() => updateProductsDraft(draft => { draft.push(normalizeProduct({ id: uid('p'), name: '新商品', price: 0, cost: 0, meituanEnabled: true, elemeEnabled: true })); })}
+        startEdit={startProductsEdit}
+        cancelEdit={cancelProductsEdit}
+        saveEdit={saveProductsEdit}
+        setProductSearchText={setProductSearchText}
+        setProductCategoryFilter={setProductCategoryFilter}
+        setProductStatusFilter={setProductStatusFilter}
+        setProductSortField={setProductSortField}
+        setProductSortAsc={setProductSortAsc}
+        clearProductFilters={clearProductFilters}
+        setBulkText={setBulkText}
+        applyBulkProducts={applyBulkProducts}
+        setSelectedProductIds={ids => setSelectedProductRowKeys(ids)}
+        selectMissingCostProducts={() => setSelectedProductRowKeys(displayedProducts.filter(product => product.cost <= 0).map(product => product.id))}
+        selectFirstDuplicateProductGroup={selectFirstDuplicateProductGroup}
+        mergeSelectedDuplicateProducts={mergeSelectedDuplicateProducts}
+        clearSelectedProducts={() => setSelectedProductRowKeys([])}
+        bulkSetProductFlag={bulkSetProductFlag}
+        setBulkProductCategory={setBulkProductCategory}
+        bulkSetProductCategory={bulkSetProductCategory}
+        setBulkStapleServingCount={setBulkStapleServingCount}
+        bulkSetStapleServingCount={bulkSetStapleServingCount}
+        setBulkPriceField={setBulkPriceField}
+        setBulkPriceMode={setBulkPriceMode}
+        setBulkPriceValue={setBulkPriceValue}
+        applyBulkPriceEdit={applyBulkPriceEdit}
+        bulkClearPlatformOverride={bulkClearPlatformOverride}
+        deleteZeroPriceProducts={deleteZeroPriceProducts}
+        bulkDeleteProducts={bulkDeleteProducts}
+        productCategoryName={productCategoryName}
+        tablePagination={tablePagination}
+      />
     );
   }
 
   function renderPlatformPage() {
     const fee = isPlatformEditing && platformDraft ? platformDraft : state.platformRules;
     return (
-      <div className="section-stack">
-        <Card
-          title="平台费用规则"
-          extra={isPlatformEditing ? (
-            <Space>
-              <Button onClick={cancelPlatformEdit}>取消</Button>
-              <Button type="primary" icon={<SaveOutlined />} onClick={savePlatformEdit}>保存平台规则</Button>
-            </Space>
-          ) : (
-            <Button type="primary" onClick={startPlatformEdit}>编辑平台规则</Button>
-          )}
-        >
-          <Row gutter={[12, 12]}>
-            {[
-              ['commissionRate', '佣金率%'],
-              ['minCommission', '保底佣金'],
-              ['baseDeliveryFee', '3公里内配送费'],
-              ['extraDeliveryFee', '超3公里每0.1公里'],
-              ['midPriceRate', '20-25元价格费率'],
-              ['highPriceRate', '25元以上价格费率'],
-              ['freightWithin3', '3公里内运费补贴'],
-              ['freightWithin5', '3-5公里运费补贴'],
-              ['freightAbove5', '5公里以上运费补贴']
-            ].map(([field, label]) => (
-              <Col xs={12} md={6} key={field}>
-                <div className="field">
-                  <Text type="secondary">{label}</Text>
-                  {isPlatformEditing ? (
-                    <InputNumber precision={2} value={Number((fee as unknown as Record<string, number>)[field])} onChange={value => updatePlatformDraft(draft => { (draft as unknown as Record<string, number>)[field] = Number(value) || 0; })} />
-                  ) : (
-                    <div className="field-value">{money((fee as unknown as Record<string, number>)[field])}</div>
-                  )}
-                </div>
-              </Col>
-            ))}
-          </Row>
-        </Card>
-        {renderProfitTargetsCard('平台通用利润率阶梯', fee.profitTargets, !isPlatformEditing, {
-          onChange: rows => updatePlatformDraft(draft => { draft.profitTargets = rows; }),
-          onAdd: () => updatePlatformDraft(draft => { draft.profitTargets.push({ enabled: true, payMin: 0, payMax: 20, rateMin: 20, rateMax: 30 }); })
-        })}
-        {renderPricingStrategyCard('平台通用定价策略阶梯', fee.pricingStrategy, !isPlatformEditing, strategy => updatePlatformDraft(draft => { draft.pricingStrategy = normalizePricingStrategy(strategy); }))}
-        <Row gutter={[16, 16]}>
-          <Col xs={24} lg={12}>{renderRedTierCard('美团基础神券', fee.redTiers.meituan, !isPlatformEditing, rows => updatePlatformDraft(draft => { draft.redTiers.meituan = rows; }))}</Col>
-          <Col xs={24} lg={12}>{renderRedTierCard('饿了么基础爆红包', fee.redTiers.eleme, !isPlatformEditing, rows => updatePlatformDraft(draft => { draft.redTiers.eleme = rows; }))}</Col>
-        </Row>
-      </div>
+      <PlatformPage
+        fee={{ ...fee, pricingStrategy: normalizePricingStrategy(fee.pricingStrategy) }}
+        isEditing={isPlatformEditing}
+        scenarios={STAPLE_SCENARIOS}
+        money={money}
+        stapleScenarioName={stapleScenarioName}
+        startEdit={startPlatformEdit}
+        cancelEdit={cancelPlatformEdit}
+        saveEdit={savePlatformEdit}
+        updateFeeField={(field, value) => updatePlatformDraft(draft => { (draft as unknown as Record<string, number>)[field] = value; })}
+        changeProfitTargets={rows => updatePlatformDraft(draft => { draft.profitTargets = rows; })}
+        addProfitTarget={() => updatePlatformDraft(draft => { draft.profitTargets.push({ enabled: true, payMin: 0, payMax: 20, rateMin: 20, rateMax: 30 }); })}
+        changePricingStrategy={strategy => updatePlatformDraft(draft => { draft.pricingStrategy = normalizePricingStrategy(strategy); })}
+        changeRedTiers={(platform, rows) => updatePlatformDraft(draft => { draft.redTiers[platform] = rows; })}
+      />
     );
-  }
-
-  function renderRedTierCard(title: string, rows: RedTier[], disabled: boolean, change: (rows: RedTier[]) => void) {
-    const columns: TableColumnsType<RedTier> = [
-      {
-        title: '启用',
-        dataIndex: 'enabled',
-        width: 70,
-        render: (_, row, index) => disabled
-          ? <Tag color={row.enabled ? 'green' : 'default'}>{row.enabled ? '启用' : '停用'}</Tag>
-          : <Switch checked={row.enabled} onChange={checked => change(rows.map((item, i) => i === index ? { ...item, enabled: checked } : item))} />
-      },
-      {
-        title: '门槛',
-        dataIndex: 'threshold',
-        render: (_, row, index) => disabled
-          ? `¥${money(row.threshold)}`
-          : <InputNumber precision={2} value={row.threshold} onChange={value => change(rows.map((item, i) => i === index ? { ...item, threshold: Number(value) || 0 } : item))} />
-      },
-      {
-        title: '最小',
-        dataIndex: 'min',
-        render: (_, row, index) => disabled
-          ? `¥${money(row.min)}`
-          : <InputNumber precision={2} value={row.min} onChange={value => change(rows.map((item, i) => i === index ? { ...item, min: Number(value) || 0 } : item))} />
-      },
-      {
-        title: '最大',
-        dataIndex: 'max',
-        render: (_, row, index) => disabled
-          ? `¥${money(row.max)}`
-          : <InputNumber precision={2} value={row.max} onChange={value => change(rows.map((item, i) => i === index ? { ...item, max: Number(value) || 0 } : item))} />
-      },
-      ...(disabled ? [] : [{ title: '', width: 70, render: (_: unknown, __: RedTier, index: number) => <Button danger icon={<DeleteOutlined />} onClick={() => change(rows.filter((_, i) => i !== index))} /> }])
-    ];
-    return <Card title={title} extra={disabled ? null : <Button icon={<PlusOutlined />} onClick={() => change(rows.concat({ enabled: true, threshold: 0, min: 0, max: 0 }))}>添加档位</Button>}><Table rowKey={(_, index) => String(index)} size="small" columns={columns} dataSource={rows} pagination={false} /></Card>;
   }
 
   function renderActivityPage(platform: Platform) {
     const isEditing = editingActivityPlatform === platform && activityDraft !== null;
     const activities = isEditing && activityDraft ? activityDraft : store.activities[platform];
     return (
-      <div className="section-stack">
-        <Card
-          title={`${PLATFORM_NAMES[platform]}活动维护`}
-          extra={isEditing ? (
-            <Space>
-              <Button onClick={cancelActivityEdit}>取消</Button>
-              <Button type="primary" icon={<SaveOutlined />} onClick={saveActivityEdit}>保存活动</Button>
-            </Space>
-          ) : (
-            <Button type="primary" onClick={() => startActivityEdit(platform)}>编辑活动</Button>
-          )}
-        >
-          <Text type="secondary">活动配置归属于当前门店「{store.name}」。基础{platform === 'meituan' ? '神券' : '爆红包'}阶梯来自平台通用规则，本页只维护门店加码和门店承担的活动。</Text>
-        </Card>
-        {renderSimpleActivityTable(`${PLATFORM_NAMES[platform]}门店满减`, activities.fullReductions, rows => updateActivityDraft(draft => { draft.fullReductions = rows; }), { enabled: true, threshold: 0, amount: 0 }, !isEditing)}
-        {renderCouponTable(platform, activities.coupons, rows => updateActivityDraft(draft => { draft.coupons = rows; }), !isEditing)}
-        {renderSimpleActivityTable(`${PLATFORM_NAMES[platform]}${platform === 'meituan' ? '神券' : '爆红包'}加码`, activities.redAddOns, rows => updateActivityDraft(draft => { draft.redAddOns = rows; }), { enabled: true, threshold: 0, amount: 0 }, !isEditing)}
-        {renderDiscountActivityTable(platform, activities.discountActivities, rows => updateActivityDraft(draft => { draft.discountActivities = rows; }), !isEditing)}
-      </div>
+      <ActivityPage
+        platform={platform}
+        storeName={store.name}
+        isEditing={isEditing}
+        activities={activities}
+        money={money}
+        startEdit={startActivityEdit}
+        cancelEdit={cancelActivityEdit}
+        saveEdit={saveActivityEdit}
+        changeFullReductions={rows => updateActivityDraft(draft => { draft.fullReductions = rows; })}
+        changeCoupons={rows => updateActivityDraft(draft => { draft.coupons = rows; })}
+        changeRedAddOns={rows => updateActivityDraft(draft => { draft.redAddOns = rows; })}
+        changeDiscountActivities={rows => updateActivityDraft(draft => { draft.discountActivities = rows; })}
+      />
     );
-  }
-
-  function renderSimpleActivityTable<T extends FullReduction | RedAddOn>(title: string, rows: T[], change: (rows: T[]) => void, blank: T, disabled: boolean) {
-    const columns: TableColumnsType<T> = [
-      {
-        title: '启用',
-        dataIndex: 'enabled',
-        width: 70,
-        render: (_, row, index) => disabled
-          ? <Tag color={row.enabled ? 'green' : 'default'}>{row.enabled ? '启用' : '停用'}</Tag>
-          : <Switch checked={row.enabled} onChange={checked => change(rows.map((item, i) => i === index ? { ...item, enabled: checked } : item))} />
-      },
-      {
-        title: '门槛',
-        dataIndex: 'threshold',
-        render: (_, row, index) => disabled
-          ? `¥${money(row.threshold)}`
-          : <InputNumber precision={2} value={row.threshold} onChange={value => change(rows.map((item, i) => i === index ? { ...item, threshold: Number(value) || 0 } : item))} />
-      },
-      {
-        title: '金额',
-        dataIndex: 'amount',
-        render: (_, row, index) => disabled
-          ? `¥${money(row.amount)}`
-          : <InputNumber precision={2} value={row.amount} onChange={value => change(rows.map((item, i) => i === index ? { ...item, amount: Number(value) || 0 } : item))} />
-      },
-      ...(disabled ? [] : [{ title: '', width: 70, render: (_: unknown, __: T, index: number) => <Button danger icon={<DeleteOutlined />} onClick={() => change(rows.filter((_, i) => i !== index))} /> }])
-    ];
-    return <Card title={title} extra={disabled ? null : <Button icon={<PlusOutlined />} onClick={() => change(rows.concat(blank))}>添加</Button>}><Table rowKey={(_, index) => String(index)} size="small" columns={columns} dataSource={rows} pagination={false} /></Card>;
-  }
-
-  function renderCouponTable(platform: Platform, rows: Coupon[], change: (rows: Coupon[]) => void, disabled: boolean) {
-    const columns: TableColumnsType<Coupon> = [
-      {
-        title: '启用',
-        dataIndex: 'enabled',
-        width: 70,
-        render: (_, row, index) => disabled
-          ? <Tag color={row.enabled ? 'green' : 'default'}>{row.enabled ? '启用' : '停用'}</Tag>
-          : <Switch checked={row.enabled} onChange={checked => change(rows.map((item, i) => i === index ? { ...item, enabled: checked } : item))} />
-      },
-      {
-        title: '名称',
-        dataIndex: 'name',
-        render: (_, row, index) => disabled
-          ? <Text>{row.name || '-'}</Text>
-          : <Input value={row.name} onChange={e => change(rows.map((item, i) => i === index ? { ...item, name: e.target.value } : item))} />
-      },
-      {
-        title: '门槛',
-        dataIndex: 'threshold',
-        render: (_, row, index) => disabled
-          ? `¥${money(row.threshold)}`
-          : <InputNumber precision={2} value={row.threshold} onChange={value => change(rows.map((item, i) => i === index ? { ...item, threshold: Number(value) || 0 } : item))} />
-      },
-      {
-        title: '金额',
-        dataIndex: 'amount',
-        render: (_, row, index) => disabled
-          ? `¥${money(row.amount)}`
-          : <InputNumber precision={2} value={row.amount} onChange={value => change(rows.map((item, i) => i === index ? { ...item, amount: Number(value) || 0 } : item))} />
-      },
-      ...(disabled ? [] : [{ title: '', width: 70, render: (_: unknown, __: Coupon, index: number) => <Button danger icon={<DeleteOutlined />} onClick={() => change(rows.filter((_, i) => i !== index))} /> }])
-    ];
-    return <Card title={`${PLATFORM_NAMES[platform]}订单优惠券`} extra={disabled ? null : <Button icon={<PlusOutlined />} onClick={() => change(rows.concat({ enabled: true, name: '订单优惠券', threshold: 0, amount: 0 }))}>添加券</Button>}><Table rowKey={(_, index) => String(index)} size="small" columns={columns} dataSource={rows} pagination={false} scroll={{ x: 760 }} /></Card>;
-  }
-
-  function renderDiscountActivityTable(platform: Platform, rows: DiscountActivity[], change: (rows: DiscountActivity[]) => void, disabled: boolean) {
-    const columns: TableColumnsType<DiscountActivity> = [
-      {
-        title: '启用',
-        dataIndex: 'enabled',
-        width: 70,
-        render: (_, row, index) => disabled
-          ? <Tag color={row.enabled ? 'green' : 'default'}>{row.enabled ? '启用' : '停用'}</Tag>
-          : <Switch checked={row.enabled} onChange={checked => change(rows.map((item, i) => i === index ? { ...item, enabled: checked } : item))} />
-      },
-      {
-        title: '名称',
-        dataIndex: 'name',
-        render: (_, row, index) => disabled
-          ? <Text>{row.name || '-'}</Text>
-          : <Input value={row.name} onChange={e => change(rows.map((item, i) => i === index ? { ...item, name: e.target.value } : item))} />
-      },
-      {
-        title: '商品关键字',
-        dataIndex: 'productNames',
-        render: (_, row, index) => disabled
-          ? <Text>{row.productNames || '全部商品'}</Text>
-          : <Input placeholder="空=全部，多个用逗号" value={row.productNames} onChange={e => change(rows.map((item, i) => i === index ? { ...item, productNames: e.target.value } : item))} />
-      },
-      {
-        title: '折扣',
-        dataIndex: 'discountRate',
-        render: (_, row, index) => disabled
-          ? `${money(row.discountRate)}折`
-          : <InputNumber precision={2} value={row.discountRate} onChange={value => change(rows.map((item, i) => i === index ? { ...item, discountRate: Number(value) || 0 } : item))} />
-      },
-      {
-        title: '活动件数上限',
-        dataIndex: 'itemLimit',
-        render: (_, row, index) => disabled
-          ? (row.itemLimit === '' ? '不限' : row.itemLimit)
-          : <InputNumber min={0} placeholder="空=不限" value={row.itemLimit === '' ? null : row.itemLimit} onChange={value => change(rows.map((item, i) => i === index ? { ...item, itemLimit: value === null ? '' : Number(value) || 0 } : item))} />
-      },
-      ...(disabled ? [] : [{ title: '', width: 70, render: (_: unknown, __: DiscountActivity, index: number) => <Button danger icon={<DeleteOutlined />} onClick={() => change(rows.filter((_, i) => i !== index))} /> }])
-    ];
-    return <Card title={`${PLATFORM_NAMES[platform]}商品折扣活动`} extra={disabled ? null : <Button icon={<PlusOutlined />} onClick={() => change(rows.concat({ enabled: true, name: '商品折扣', productNames: '', discountRate: 8.8, itemLimit: '' }))}>添加折扣</Button>}><Table rowKey={(_, index) => String(index)} size="small" columns={columns} dataSource={rows} pagination={false} scroll={{ x: 920 }} /></Card>;
   }
 
   function renderActivityDesignPage() {
@@ -12933,23 +12931,77 @@ function WaimaiCalculatorInner() {
 
   function renderDataAnalysisPage() {
     const platformDailyRows = filteredBusinessRecords;
+    type BusinessChartMemoUnit = 'count' | 'rate' | 'money';
+    type BusinessTrendChartDatum = {
+      key: string;
+      value: number;
+      platform: Platform;
+      platformName: string;
+      series?: string;
+      metric?: string;
+      date?: string;
+      weekStart?: string;
+      weekLabel?: string;
+    } & Record<string, unknown>;
+    type BusinessTrendInflectionSeverity = 'drop' | 'rise' | 'volatile';
+    type BusinessTrendInflectionRow = {
+      key: string;
+      sourceKey: string;
+      dateStart: string;
+      dateEnd: string;
+      dateLabel: string;
+      platform: Platform;
+      platformName: string;
+      chartTitle: string;
+      metricName: string;
+      currentValue: number;
+      baselineValue: number;
+      changeValue: number;
+      changeRate: number | null;
+      unit: BusinessChartMemoUnit;
+      severity: BusinessTrendInflectionSeverity;
+      chartLabel: string;
+      reason: string;
+      suggestion: string;
+      memoCount: number;
+      memoText: string;
+    };
     const moneyTrendRows = platformDailyRows.flatMap(row => [
-      { key: `${row.date}-${row.platform}-actualReceipt`, date: row.date, metric: `${row.platformName}实收`, value: roundMoney(row.actualReceipt) },
-      { key: `${row.date}-${row.platform}-grossSales`, date: row.date, metric: `${row.platformName}营业额`, value: roundMoney(row.grossSales) },
-      { key: `${row.date}-${row.platform}-merchantActivityCost`, date: row.date, metric: `${row.platformName}活动成本`, value: roundMoney(row.merchantActivityCost) }
+      { key: `${row.date}-${row.platform}-actualReceipt`, date: row.date, platform: row.platform, platformName: row.platformName, metric: `${row.platformName}实收`, value: roundMoney(row.actualReceipt) },
+      { key: `${row.date}-${row.platform}-grossSales`, date: row.date, platform: row.platform, platformName: row.platformName, metric: `${row.platformName}营业额`, value: roundMoney(row.grossSales) },
+      { key: `${row.date}-${row.platform}-merchantActivityCost`, date: row.date, platform: row.platform, platformName: row.platformName, metric: `${row.platformName}活动成本`, value: roundMoney(row.merchantActivityCost) }
     ]).filter(row => Number.isFinite(row.value));
     const visitRateTrendRows = platformDailyRows.map(row => ({
       key: `${row.date}-${row.platform}-visitRate`,
       date: row.date,
+      platform: row.platform,
       platformName: row.platformName,
+      metric: `${row.platformName}入店率`,
       value: row.visitRate === null ? null : roundMoney(row.visitRate * 100)
-    })).filter((row): row is { key: string; date: string; platformName: string; value: number } => row.value !== null && Number.isFinite(row.value));
+    })).filter((row): row is { key: string; date: string; platform: Platform; platformName: string; metric: string; value: number } => row.value !== null && Number.isFinite(row.value));
     const orderRateTrendRows = platformDailyRows.map(row => ({
       key: `${row.date}-${row.platform}-orderRate`,
       date: row.date,
+      platform: row.platform,
       platformName: row.platformName,
+      metric: `${row.platformName}下单率`,
       value: row.orderRate === null ? null : roundMoney(row.orderRate * 100)
-    })).filter((row): row is { key: string; date: string; platformName: string; value: number } => row.value !== null && Number.isFinite(row.value));
+    })).filter((row): row is { key: string; date: string; platform: Platform; platformName: string; metric: string; value: number } => row.value !== null && Number.isFinite(row.value));
+    const businessTrendDateSpanDays = businessDateSpanDays(
+      businessAnalysisDateStart || businessSummary.dateStart,
+      businessAnalysisDateEnd || businessSummary.dateEnd
+    );
+    const isBusinessShortTrendRange = businessTrendDateSpanDays > 0 && businessTrendDateSpanDays < BUSINESS_WEEKLY_TREND_MIN_DAYS;
+    const dailyTrendChartRows = platformDailyRows.map(row => ({
+      key: `${row.date}-${row.platform}-daily`,
+      date: row.date,
+      platform: row.platform,
+      platformName: row.platformName,
+      series: '每日',
+      exposureUsers: row.exposureUsers,
+      visitUsers: row.visitUsers,
+      orderUsers: row.orderUsers
+    }));
     const weeklyTrendChartRows = businessWeeklyRows
       .slice()
       .sort((a, b) => a.weekStart.localeCompare(b.weekStart) || a.platform.localeCompare(b.platform))
@@ -12999,7 +13051,419 @@ function WaimaiCalculatorInner() {
       .map(platform => ({
         platform,
         platformName: PLATFORM_NAMES[platform],
-        rows: weeklyTrendChartRows.filter(row => row.platform === platform)
+        rows: (isBusinessShortTrendRange ? dailyTrendChartRows : weeklyTrendChartRows).filter(row => row.platform === platform)
+      }))
+      .filter(group => group.rows.length);
+    const businessTrendCardTitle = isBusinessShortTrendRange ? '按天变化（日趋势）' : '按周变化（星期对比）';
+    const businessTrendDescription = isBusinessShortTrendRange
+      ? `当前日期范围少于${BUSINESS_WEEKLY_TREND_MIN_DAYS}天，按日展示曝光、入店和下单变化；平台分开展示。可拖动图表底部滑块缩放日期范围。`
+      : `当前日期范围达到${BUSINESS_WEEKLY_TREND_MIN_DAYS}天及以上，横轴是自然周，每条线代表周一到周日中的某一天，并额外展示周总计曲线；平台分开展示。可拖动图表底部滑块缩放自然周范围。`;
+    const businessTrendGroupDescription = isBusinessShortTrendRange
+      ? '按每天的经营数据展示当前范围内变化。'
+      : '每条线为一个星期几，周总计为该平台当周合计口径。';
+    const businessTrendXField = isBusinessShortTrendRange ? 'date' : 'weekLabel';
+    const businessTrendXTitle = isBusinessShortTrendRange ? '日期' : '自然周';
+    const businessFunnelChartGroups = PLATFORMS
+      .filter(platform => businessAnalysisPlatform === 'all' || platform === businessAnalysisPlatform)
+      .map(platform => {
+        const row = businessPlatformRows.find(item => item.platform === platform);
+        const totalRows = row ? businessFunnelChartRows(row) : [];
+        const newRows = row ? businessCustomerFunnelChartRows(row, 'new') : [];
+        const oldRows = row ? businessCustomerFunnelChartRows(row, 'old') : [];
+        return {
+          platform,
+          platformName: PLATFORM_NAMES[platform],
+          row,
+          rows: totalRows,
+          funnels: [
+            {
+              key: 'total',
+              title: '总漏斗',
+              rows: totalRows,
+              emptyText: `暂无${PLATFORM_NAMES[platform]}总漏斗数据`,
+              colors: ['#376996', '#4f8f73', '#d1902f']
+            },
+            {
+              key: 'new',
+              title: '新客漏斗',
+              rows: newRows,
+              emptyText: row?.customerBreakdownProvided ? '暂无新客漏斗数据' : '日报未提供新客字段',
+              colors: ['#376996', '#4f8f73', '#d1902f']
+            },
+            {
+              key: 'old',
+              title: '老客漏斗',
+              rows: oldRows,
+              emptyText: row?.customerBreakdownProvided ? '暂无老客漏斗数据' : '日报未提供老客字段',
+              colors: ['#6d6aa8', '#8f5f42', '#b7791f']
+            }
+          ]
+        };
+      });
+    const businessCustomerPlatformGroups = PLATFORMS
+      .filter(platform => businessAnalysisPlatform === 'all' || platform === businessAnalysisPlatform)
+      .map(platform => {
+        const row = businessPlatformRows.find(item => item.platform === platform);
+        const rows = platformDailyRows.filter(item => item.platform === platform && (item.customerBreakdownProvided || item.repeatDataProvided));
+        const customerRows = rows.filter(item => item.customerBreakdownProvided);
+        const orderRows = customerRows.flatMap(item => [
+          { key: `${item.key}-new-order-users`, date: item.date, platform: item.platform, platformName: item.platformName, series: '新客下单人数', value: item.newOrderUsers },
+          { key: `${item.key}-old-order-users`, date: item.date, platform: item.platform, platformName: item.platformName, series: '老客下单人数', value: item.oldOrderUsers }
+        ]);
+        const rateRows = customerRows.flatMap(item => [
+          item.newVisitRate === null ? null : { key: `${item.key}-new-visit-rate`, date: item.date, platform: item.platform, platformName: item.platformName, series: '新客入店率', value: roundMoney(item.newVisitRate * 100) },
+          item.oldVisitRate === null ? null : { key: `${item.key}-old-visit-rate`, date: item.date, platform: item.platform, platformName: item.platformName, series: '老客入店率', value: roundMoney(item.oldVisitRate * 100) },
+          item.newOrderRate === null ? null : { key: `${item.key}-new-order-rate`, date: item.date, platform: item.platform, platformName: item.platformName, series: '新客下单率', value: roundMoney(item.newOrderRate * 100) },
+          item.oldOrderRate === null ? null : { key: `${item.key}-old-order-rate`, date: item.date, platform: item.platform, platformName: item.platformName, series: '老客下单率', value: roundMoney(item.oldOrderRate * 100) }
+        ]).filter((item): item is { key: string; date: string; platform: Platform; platformName: string; series: string; value: number } => Boolean(item));
+        const repeatRows = rows.flatMap(item => [
+          item.repeatRate7d === null ? null : { key: `${item.key}-repeat-7d`, date: item.date, platform: item.platform, platformName: item.platformName, series: '近7日复购率', value: roundMoney(item.repeatRate7d * 100) },
+          item.repeatRate30d === null ? null : { key: `${item.key}-repeat-30d`, date: item.date, platform: item.platform, platformName: item.platformName, series: '近30日复购率', value: roundMoney(item.repeatRate30d * 100) },
+          item.platformRepeatRate === null ? null : { key: `${item.key}-repeat-platform`, date: item.date, platform: item.platform, platformName: item.platformName, series: '平台复购率', value: roundMoney(item.platformRepeatRate * 100) }
+        ]).filter((item): item is { key: string; date: string; platform: Platform; platformName: string; series: string; value: number } => Boolean(item));
+        return {
+          platform,
+          platformName: PLATFORM_NAMES[platform],
+          row,
+          rows,
+          customerRows,
+          orderRows,
+          rateRows,
+          repeatRows
+        };
+      })
+      .filter(group => group.row && (group.rows.length || group.row.customerBreakdownProvided || group.row.repeatDataProvided));
+    const businessMemoNotes = businessNotes.filter(row => row.kind === 'memo');
+    const businessMemoNotesForRecord = (row: BusinessDailyRecord) => (
+      businessMemoNotes.filter(note => businessNoteMatchesRecord(note, row))
+    );
+    const businessMemoNotesForDate = (date: string) => (
+      businessMemoNotes.filter(note => businessNoteContainsDate(note, date) && businessNoteMatchesPlatformFilter(note, businessAnalysisPlatform))
+    );
+    const renderBusinessNoteTags = (notes: BusinessAnalysisNote[]) => {
+      if (!notes.length) return <Text type="secondary">无</Text>;
+      return (
+        <Space wrap size={[4, 4]}>
+          {notes.slice(0, 3).map(note => (
+            <Tooltip key={note.id} title={businessNoteItemsText(note)}>
+              <Tag color="purple">{note.title}</Tag>
+            </Tooltip>
+          ))}
+          {notes.length > 3 ? <Tag>+{notes.length - 3}</Tag> : null}
+        </Space>
+      );
+    };
+    const businessTrendDatumMetricName = (row: BusinessTrendChartDatum, fallback: string) => (
+      String(row.series || row.metric || fallback)
+    );
+    const businessTrendInflectionSourceKey = (chartTitle: string, row: BusinessTrendChartDatum) => (
+      `${chartTitle}::${businessTrendDatumMetricName(row, chartTitle)}::${row.key}`
+    );
+    const businessTrendValueText = (unit: BusinessChartMemoUnit, value: number) => {
+      if (unit === 'rate') return `${money(value)}%`;
+      if (unit === 'money') return `¥${money(value)}`;
+      return `${Math.round(value)}`;
+    };
+    const businessTrendChangeText = (row: BusinessTrendInflectionRow) => {
+      const sign = row.changeValue > 0 ? '+' : '';
+      const rateTextValue = row.changeRate === null ? '' : ` / ${row.changeRate > 0 ? '+' : ''}${money(row.changeRate * 100)}%`;
+      if (row.unit === 'rate') return `${sign}${money(row.changeValue)}个百分点${rateTextValue}`;
+      if (row.unit === 'money') return `${row.changeValue > 0 ? '+' : '-'}¥${money(Math.abs(row.changeValue))}${rateTextValue}`;
+      return `${sign}${Math.round(row.changeValue)}${rateTextValue}`;
+    };
+    const businessTrendInflectionColor = (severity: BusinessTrendInflectionSeverity) => (
+      severity === 'drop' ? 'red' : severity === 'rise' ? 'green' : 'orange'
+    );
+    const businessTrendInflectionText = (severity: BusinessTrendInflectionSeverity) => (
+      severity === 'drop' ? '下降拐点' : severity === 'rise' ? '回升拐点' : '异常波动'
+    );
+    const businessTrendSeriesName = (text: string, platformName: string) => (
+      text.startsWith(platformName) ? text.slice(platformName.length) || text : text
+    );
+    const businessTrendInflectionLabelText = (row: BusinessTrendInflectionRow) => {
+      const direction = row.severity === 'drop' ? '下降' : row.severity === 'rise' ? '回升' : '波动';
+      const sign = row.changeValue > 0 ? '+' : '';
+      if (row.unit === 'rate') return `${direction} ${sign}${money(row.changeValue)}pp`;
+      if (typeof row.changeRate === 'number' && Number.isFinite(row.changeRate)) {
+        return `${direction} ${row.changeRate > 0 ? '+' : ''}${money(row.changeRate * 100)}%`;
+      }
+      if (row.unit === 'money') return `${direction} ${row.changeValue > 0 ? '+' : '-'}¥${money(Math.abs(row.changeValue))}`;
+      return `${direction} ${sign}${Math.round(row.changeValue)}`;
+    };
+    const businessTrendDeltaText = (unit: BusinessChartMemoUnit, value: number) => {
+      const sign = value > 0 ? '+' : '';
+      if (unit === 'rate') return `${sign}${money(value)}pp`;
+      if (unit === 'money') return `${value > 0 ? '+' : '-'}¥${money(Math.abs(value))}`;
+      return `${sign}${Math.round(value)}`;
+    };
+    const businessTrendInvestigationText = (metricName: string, severity: BusinessTrendInflectionSeverity) => {
+      const name = metricName.replace(/^美团|^饿了么/, '');
+      if (/曝光/.test(name)) return '优先排查平台流量、搜索/推荐排名、营业时长、配送范围和平台活动入口变化。';
+      if (/入店人数/.test(name)) return '优先排查曝光质量、门店首图、配送费、起送价、评分和活动吸引力。';
+      if (/入店率/.test(name)) return '曝光存在但进店转弱，优先排查门店展示、活动标签、配送费和竞品对比。';
+      if (/下单数|下单人数/.test(name)) return '优先拆成入店人数和下单率，排查价格、券、满减、缺货和主推商品结构。';
+      if (/下单率|转化率/.test(name)) return '入店后的成交转化变化，优先排查活动力度、券配置、商品价格、套餐结构和缺货。';
+      if (/复购/.test(name)) return '优先排查老客返券、会员触达、产品稳定性、履约体验和近期差评。';
+      if (/实收|营业额|金额/.test(name)) return '先按曝光、入店率、下单率、客单价拆解，再判断是流量、转化还是商品结构问题。';
+      if (/活动成本/.test(name)) return '活动成本异常时，排查满减、券、平台活动报名和低价商品成交占比。';
+      return severity === 'drop'
+        ? '优先查看同日漏斗、商品结构和备忘事件，确认是否存在活动、缺货或配送变化。'
+        : '对照同日备忘和活动配置，确认回升是否来自活动调整、流量恢复或商品结构变化。';
+    };
+    const businessTrendSuggestionText = (row: BusinessTrendInflectionRow) => {
+      if (row.memoCount > 0) return '已有备忘，先核对备忘事件是否能解释该变化；如不能解释，再补充排查结论。';
+      return row.severity === 'drop'
+        ? '当前范围暂无匹配备忘，建议补充当天或该周发生的活动、缺货、配送、竞品、天气等原因。'
+        : '建议补充回升原因，后续可复用为有效动作或恢复路径。';
+    };
+    const businessTrendInflectionMeetsThreshold = (
+      unit: BusinessChartMemoUnit,
+      current: number,
+      baseline: number,
+      changeValue: number,
+      changeRate: number | null
+    ) => {
+      const absChange = Math.abs(changeValue);
+      const absRate = Math.abs(changeRate ?? 1);
+      if (unit === 'rate') return absChange >= 2 && (absChange >= 3 || absRate >= 0.12);
+      if (unit === 'money') return absChange >= 50 && absRate >= 0.12;
+      const baseVolume = Math.max(Math.abs(current), Math.abs(baseline));
+      if (baseVolume < 10) return absChange >= 5;
+      return absChange >= 3 && absRate >= 0.15;
+    };
+    const collectBusinessTrendInflections = (
+      rows: BusinessTrendChartDatum[],
+      chartTitle: string,
+      unit: BusinessChartMemoUnit
+    ): BusinessTrendInflectionRow[] => {
+      const groups = new Map<string, BusinessTrendChartDatum[]>();
+      rows
+        .filter(row => Number.isFinite(row.value))
+        .forEach(row => {
+          const groupKey = `${row.platform}::${businessTrendDatumMetricName(row, chartTitle)}`;
+          groups.set(groupKey, [...(groups.get(groupKey) || []), row]);
+        });
+      const nextRows: BusinessTrendInflectionRow[] = [];
+      groups.forEach(groupRows => {
+        const sortedRows = groupRows.slice().sort((a, b) => (
+          String(a.weekStart || a.date || '').localeCompare(String(b.weekStart || b.date || ''))
+        ));
+        sortedRows.forEach((row, index) => {
+          const currentValue = Number(row.value);
+          const date = normalizeBusinessDate(row.date);
+          const weekStart = normalizeBusinessDate(row.weekStart);
+          const sameWeekdayBaseline = date
+            ? sortedRows.find(item => normalizeBusinessDate(item.date) === businessAddDays(date, -7))
+            : null;
+          const baselineRow = sameWeekdayBaseline || sortedRows[index - 1];
+          if (!baselineRow) return;
+          const baselineValue = Number(baselineRow.value);
+          if (!Number.isFinite(currentValue) || !Number.isFinite(baselineValue) || currentValue === baselineValue) return;
+          const changeValue = roundMoney(currentValue - baselineValue);
+          const changeRate = baselineValue === 0 ? null : changeValue / Math.abs(baselineValue);
+          if (!businessTrendInflectionMeetsThreshold(unit, currentValue, baselineValue, changeValue, changeRate)) return;
+          const nextRow = sortedRows[index + 1];
+          const nextValue = nextRow ? Number(nextRow.value) : null;
+          const returnsNearBaseline = nextValue !== null
+            && Number.isFinite(nextValue)
+            && Math.abs(nextValue - baselineValue) <= Math.max(1, Math.abs(changeValue) * 0.35);
+          const severity: BusinessTrendInflectionSeverity = returnsNearBaseline
+            ? 'volatile'
+            : changeValue < 0 ? 'drop' : 'rise';
+          const dateStart = date || weekStart;
+          const dateEnd = date || (weekStart ? businessAddDays(weekStart, 6) : dateStart);
+          if (!dateStart || !dateEnd) return;
+          const matchedNotes = businessMemoNotes.filter(note => (
+            businessNoteMatchesPlatformFilter(note, row.platform)
+            && businessNoteOverlapsDateRange(note, dateStart, dateEnd)
+          ));
+          const metricName = businessTrendDatumMetricName(row, chartTitle);
+          nextRows.push({
+            key: `${chartTitle}-${row.key}`,
+            sourceKey: businessTrendInflectionSourceKey(chartTitle, row),
+            dateStart,
+            dateEnd,
+            dateLabel: businessDateRangeText(dateStart, dateEnd),
+            platform: row.platform,
+            platformName: row.platformName,
+            chartTitle,
+            metricName,
+            currentValue,
+            baselineValue,
+            changeValue,
+            changeRate,
+            unit,
+            severity,
+            chartLabel: severity === 'drop' ? '下降' : severity === 'rise' ? '回升' : '波动',
+            reason: businessTrendInvestigationText(metricName, severity),
+            suggestion: '',
+            memoCount: matchedNotes.length,
+            memoText: matchedNotes.map(note => `${note.title}：${businessNoteItemsText(note)}`).join('；')
+          });
+        });
+      });
+      return nextRows.map(row => ({
+        ...row,
+        suggestion: businessTrendSuggestionText(row)
+      }));
+    };
+    const businessTrendAllInflectionRows = [
+      ...collectBusinessTrendInflections(moneyTrendRows, '金额趋势（按平台）', 'money'),
+      ...collectBusinessTrendInflections(visitRateTrendRows, '入店率趋势（按平台）', 'rate'),
+      ...collectBusinessTrendInflections(orderRateTrendRows, '下单率趋势（按平台）', 'rate'),
+      ...businessCustomerPlatformGroups.flatMap(group => [
+        ...collectBusinessTrendInflections(group.orderRows, `${group.platformName}新老客下单人数趋势`, 'count'),
+        ...collectBusinessTrendInflections(group.rateRows, `${group.platformName}新老客转化率趋势`, 'rate'),
+        ...collectBusinessTrendInflections(group.repeatRows, `${group.platformName}复购率趋势`, 'rate')
+      ]),
+      ...weeklyTrendPlatformGroups.flatMap(group => {
+        const exposureRows = group.rows.map(row => ({ ...row, value: row.exposureUsers }));
+        const visitRows = group.rows.map(row => ({ ...row, value: row.visitUsers }));
+        const orderUserRows = group.rows.map(row => ({ ...row, value: row.orderUsers }));
+        return [
+          ...collectBusinessTrendInflections(exposureRows, `${group.platformName}曝光人数${isBusinessShortTrendRange ? '按天变化' : '按周变化'}`, 'count'),
+          ...collectBusinessTrendInflections(visitRows, `${group.platformName}入店人数${isBusinessShortTrendRange ? '按天变化' : '按周变化'}`, 'count'),
+          ...collectBusinessTrendInflections(orderUserRows, `${group.platformName}下单数${isBusinessShortTrendRange ? '按天变化' : '按周变化'}`, 'count')
+        ];
+      })
+    ]
+      .sort((a, b) => {
+        const severityWeight = (row: BusinessTrendInflectionRow) => row.severity === 'drop' ? 0 : row.severity === 'volatile' ? 1 : 2;
+        const severityDiff = severityWeight(a) - severityWeight(b);
+        if (severityDiff !== 0) return severityDiff;
+        return Math.abs(b.changeRate ?? b.changeValue) - Math.abs(a.changeRate ?? a.changeValue);
+      })
+    const businessTrendInflectionRows = businessTrendAllInflectionRows.slice(0, 16);
+    const businessTrendInflectionBySourceKey = new Map(businessTrendAllInflectionRows.map(row => [row.sourceKey, row]));
+    type BusinessTimeSeriesAnomalyRow = BusinessTrendChartDatum & {
+      series: string;
+      xLabel: string;
+      xKey: string;
+      sourceTitle: string;
+      anomalyLabel: string;
+      anomalyDetail: string;
+      anomalySeverityText: string;
+      baselineValue: number | null;
+      changeValue: number | null;
+      changeRate: number | null;
+      anomalySortWeight: number;
+      pointSize: number;
+    };
+    type BusinessAnomalyDeltaRow = {
+      key: string;
+      xLabel: string;
+      xKey: string;
+      platform: Platform;
+      platformName: string;
+      series: string;
+      value: number;
+      baselineValue: number;
+      currentValue: number;
+      changeRate: number | null;
+      anomalyLabel: string;
+      anomalyDetail: string;
+      anomalySeverityText: string;
+      dateStart: string;
+      dateEnd: string;
+    };
+    const buildBusinessTimeSeriesAnomalyRow = (
+      row: BusinessTrendChartDatum,
+      sourceTitle: string,
+      displaySeries: string
+    ): BusinessTimeSeriesAnomalyRow => {
+      const inflection = businessTrendInflectionBySourceKey.get(businessTrendInflectionSourceKey(sourceTitle, row));
+      const rawXLabel = String(row.date || row.weekLabel || row.weekStart || '');
+      const series = businessTrendSeriesName(displaySeries, row.platformName);
+      return {
+        ...row,
+        key: `${sourceTitle}-${series}-${row.key}`,
+        series,
+        metric: series,
+        xLabel: rawXLabel,
+        xKey: String(row.date || row.weekStart || rawXLabel),
+        sourceTitle,
+        anomalyLabel: inflection ? businessTrendInflectionLabelText(inflection) : '',
+        anomalyDetail: inflection ? `${businessTrendInflectionText(inflection.severity)}，${businessTrendChangeText(inflection)}` : '',
+        anomalySeverityText: inflection ? businessTrendInflectionText(inflection.severity) : '',
+        baselineValue: inflection ? inflection.baselineValue : null,
+        changeValue: inflection ? inflection.changeValue : null,
+        changeRate: inflection ? inflection.changeRate : null,
+        anomalySortWeight: inflection ? Math.abs(inflection.changeRate ?? inflection.changeValue) : 0,
+        pointSize: inflection ? 5.5 : 0
+      };
+    };
+    const businessVisitRateAnomalyRows: BusinessTimeSeriesAnomalyRow[] = [
+      ...visitRateTrendRows.map(row => buildBusinessTimeSeriesAnomalyRow(row, '入店率趋势（按平台）', row.metric)),
+      ...businessCustomerPlatformGroups.flatMap(group => (
+        group.rateRows
+          .filter(row => row.series.includes('入店率'))
+          .map(row => buildBusinessTimeSeriesAnomalyRow(row, `${group.platformName}新老客转化率趋势`, `${group.platformName}${row.series}`))
+      ))
+    ].sort((a, b) => a.xLabel.localeCompare(b.xLabel) || a.series.localeCompare(b.series));
+    const businessOrderRateAnomalyRows: BusinessTimeSeriesAnomalyRow[] = [
+      ...orderRateTrendRows.map(row => buildBusinessTimeSeriesAnomalyRow(row, '下单率趋势（按平台）', row.metric)),
+      ...businessCustomerPlatformGroups.flatMap(group => (
+        group.rateRows
+          .filter(row => row.series.includes('下单率'))
+          .map(row => buildBusinessTimeSeriesAnomalyRow(row, `${group.platformName}新老客转化率趋势`, `${group.platformName}${row.series}`))
+      ))
+    ].sort((a, b) => a.xLabel.localeCompare(b.xLabel) || a.series.localeCompare(b.series));
+    const businessCustomerOrderAnomalyRows: BusinessTimeSeriesAnomalyRow[] = businessCustomerPlatformGroups
+      .flatMap(group => (
+        group.orderRows.map(row => buildBusinessTimeSeriesAnomalyRow(row, `${group.platformName}新老客下单人数趋势`, `${group.platformName}${row.series}`))
+      ))
+      .sort((a, b) => a.xLabel.localeCompare(b.xLabel) || a.series.localeCompare(b.series));
+    const businessRepeatRateAnomalyRows: BusinessTimeSeriesAnomalyRow[] = businessCustomerPlatformGroups
+      .flatMap(group => (
+        group.repeatRows.map(row => buildBusinessTimeSeriesAnomalyRow(row, `${group.platformName}复购率趋势`, `${group.platformName}${row.series}`))
+      ))
+      .sort((a, b) => a.xLabel.localeCompare(b.xLabel) || a.series.localeCompare(b.series));
+    const businessTrendAnomalySourceGroups = [
+      { key: 'visit-rate', title: '入店率时序异常（总/新客/老客）', yTitle: '入店率', unit: 'rate' as BusinessChartMemoUnit, rows: businessVisitRateAnomalyRows },
+      { key: 'order-rate', title: '下单率时序异常（总/新客/老客）', yTitle: '下单率', unit: 'rate' as BusinessChartMemoUnit, rows: businessOrderRateAnomalyRows },
+      { key: 'customer-order', title: '新老客下单人数时序异常', yTitle: '下单人数', unit: 'count' as BusinessChartMemoUnit, rows: businessCustomerOrderAnomalyRows },
+      { key: 'repeat-rate', title: '复购率时序异常', yTitle: '复购率', unit: 'rate' as BusinessChartMemoUnit, rows: businessRepeatRateAnomalyRows }
+    ];
+    const buildBusinessAnomalyDeltaRows = (rows: BusinessTimeSeriesAnomalyRow[]): BusinessAnomalyDeltaRow[] => (
+      rows
+        .filter(row => row.anomalyLabel && row.baselineValue !== null && row.changeValue !== null)
+        .map(row => ({
+          key: `${row.key}-delta`,
+          xLabel: row.xLabel,
+          xKey: row.xKey,
+          platform: row.platform,
+          platformName: row.platformName,
+          series: row.series,
+          value: Number(row.changeValue || 0),
+          baselineValue: Number(row.baselineValue || 0),
+          currentValue: Number(row.value || 0),
+          changeRate: row.changeRate,
+          anomalyLabel: row.anomalyLabel,
+          anomalyDetail: row.anomalyDetail,
+          anomalySeverityText: row.anomalySeverityText,
+          dateStart: normalizeBusinessDate(row.date) || normalizeBusinessDate(row.weekStart) || row.xKey,
+          dateEnd: normalizeBusinessDate(row.date) || (normalizeBusinessDate(row.weekStart) ? businessAddDays(String(row.weekStart), 6) : row.xKey)
+        }))
+    );
+    const businessTrendAnomalyChartGroups = businessTrendAnomalySourceGroups
+      .flatMap(group => PLATFORMS.map(platform => {
+        const rows = group.rows.filter(row => row.platform === platform);
+        const anomalies = rows
+          .filter(row => row.anomalyLabel)
+          .sort((a, b) => (
+            String(a.date || a.weekStart || '').localeCompare(String(b.date || b.weekStart || ''))
+            || b.anomalySortWeight - a.anomalySortWeight
+          ));
+        return {
+          ...group,
+          key: `${group.key}-${platform}`,
+          title: `${PLATFORM_NAMES[platform]}${group.title.replace('时序异常', '趋势诊断')}`,
+          platform,
+          platformName: PLATFORM_NAMES[platform],
+          rows,
+          anomalies,
+          deltaRows: buildBusinessAnomalyDeltaRows(rows)
+        };
       }))
       .filter(group => group.rows.length);
     const platformSummaryColumns: TableColumnsType<BusinessPlatformAggregate> = [
@@ -13017,6 +13481,23 @@ function WaimaiCalculatorInner() {
       { title: '活动成本率', dataIndex: 'activityCostRate', width: 110, render: value => value === null ? '-' : rateText(value) },
       { title: '平台补贴', dataIndex: 'platformSubsidy', width: 110, render: value => `¥${money(value)}` },
       { title: '动销率', dataIndex: 'tradedProductRate', width: 100, render: value => value === null ? '-' : rateText(value) }
+    ];
+    const customerSummaryColumns: TableColumnsType<BusinessPlatformAggregate> = [
+      { title: '平台', dataIndex: 'platformName', width: 90, fixed: 'left', render: value => <Tag>{value}</Tag> },
+      { title: '日期范围', width: 210, render: (_, row) => businessDateRangeText(row.dateStart, row.dateEnd) },
+      { title: '新客曝光', dataIndex: 'newExposureUsers', width: 100, render: (_, row) => row.customerBreakdownProvided ? row.newExposureUsers : '-' },
+      { title: '新客入店', dataIndex: 'newVisitUsers', width: 100, render: (_, row) => row.customerBreakdownProvided ? row.newVisitUsers : '-' },
+      { title: '新客入店率', dataIndex: 'newVisitRate', width: 110, render: value => value === null ? '-' : rateText(value) },
+      { title: '新客下单', dataIndex: 'newOrderUsers', width: 100, render: (_, row) => row.customerBreakdownProvided ? row.newOrderUsers : '-' },
+      { title: '新客下单率', dataIndex: 'newOrderRate', width: 110, render: value => value === null ? '-' : rateText(value) },
+      { title: '新客下单占比', dataIndex: 'newOrderShare', width: 120, render: value => value === null ? '-' : rateText(value) },
+      { title: '老客曝光', dataIndex: 'oldExposureUsers', width: 100, render: (_, row) => row.customerBreakdownProvided ? row.oldExposureUsers : '-' },
+      { title: '老客入店', dataIndex: 'oldVisitUsers', width: 100, render: (_, row) => row.customerBreakdownProvided ? row.oldVisitUsers : '-' },
+      { title: '老客入店率', dataIndex: 'oldVisitRate', width: 110, render: value => value === null ? '-' : rateText(value) },
+      { title: '老客下单', dataIndex: 'oldOrderUsers', width: 100, render: (_, row) => row.customerBreakdownProvided ? row.oldOrderUsers : '-' },
+      { title: '老客下单率', dataIndex: 'oldOrderRate', width: 110, render: value => value === null ? '-' : rateText(value) },
+      { title: '老客下单占比', dataIndex: 'oldOrderShare', width: 120, render: value => value === null ? '-' : rateText(value) },
+      { title: '复购口径', width: 230, render: (_, row) => businessRepeatSummaryText(row) }
     ];
     const funnelSummaryColumns: TableColumnsType<BusinessPlatformAggregate> = [
       { title: '平台', dataIndex: 'platformName', width: 90, fixed: 'left', render: value => <Tag>{value}</Tag> },
@@ -13043,6 +13524,7 @@ function WaimaiCalculatorInner() {
     ];
     const dailyColumns: TableColumnsType<BusinessDailyAggregate> = [
       { title: '日期', dataIndex: 'date', width: 120, fixed: 'left' },
+      { title: '备注', width: 180, render: (_, row) => renderBusinessNoteTags(businessMemoNotesForDate(row.date)) },
       { title: '实收', dataIndex: 'actualReceipt', width: 110, render: value => `¥${money(value)}`, sorter: (a, b) => a.actualReceipt - b.actualReceipt },
       { title: '营业额', dataIndex: 'grossSales', width: 110, render: value => `¥${money(value)}` },
       { title: '有效订单', dataIndex: 'validOrders', width: 100, sorter: (a, b) => a.validOrders - b.validOrders },
@@ -13059,6 +13541,7 @@ function WaimaiCalculatorInner() {
     const detailColumns: TableColumnsType<BusinessDailyRecord> = [
       { title: '日期', dataIndex: 'date', width: 120, fixed: 'left' },
       { title: '平台', dataIndex: 'platformName', width: 90, render: value => <Tag>{value}</Tag> },
+      { title: '备注', width: 180, render: (_, row) => renderBusinessNoteTags(businessMemoNotesForRecord(row)) },
       { title: '实收', dataIndex: 'actualReceipt', width: 110, render: value => `¥${money(value)}`, sorter: (a, b) => a.actualReceipt - b.actualReceipt },
       { title: '营业额', dataIndex: 'grossSales', width: 110, render: value => `¥${money(value)}` },
       { title: '有效订单', dataIndex: 'validOrders', width: 100 },
@@ -13104,6 +13587,22 @@ function WaimaiCalculatorInner() {
       } },
       { title: '主要断点', width: 120, render: (_, row) => <Tag color="orange">{businessFunnelMetrics(row).bottleneck}</Tag> }
     ];
+    const customerDetailColumns: TableColumnsType<BusinessDailyRecord> = [
+      { title: '日期', dataIndex: 'date', width: 120, fixed: 'left' },
+      { title: '平台', dataIndex: 'platformName', width: 90, fixed: 'left', render: value => <Tag>{value}</Tag> },
+      { title: '新客曝光', width: 100, render: (_, row) => row.customerBreakdownProvided ? row.newExposureUsers : '-' },
+      { title: '新客入店', width: 100, render: (_, row) => row.customerBreakdownProvided ? row.newVisitUsers : '-' },
+      { title: '新客入店率', width: 110, render: (_, row) => row.newVisitRate === null ? '-' : rateText(row.newVisitRate) },
+      { title: '新客下单', width: 100, render: (_, row) => row.customerBreakdownProvided ? row.newOrderUsers : '-' },
+      { title: '新客下单率', width: 110, render: (_, row) => row.newOrderRate === null ? '-' : rateText(row.newOrderRate) },
+      { title: '老客曝光', width: 100, render: (_, row) => row.customerBreakdownProvided ? row.oldExposureUsers : '-' },
+      { title: '老客入店', width: 100, render: (_, row) => row.customerBreakdownProvided ? row.oldVisitUsers : '-' },
+      { title: '老客入店率', width: 110, render: (_, row) => row.oldVisitRate === null ? '-' : rateText(row.oldVisitRate) },
+      { title: '老客下单', width: 100, render: (_, row) => row.customerBreakdownProvided ? row.oldOrderUsers : '-' },
+      { title: '老客下单率', width: 110, render: (_, row) => row.oldOrderRate === null ? '-' : rateText(row.oldOrderRate) },
+      { title: '复购', width: 230, render: (_, row) => row.repeatDataProvided ? businessRepeatSummaryText(row) : <Text type="secondary">日报未提供</Text> },
+      { title: '来源', dataIndex: 'sourceFileName', width: 220, ellipsis: true }
+    ];
     const diagnosticColumns: TableColumnsType<BusinessDiagnosticItem> = [
       {
         title: '等级',
@@ -13117,6 +13616,56 @@ function WaimaiCalculatorInner() {
       { title: '判断', dataIndex: 'description', width: 360 },
       { title: '建议', dataIndex: 'suggestion', width: 360 }
     ];
+    const trendInflectionColumns: TableColumnsType<BusinessTrendInflectionRow> = [
+      { title: '范围', dataIndex: 'dateLabel', width: 200, fixed: 'left' },
+      { title: '平台', dataIndex: 'platformName', width: 90, render: value => <Tag>{value}</Tag> },
+      {
+        title: '拐点',
+        width: 180,
+        render: (_, row) => (
+          <Space direction="vertical" size={2}>
+            <Tag color={businessTrendInflectionColor(row.severity)}>{businessTrendInflectionText(row.severity)}</Tag>
+            <Text>{row.metricName}</Text>
+          </Space>
+        )
+      },
+      { title: '来源图表', dataIndex: 'chartTitle', width: 220, ellipsis: true },
+      {
+        title: '当前 / 对比',
+        width: 170,
+        render: (_, row) => `${businessTrendValueText(row.unit, row.currentValue)} / ${businessTrendValueText(row.unit, row.baselineValue)}`
+      },
+      {
+        title: '变化',
+        width: 150,
+        render: (_, row) => (
+          <Text type={row.severity === 'drop' ? 'danger' : row.severity === 'rise' ? 'success' : 'warning'}>
+            {businessTrendChangeText(row)}
+          </Text>
+        )
+      },
+      { title: '排查方向', dataIndex: 'reason', width: 360 },
+      { title: '备忘', width: 260, render: (_, row) => row.memoText || <Text type="secondary">暂无匹配备忘</Text> },
+      {
+        title: '操作',
+        width: 100,
+        render: (_, row) => (
+          <Button
+            size="small"
+            icon={<PlusOutlined />}
+            onClick={() => openBusinessMemoNoteEditorWithContext({
+              dateStart: row.dateStart,
+              dateEnd: row.dateEnd,
+              platform: row.platform,
+              title: `${row.dateLabel} ${row.metricName}原因`,
+              content: `拐点：${businessTrendInflectionText(row.severity)}；图表：${row.chartTitle}；指标：${row.metricName}；当前：${businessTrendValueText(row.unit, row.currentValue)}；对比：${businessTrendValueText(row.unit, row.baselineValue)}；变化：${businessTrendChangeText(row)}。原因：`
+            })}
+          >
+            记原因
+          </Button>
+        )
+      }
+    ];
     const importColumns: TableColumnsType<BusinessDataImportBatch> = [
       { title: '导入时间', dataIndex: 'importedAt', width: 170, render: value => businessImportedAtText(String(value || '')) },
       { title: '平台', dataIndex: 'platformName', width: 90, render: value => <Tag>{value}</Tag> },
@@ -13128,9 +13677,21 @@ function WaimaiCalculatorInner() {
     ];
     const noteColumns: TableColumnsType<BusinessAnalysisNote> = [
       { title: '保存时间', dataIndex: 'createdAt', width: 170, render: value => businessImportedAtText(String(value || '')) },
+      { title: '类型', dataIndex: 'kind', width: 90, render: value => <Tag color={value === 'memo' ? 'purple' : 'blue'}>{value === 'memo' ? '备忘' : '诊断'}</Tag> },
       { title: '范围', width: 210, render: (_, row) => businessDateRangeText(row.dateStart, row.dateEnd) },
       { title: '平台', dataIndex: 'platform', width: 90, render: value => value === 'all' ? '全部' : PLATFORM_NAMES[value as Platform] },
-      { title: '结论', render: (_, row) => row.items.length ? row.items.join('；') : <Text type="secondary">无</Text> }
+      { title: '标题', dataIndex: 'title', width: 180, ellipsis: true },
+      { title: '内容', render: (_, row) => row.items.length ? businessNoteItemsText(row) : <Text type="secondary">无</Text> },
+      {
+        title: '操作',
+        width: 130,
+        render: (_, row) => (
+          <Space>
+            {row.kind === 'memo' ? <Button size="small" icon={<EditOutlined />} onClick={() => openBusinessMemoNoteEditor(row)} /> : null}
+            <Button size="small" danger icon={<DeleteOutlined />} onClick={() => deleteBusinessAnalysisNote(row)} />
+          </Space>
+        )
+      }
     ];
     const renderBusinessMetric = (label: string, value: React.ReactNode, secondary?: string) => (
       <div className="field">
@@ -13139,47 +13700,358 @@ function WaimaiCalculatorInner() {
         {secondary ? <Text type="secondary">{secondary}</Text> : null}
       </div>
     );
+    type BusinessChartDatum = Record<string, unknown>;
+    type BusinessChartClickEvent = { data?: unknown };
+    type BusinessChartReadyContext = {
+      chart?: {
+        on?: (eventName: string, handler: (event: BusinessChartClickEvent) => void) => void;
+      };
+    };
+    const normalizeBusinessChartDatum = (value: unknown): BusinessChartDatum | null => {
+      if (Array.isArray(value)) return normalizeBusinessChartDatum(value[0]);
+      if (!value || typeof value !== 'object') return null;
+      const row = value as BusinessChartDatum;
+      if (row.data && typeof row.data === 'object' && row.data !== row) return normalizeBusinessChartDatum(row.data);
+      return row;
+    };
+    const businessChartMemoValueText = (value: unknown, unit: BusinessChartMemoUnit) => {
+      const amount = Number(value);
+      if (!Number.isFinite(amount)) return '';
+      if (unit === 'rate') return `${money(amount)}%`;
+      if (unit === 'money') return `¥${money(amount)}`;
+      return `${Math.round(amount)}`;
+    };
+    const openBusinessMemoFromChartDatum = (value: unknown, chartTitle: string, unit: BusinessChartMemoUnit) => {
+      const datum = normalizeBusinessChartDatum(value);
+      const date = normalizeBusinessDate(datum?.date);
+      const weekStart = normalizeBusinessDate(datum?.weekStart);
+      const dateStart = date || weekStart;
+      const dateEnd = date || (weekStart ? businessAddDays(weekStart, 6) : dateStart);
+      if (!dateStart || !dateEnd) {
+        message.warning('没有识别到图表日期，无法新增备忘。');
+        return;
+      }
+      const platform: Platform | 'all' = datum?.platform === 'meituan' || datum?.platform === 'eleme'
+        ? datum.platform
+        : businessAnalysisPlatform;
+      const metricName = String(datum?.series || datum?.metric || chartTitle);
+      const valueText = businessChartMemoValueText(datum?.value, unit);
+      const rangeText = businessDateRangeText(dateStart, dateEnd);
+      openBusinessMemoNoteEditorWithContext({
+        dateStart,
+        dateEnd,
+        platform,
+        title: `${rangeText} ${metricName}备忘`,
+        content: `图表：${chartTitle}；指标：${metricName}${valueText ? `；数值：${valueText}` : ''}。原因：`
+      });
+    };
+    const businessChartMemoOnReady = (chartTitle: string, unit: BusinessChartMemoUnit) => (
+      ({ chart }: BusinessChartReadyContext) => {
+        chart?.on?.('element:click', event => {
+          const rawDatum = normalizeBusinessChartDatum(event.data);
+          openBusinessMemoFromChartDatum(rawDatum, chartTitle, unit);
+        });
+      }
+    );
     const renderBusinessLineChart = (
-      rows: Array<{ key: string; value: number; series: string } & Record<string, unknown>>,
+      rows: Array<BusinessTrendChartDatum & { series: string }>,
       xField: string,
       xTitle: string,
       yTitle: string,
-      unit: 'count' | 'rate' | 'money'
+      unit: BusinessChartMemoUnit,
+      memoTitle = yTitle
+    ) => {
+      if (!rows.length) return <div className="chart-empty">暂无{yTitle}数据</div>;
+      const seriesNames = Array.from(new Set(rows.map(row => row.series)));
+      const isWeekdaySeries = seriesNames.some(series => BUSINESS_WEEKDAY_LABELS.includes(series) || series === BUSINESS_WEEK_TOTAL_LABEL);
+      return (
+        <div className="chart-frame">
+          <AntvLine
+            data={rows}
+            height={260}
+            autoFit
+            xField={xField}
+            yField="value"
+            colorField="series"
+            shapeField="smooth"
+            axis={{
+              x: { title: xTitle, labelAutoRotate: false },
+              y: {
+                title: yTitle,
+                labelFormatter: (value: number | string) => (
+                  unit === 'rate' ? `${money(value)}%` : unit === 'money' ? `¥${money(value)}` : `${Math.round(Number(value))}`
+                )
+              }
+            }}
+            scale={{
+              color: {
+                domain: isWeekdaySeries ? [...BUSINESS_WEEKDAY_LABELS, BUSINESS_WEEK_TOTAL_LABEL] : seriesNames,
+                range: isWeekdaySeries ? BUSINESS_WEEKDAY_CHART_COLORS : BUSINESS_LINE_CHART_COLORS
+              }
+            }}
+            style={{ lineWidth: 2.4 }}
+            interaction={{
+              tooltip: {
+                marker: true
+              }
+            }}
+            slider={{
+              x: {
+                labelFormatter: (value: number | string) => String(value)
+              }
+            }}
+            onReady={businessChartMemoOnReady(memoTitle, unit)}
+          />
+        </div>
+      );
+    };
+    const renderBusinessStackedColumnChart = (
+      rows: Array<BusinessTrendChartDatum & { series: string }>,
+      xField: string,
+      xTitle: string,
+      yTitle: string,
+      unit: BusinessChartMemoUnit,
+      memoTitle = yTitle
+    ) => {
+      if (!rows.length) return <div className="chart-empty">暂无{yTitle}数据</div>;
+      const seriesNames = Array.from(new Set(rows.map(row => row.series)));
+      return (
+        <div className="chart-frame">
+          <AntvColumn
+            data={rows}
+            height={260}
+            autoFit
+            xField={xField}
+            yField="value"
+            colorField="series"
+            transform={[{ type: 'stackY' }]}
+            axis={{
+              x: { title: xTitle, labelAutoRotate: false },
+              y: {
+                title: yTitle,
+                labelFormatter: (value: number | string) => (
+                  unit === 'rate' ? `${money(value)}%` : unit === 'money' ? `¥${money(value)}` : `${Math.round(Number(value))}`
+                )
+              }
+            }}
+            scale={{
+              color: {
+                domain: seriesNames,
+                range: BUSINESS_LINE_CHART_COLORS
+              }
+            }}
+            style={{ insetRight: 2, stroke: '#fff', lineWidth: 1 }}
+            tooltip={{
+              title: (datum: BusinessTrendChartDatum) => String(datum.date || datum.weekLabel || ''),
+              items: [
+                (datum: BusinessTrendChartDatum) => ({
+                  name: String(datum.series || ''),
+                  value: businessTrendValueText(unit, Number(datum.value) || 0)
+                })
+              ]
+            }}
+            onReady={businessChartMemoOnReady(memoTitle, unit)}
+          />
+        </div>
+      );
+    };
+    const renderBusinessTimeSeriesAnomalyChart = (
+      rows: BusinessTimeSeriesAnomalyRow[],
+      deltaRows: BusinessAnomalyDeltaRow[],
+      title: string,
+      yTitle: string,
+      unit: BusinessChartMemoUnit
+    ) => {
+      if (!rows.length) return <div className="chart-empty">暂无{yTitle}时序数据</div>;
+      const seriesNames = Array.from(new Set(rows.map(row => row.series)));
+      const anomalySeriesNames = Array.from(new Set(deltaRows.map(row => row.series)));
+      const seriesColorRange = [...BUSINESS_WEEKDAY_CHART_COLORS, ...BUSINESS_LINE_CHART_COLORS];
+      return (
+        <div className="business-anomaly-chart">
+          <div className="chart-frame business-anomaly-trend">
+            <AntvLine
+              data={rows}
+              height={300}
+              autoFit
+              xField="xLabel"
+              yField="value"
+              colorField="series"
+              shapeField="smooth"
+              axis={{
+                x: { title: '日期', labelAutoRotate: false },
+                y: {
+                  title: yTitle,
+                  labelFormatter: (value: number | string) => (
+                    unit === 'rate' ? `${money(value)}%` : unit === 'money' ? `¥${money(value)}` : `${Math.round(Number(value))}`
+                  )
+                }
+              }}
+              scale={{
+                color: {
+                  domain: seriesNames,
+                  range: seriesColorRange
+                }
+              }}
+              style={{ lineWidth: 2.5, strokeOpacity: 0.92 }}
+              point={{
+                sizeField: 'pointSize',
+                style: (datum: BusinessTimeSeriesAnomalyRow) => ({
+                  fill: datum.anomalySeverityText === '下降拐点' ? '#cf1322' : datum.anomalySeverityText === '回升拐点' ? '#237804' : '#d48806',
+                  stroke: '#fff',
+                  lineWidth: 1.6
+                })
+              }}
+              label={[
+                {
+                  text: (datum: BusinessTimeSeriesAnomalyRow) => datum.anomalyLabel,
+                  position: 'top',
+                  transform: [{ type: 'overlapHide' }],
+                  style: { dy: -14, fill: '#111827', fontSize: 11, fontWeight: 700 }
+                }
+              ]}
+              tooltip={{
+                title: (datum: BusinessTimeSeriesAnomalyRow) => datum.xLabel,
+                items: [
+                  (datum: BusinessTimeSeriesAnomalyRow) => ({
+                    name: datum.series,
+                    value: `${businessTrendValueText(unit, Number(datum.value) || 0)}${datum.baselineValue !== null ? `；对比 ${businessTrendValueText(unit, datum.baselineValue)}` : ''}${datum.anomalyDetail ? `；${datum.anomalyDetail}` : ''}`
+                  })
+                ]
+              }}
+              interaction={{
+                tooltip: {
+                  marker: true
+                }
+              }}
+              slider={{
+                x: {
+                  labelFormatter: (value: number | string) => String(value)
+                }
+              }}
+              onReady={businessChartMemoOnReady(title, unit)}
+            />
+          </div>
+          <div className="chart-frame business-anomaly-delta">
+            {deltaRows.length ? (
+              <AntvColumn
+                data={deltaRows}
+                height={176}
+                autoFit
+                xField="xLabel"
+                yField="value"
+                colorField="series"
+                axis={{
+                  x: { title: '异常日期', labelAutoRotate: false },
+                  y: {
+                    title: '相对对比值变化',
+                    labelFormatter: (value: number | string) => businessTrendDeltaText(unit, Number(value))
+                  }
+                }}
+                scale={{
+                  color: {
+                    domain: anomalySeriesNames,
+                    range: seriesColorRange
+                  }
+                }}
+                style={(datum: BusinessAnomalyDeltaRow) => ({
+                  inset: 3,
+                  radiusTopLeft: Number(datum.value) >= 0 ? 4 : 0,
+                  radiusTopRight: Number(datum.value) >= 0 ? 4 : 0,
+                  radiusBottomLeft: Number(datum.value) < 0 ? 4 : 0,
+                  radiusBottomRight: Number(datum.value) < 0 ? 4 : 0,
+                  fillOpacity: datum.anomalySeverityText === '异常波动' ? 0.72 : 0.88
+                })}
+                label={[
+                  {
+                    text: (datum: BusinessAnomalyDeltaRow) => businessTrendDeltaText(unit, Number(datum.value)),
+                    position: (datum: BusinessAnomalyDeltaRow) => Number(datum.value) >= 0 ? 'top' : 'bottom',
+                    transform: [{ type: 'overlapHide' }],
+                    style: { fill: '#111827', fontSize: 11, fontWeight: 700 }
+                  }
+                ]}
+                tooltip={{
+                  title: (datum: BusinessAnomalyDeltaRow) => datum.xLabel,
+                  items: [
+                    (datum: BusinessAnomalyDeltaRow) => ({
+                      name: datum.series,
+                      value: `当前 ${businessTrendValueText(unit, datum.currentValue)}；对比 ${businessTrendValueText(unit, datum.baselineValue)}；变化 ${businessTrendDeltaText(unit, datum.value)}${datum.changeRate === null ? '' : ` / ${money(datum.changeRate * 100)}%`}`
+                    })
+                  ]
+                }}
+                onReady={businessChartMemoOnReady(`${title}异常偏离`, unit)}
+              />
+            ) : <div className="chart-empty business-anomaly-delta-empty">当前筛选范围没有达到阈值的异常偏离</div>}
+          </div>
+        </div>
+      );
+    };
+    const renderBusinessFunnelChart = (
+      rows: BusinessFunnelChartRow[],
+      emptyText: string,
+      colors: string[],
+      height = 240
     ) => rows.length ? (
       <div className="chart-frame">
-        <AntvLine
+        <AntvFunnel
           data={rows}
-          height={260}
+          height={height}
           autoFit
-          xField={xField}
+          paddingRight={82}
+          xField="stage"
           yField="value"
-          colorField="series"
-          shapeField="smooth"
-          axis={{
-            x: { title: xTitle, labelAutoRotate: false },
-            y: {
-              title: yTitle,
-              labelFormatter: (value: number | string) => (
-                unit === 'rate' ? `${money(value)}%` : unit === 'money' ? `¥${money(value)}` : `${Math.round(Number(value))}`
-              )
+          label={[
+            {
+              text: (datum: BusinessFunnelChartRow) => datum.stage,
+              position: 'inside',
+              transform: [{ type: 'contrastReverse' }],
+              style: { dy: -8, fontSize: 12, fontWeight: 600 }
+            },
+            {
+              text: (datum: BusinessFunnelChartRow) => datum.valueText,
+              position: 'inside',
+              transform: [{ type: 'contrastReverse' }],
+              style: { dy: 10, fontSize: 12 }
+            },
+            {
+              text: (datum: BusinessFunnelChartRow) => datum.conversionTitleText,
+              position: 'top-right',
+              style: {
+                dx: 36,
+                dy: 8,
+                fill: '#6b7280',
+                fontSize: 11,
+                textAlign: 'left',
+                textBaseline: 'middle'
+              }
+            },
+            {
+              text: (datum: BusinessFunnelChartRow) => datum.conversionRateText,
+              position: 'top-right',
+              style: {
+                dx: 36,
+                dy: 24,
+                fill: '#111827',
+                fontSize: 12,
+                fontWeight: 600,
+                textAlign: 'left',
+                textBaseline: 'middle'
+              }
             }
+          ]}
+          tooltip={{
+            title: false,
+            items: [
+              (datum: BusinessFunnelChartRow) => ({
+                name: datum.stage,
+                value: `${datum.valueText}；${datum.conversionText}；${datum.totalConversionText}`
+              })
+            ]
           }}
-          scale={{
-            color: {
-              domain: [...BUSINESS_WEEKDAY_LABELS, BUSINESS_WEEK_TOTAL_LABEL],
-              range: BUSINESS_WEEKDAY_CHART_COLORS
-            }
-          }}
-          style={{ lineWidth: 2.4 }}
-          point={{ sizeField: 3.5, style: { stroke: '#fff', lineWidth: 1 } }}
-          slider={{
-            x: {
-              labelFormatter: (value: number | string) => String(value)
-            }
-          }}
+          scale={{ color: { range: colors } }}
+          legend={false}
         />
       </div>
-    ) : <div className="chart-empty">暂无{yTitle}数据</div>;
+    ) : <div className="chart-empty">{emptyText}</div>;
 
     return (
       <Space direction="vertical" style={{ width: '100%' }} size="middle">
@@ -13188,6 +14060,7 @@ function WaimaiCalculatorInner() {
           extra={
             <Space wrap>
               <Upload {...uploadProps(importBusinessReport)}><Button icon={<UploadOutlined />}>导入经营日报</Button></Upload>
+              <Button icon={<PlusOutlined />} onClick={() => openBusinessMemoNoteEditor()}>新增备忘</Button>
               <Button icon={<DownloadOutlined />} onClick={exportBusinessAnalysis}>导出明细</Button>
               <Button icon={<SaveOutlined />} onClick={saveBusinessAnalysisNote}>保存诊断</Button>
             </Space>
@@ -13204,13 +14077,21 @@ function WaimaiCalculatorInner() {
                   ...PLATFORMS.map(platform => ({ value: platform, label: PLATFORM_NAMES[platform] }))
                 ]}
               />
-              <Input type="date" style={{ width: 160 }} value={businessAnalysisDateStart} onChange={event => setBusinessAnalysisDateStart(event.target.value)} />
-              <Input type="date" style={{ width: 160 }} value={businessAnalysisDateEnd} onChange={event => setBusinessAnalysisDateEnd(event.target.value)} />
-              <Button onClick={() => { setBusinessAnalysisDateStart(''); setBusinessAnalysisDateEnd(''); }}>全部日期</Button>
+              <RangePicker
+                allowClear
+                disabled={!businessStoreRecords.length}
+                format="YYYY-MM-DD"
+                placeholder={['开始日期', '结束日期']}
+                presets={businessDateRangePresets}
+                style={{ width: 360 }}
+                value={businessDateRangePickerValue}
+                onChange={(_, dateStrings) => updateBusinessAnalysisDateRange(Array.isArray(dateStrings) ? dateStrings : [])}
+              />
               <Tag color="blue">{businessStoreRecords.length} 条日报</Tag>
-              <Tag>{businessDateRangeText(businessDataDateBounds.start, businessDataDateBounds.end)}</Tag>
+              <Tag>数据范围：{businessDateRangeText(businessDataDateBounds.start, businessDataDateBounds.end)}</Tag>
+              <Tag color="green">当前统计：{businessActiveDateRangeText}</Tag>
             </Space>
-            <Text type="secondary">当前按订单日期和平台分别统计；重复导入同一平台同一天会直接覆盖。总计只做辅助查看，平台补贴单独展示，不计入商家活动成本。</Text>
+            <Text type="secondary">当前按订单日期和平台分别统计；日期选择器内可用预设范围选择全部数据、最近天数、自然周和月份，也可以直接自定义日期范围。</Text>
           </Space>
         </Card>
 
@@ -13230,20 +14111,135 @@ function WaimaiCalculatorInner() {
           </Space>
         </Card>
 
-        <Card title="平台汇总（主口径）">
+        <Card title="平台汇总（主口径）" extra={<Tag color="green">{businessActiveDateRangeText}</Tag>}>
           <Table rowKey="key" size="small" columns={platformSummaryColumns} dataSource={businessPlatformRows} pagination={false} scroll={{ x: 1510 }} />
         </Card>
 
-        <Card title="漏斗模型（平台对比）">
+        <Card title="客户结构与复购（平台口径）" extra={<Tag color="green">{businessActiveDateRangeText}</Tag>}>
+          <Space direction="vertical" style={{ width: '100%' }} size="large">
+            <Text type="secondary">新客、老客直接使用平台日报字段汇总，算法和总漏斗一致：曝光、入店、下单人数求和，入店率和下单率按汇总后的分子/分母重新计算；不同平台的复购周期不强行合并。</Text>
+            {businessCustomerPlatformGroups.length ? businessCustomerPlatformGroups.map(group => {
+              const row = group.row;
+              if (!row) return null;
+              const primaryRepeat = businessPrimaryRepeatRate(row);
+              return (
+                <Space key={group.platform} direction="vertical" style={{ width: '100%' }} size="small">
+                  <Space wrap>
+                    <Tag color="blue">{group.platformName}</Tag>
+                    <Text type="secondary">客户结构日报 {group.customerRows.length} 天，复购日报 {group.rows.filter(item => item.repeatDataProvided).length} 天。</Text>
+                  </Space>
+                  <Row gutter={[12, 12]}>
+                    <Col xs={12} md={4}>{renderBusinessMetric('新客下单', row.customerBreakdownProvided ? row.newOrderUsers : '-', row.newOrderRate === null ? undefined : `下单率 ${rateText(row.newOrderRate)}`)}</Col>
+                    <Col xs={12} md={4}>{renderBusinessMetric('老客下单', row.customerBreakdownProvided ? row.oldOrderUsers : '-', row.oldOrderRate === null ? undefined : `下单率 ${rateText(row.oldOrderRate)}`)}</Col>
+                    <Col xs={12} md={4}>{renderBusinessMetric('新客入店率', row.newVisitRate === null ? '-' : rateText(row.newVisitRate), `${row.newExposureUsers} 曝光`)}</Col>
+                    <Col xs={12} md={4}>{renderBusinessMetric('老客入店率', row.oldVisitRate === null ? '-' : rateText(row.oldVisitRate), `${row.oldExposureUsers} 曝光`)}</Col>
+                    <Col xs={12} md={4}>{renderBusinessMetric('新客下单占比', row.newOrderShare === null ? '-' : rateText(row.newOrderShare), row.oldOrderShare === null ? undefined : `老客 ${rateText(row.oldOrderShare)}`)}</Col>
+                    <Col xs={12} md={4}>{renderBusinessMetric(primaryRepeat.label, primaryRepeat.value === null ? '-' : rateText(primaryRepeat.value), businessRepeatSummaryText(row))}</Col>
+                  </Row>
+                  <Row gutter={[12, 12]}>
+                    <Col xs={24} xl={8}>
+                      <Space direction="vertical" style={{ width: '100%' }} size="small">
+                        <Text strong>新老客下单人数</Text>
+                        {renderBusinessStackedColumnChart(group.orderRows, 'date', '日期', '下单人数', 'count', `${group.platformName}新老客下单人数趋势`)}
+                      </Space>
+                    </Col>
+                    <Col xs={24} xl={8}>
+                      <Space direction="vertical" style={{ width: '100%' }} size="small">
+                        <Text strong>新老客转化率</Text>
+                        {renderBusinessLineChart(group.rateRows, 'date', '日期', '转化率', 'rate', `${group.platformName}新老客转化率趋势`)}
+                      </Space>
+                    </Col>
+                    <Col xs={24} xl={8}>
+                      <Space direction="vertical" style={{ width: '100%' }} size="small">
+                        <Text strong>复购率趋势</Text>
+                        {renderBusinessLineChart(group.repeatRows, 'date', '日期', '复购率', 'rate', `${group.platformName}复购率趋势`)}
+                      </Space>
+                    </Col>
+                  </Row>
+                </Space>
+              );
+            }) : <div className="chart-empty">当前筛选范围暂无新客、老客或复购字段</div>}
+            <Table
+              rowKey="key"
+              size="small"
+              columns={customerSummaryColumns}
+              dataSource={businessPlatformRows.filter(row => row.customerBreakdownProvided || row.repeatDataProvided)}
+              pagination={false}
+              scroll={{ x: 1800 }}
+            />
+          </Space>
+        </Card>
+
+        <Card title="漏斗模型（平台对比）" extra={<Tag color="green">{businessActiveDateRangeText}</Tag>}>
           <Space direction="vertical" style={{ width: '100%' }} size="small">
-            <Text type="secondary">按平台比较曝光到入店、入店到下单、下单到有效订单的转化链路，用于定位主要流失环节。</Text>
+            <Text type="secondary">按当前日期范围比较总、新客、老客从曝光到入店、入店到下单的转化链路；周、月和自定义日期筛选会同步影响漏斗图和明细表。</Text>
+            <Space direction="vertical" style={{ width: '100%' }} size="large">
+              {businessFunnelChartGroups.map(group => (
+                <Space key={group.platform} direction="vertical" style={{ width: '100%' }} size="small">
+                  <Space wrap>
+                    <Tag color="blue">{group.platformName}</Tag>
+                    {group.row ? <Text type="secondary">{businessFunnelStageText(group.row)}</Text> : <Text type="secondary">当前范围暂无数据</Text>}
+                  </Space>
+                  <Row gutter={[12, 12]}>
+                    {group.funnels.map(funnel => (
+                      <Col xs={24} lg={8} key={`${group.platform}-${funnel.key}`}>
+                        <Space direction="vertical" style={{ width: '100%' }} size="small">
+                          <Text strong>{funnel.title}</Text>
+                          {renderBusinessFunnelChart(funnel.rows, funnel.emptyText, funnel.colors)}
+                        </Space>
+                      </Col>
+                    ))}
+                  </Row>
+                </Space>
+              ))}
+            </Space>
             <Table rowKey="key" size="small" columns={funnelSummaryColumns} dataSource={businessPlatformRows} pagination={false} scroll={{ x: 1500 }} />
           </Space>
         </Card>
 
-        <Card title="按周变化（星期对比）">
+        <Card title="趋势拐点排查" extra={<Tag color="green">{businessActiveDateRangeText}</Tag>}>
+          <Space direction="vertical" style={{ width: '100%' }} size="small">
+            <Text type="secondary">系统按同平台、同指标、同曲线对比明显变化；长周期优先看同星期跨周变化，短周期按前序点辅助判断。每个平台单独展示趋势线，并在下方用异常偏离柱标出当前值相对对比值的变化幅度。</Text>
+            {businessTrendAnomalyChartGroups.length ? (
+              <Row gutter={[12, 12]}>
+                {businessTrendAnomalyChartGroups.map(group => (
+                  <Col xs={24} key={group.key}>
+                    <Space direction="vertical" style={{ width: '100%' }} size="small">
+                      <Text strong>{group.title}</Text>
+                      {group.anomalies.length ? (
+                        <Space wrap size={[4, 4]}>
+                          {group.anomalies.slice(0, 6).map(row => (
+                            <Tooltip key={`${group.key}-${row.key}-anomaly`} title={row.anomalyDetail}>
+                              <Tag color={row.anomalySeverityText === '下降拐点' ? 'red' : row.anomalySeverityText === '回升拐点' ? 'green' : 'orange'}>
+                                {row.xLabel} {row.series} {row.anomalyLabel}
+                              </Tag>
+                            </Tooltip>
+                          ))}
+                          {group.anomalies.length > 6 ? <Tag>+{group.anomalies.length - 6}</Tag> : null}
+                        </Space>
+                      ) : <Text type="secondary">该图没有达到阈值的异常点。</Text>}
+                      {renderBusinessTimeSeriesAnomalyChart(group.rows, group.deltaRows, group.title, group.yTitle, group.unit)}
+                    </Space>
+                  </Col>
+                ))}
+              </Row>
+            ) : <div className="chart-empty">当前筛选范围暂无可用于时序异常分析的趋势数据</div>}
+            {businessTrendInflectionRows.length ? (
+                <Table
+                  rowKey="key"
+                  size="small"
+                  columns={trendInflectionColumns}
+                  dataSource={businessTrendInflectionRows}
+                  pagination={false}
+                  scroll={{ x: 1730 }}
+                />
+            ) : <div className="chart-empty">当前筛选范围没有达到阈值的明显拐点</div>}
+          </Space>
+        </Card>
+
+        <Card title={businessTrendCardTitle}>
           <Space direction="vertical" style={{ width: '100%' }} size="large">
-            <Text type="secondary">横轴是自然周，每条线代表周一到周日中的某一天，并额外展示周总计曲线；平台分开展示。可拖动图表底部滑块缩放自然周范围。</Text>
+            <Text type="secondary">{businessTrendDescription}</Text>
             {weeklyTrendPlatformGroups.length ? weeklyTrendPlatformGroups.map(group => {
               const exposureRows = group.rows.map(row => ({ ...row, value: row.exposureUsers }));
               const visitRows = group.rows.map(row => ({ ...row, value: row.visitUsers }));
@@ -13252,31 +14248,31 @@ function WaimaiCalculatorInner() {
                 <Space key={group.platform} direction="vertical" style={{ width: '100%' }} size="small">
                   <Space wrap>
                     <Tag color="blue">{group.platformName}</Tag>
-                    <Text type="secondary">每条线为一个星期几，周总计为该平台当周合计口径。</Text>
+                    <Text type="secondary">{businessTrendGroupDescription}</Text>
                   </Space>
                   <Row gutter={[12, 12]}>
                     <Col xs={24} xl={8}>
                       <Space direction="vertical" style={{ width: '100%' }} size="small">
-                        <Text strong>曝光人数按周变化</Text>
-                        {renderBusinessLineChart(exposureRows, 'weekLabel', '自然周', '曝光人数', 'count')}
+                        <Text strong>曝光人数{isBusinessShortTrendRange ? '按天变化' : '按周变化'}</Text>
+                        {renderBusinessLineChart(exposureRows, businessTrendXField, businessTrendXTitle, '曝光人数', 'count', `${group.platformName}曝光人数${isBusinessShortTrendRange ? '按天变化' : '按周变化'}`)}
                       </Space>
                     </Col>
                     <Col xs={24} xl={8}>
                       <Space direction="vertical" style={{ width: '100%' }} size="small">
-                        <Text strong>入店人数按周变化</Text>
-                        {renderBusinessLineChart(visitRows, 'weekLabel', '自然周', '入店人数', 'count')}
+                        <Text strong>入店人数{isBusinessShortTrendRange ? '按天变化' : '按周变化'}</Text>
+                        {renderBusinessLineChart(visitRows, businessTrendXField, businessTrendXTitle, '入店人数', 'count', `${group.platformName}入店人数${isBusinessShortTrendRange ? '按天变化' : '按周变化'}`)}
                       </Space>
                     </Col>
                     <Col xs={24} xl={8}>
                       <Space direction="vertical" style={{ width: '100%' }} size="small">
-                        <Text strong>下单数按周变化</Text>
-                        {renderBusinessLineChart(orderUserRows, 'weekLabel', '自然周', '下单数', 'count')}
+                        <Text strong>下单数{isBusinessShortTrendRange ? '按天变化' : '按周变化'}</Text>
+                        {renderBusinessLineChart(orderUserRows, businessTrendXField, businessTrendXTitle, '下单数', 'count', `${group.platformName}下单数${isBusinessShortTrendRange ? '按天变化' : '按周变化'}`)}
                       </Space>
                     </Col>
                   </Row>
                 </Space>
               );
-            }) : <div className="chart-empty">暂无按周变化数据</div>}
+            }) : <div className="chart-empty">暂无{isBusinessShortTrendRange ? '按天' : '按周'}变化数据</div>}
           </Space>
         </Card>
 
@@ -13298,7 +14294,8 @@ function WaimaiCalculatorInner() {
                       y: { title: '金额', labelFormatter: (value: number | string) => `¥${money(value)}` }
                     }}
                     scale={{ color: { range: ['#496f5d', '#5b7c99', '#b85f32'] } }}
-                    point={{ sizeField: 3.5, style: { stroke: '#fff', lineWidth: 1 } }}
+                    interaction={{ tooltip: { marker: true } }}
+                    onReady={businessChartMemoOnReady('金额趋势（按平台）', 'money')}
                   />
                 </div>
               ) : <div className="chart-empty">暂无金额趋势数据</div>}
@@ -13321,7 +14318,8 @@ function WaimaiCalculatorInner() {
                       y: { title: '入店率', labelFormatter: (value: number | string) => `${money(value)}%` }
                     }}
                     scale={{ color: { range: ['#d95b18', '#6d6aa8'] } }}
-                    point={{ sizeField: 3.5, style: { stroke: '#fff', lineWidth: 1 } }}
+                    interaction={{ tooltip: { marker: true } }}
+                    onReady={businessChartMemoOnReady('入店率趋势（按平台）', 'rate')}
                   />
                 </div>
               ) : <div className="chart-empty">暂无入店率趋势数据</div>}
@@ -13344,7 +14342,8 @@ function WaimaiCalculatorInner() {
                       y: { title: '下单率', labelFormatter: (value: number | string) => `${money(value)}%` }
                     }}
                     scale={{ color: { range: ['#d95b18', '#6d6aa8'] } }}
-                    point={{ sizeField: 3.5, style: { stroke: '#fff', lineWidth: 1 } }}
+                    interaction={{ tooltip: { marker: true } }}
+                    onReady={businessChartMemoOnReady('下单率趋势（按平台）', 'rate')}
                   />
                 </div>
               ) : <div className="chart-empty">暂无下单率趋势数据</div>}
@@ -13356,26 +14355,87 @@ function WaimaiCalculatorInner() {
           <Table rowKey="key" size="small" columns={diagnosticColumns} dataSource={businessDiagnostics} pagination={false} scroll={{ x: 1250 }} />
         </Card>
 
+        <Card title="备忘录与诊断记录" extra={<Button icon={<PlusOutlined />} onClick={() => openBusinessMemoNoteEditor()}>新增备忘</Button>}>
+          <Space direction="vertical" style={{ width: '100%' }} size="small">
+            <Space wrap>
+              <Tag color="green">{businessActiveDateRangeText}</Tag>
+              <Tag color="purple">{businessVisibleNotes.length} 条记录</Tag>
+            </Space>
+            <Table rowKey="id" size="small" columns={noteColumns} dataSource={businessVisibleNotes} pagination={{ pageSize: 5 }} scroll={{ x: 980 }} />
+          </Space>
+        </Card>
+
         <Card title="每日总计（辅助）">
-          <Table rowKey="key" size="small" columns={dailyColumns} dataSource={businessDailyRows} pagination={{ pageSize: 8 }} scroll={{ x: 1360 }} />
+          <Table rowKey="key" size="small" columns={dailyColumns} dataSource={businessDailyRows} pagination={{ pageSize: 8 }} scroll={{ x: 1540 }} />
         </Card>
 
         <Card title="每日平台统计（主口径）">
-          <Table rowKey="key" size="small" columns={detailColumns} dataSource={filteredBusinessRecords} pagination={{ pageSize: 8 }} scroll={{ x: 1640 }} />
+          <Table rowKey="key" size="small" columns={detailColumns} dataSource={filteredBusinessRecords} pagination={{ pageSize: 8 }} scroll={{ x: 1820 }} />
         </Card>
 
         <Card title="每日漏斗明细（主口径）">
           <Table rowKey="key" size="small" columns={dailyFunnelColumns} dataSource={filteredBusinessRecords} pagination={{ pageSize: 8 }} scroll={{ x: 1500 }} />
         </Card>
 
+        <Card title="每日客户结构明细（平台口径）">
+          <Table
+            rowKey="key"
+            size="small"
+            columns={customerDetailColumns}
+            dataSource={filteredBusinessRecords.filter(row => row.customerBreakdownProvided || row.repeatDataProvided)}
+            pagination={{ pageSize: 8 }}
+            scroll={{ x: 1660 }}
+          />
+        </Card>
+
         <Card title="导入记录">
           <Table rowKey="id" size="small" columns={importColumns} dataSource={businessImportRows} pagination={{ pageSize: 6 }} scroll={{ x: 1270 }} />
         </Card>
 
-        <Card title="已保存诊断">
-          <Table rowKey="id" size="small" columns={noteColumns} dataSource={businessNotes} pagination={{ pageSize: 5 }} />
-        </Card>
       </Space>
+    );
+  }
+
+  function renderOrderAnalysisPage() {
+    return (
+      <OrderAnalysisPage
+        platforms={PLATFORMS}
+        platformNames={PLATFORM_NAMES}
+        orderAnalysisPlatform={orderAnalysisPlatform}
+        setOrderAnalysisPlatform={setOrderAnalysisPlatform}
+        orderStoreRecords={orderStoreRecords}
+        orderDataDateBounds={orderDataDateBounds}
+        orderDateRangePresets={orderDateRangePresets}
+        orderDateRangePickerValue={orderDateRangePickerValue}
+        updateOrderAnalysisDateRange={updateOrderAnalysisDateRange}
+        orderActiveDateRangeText={orderActiveDateRangeText}
+        uploadProps={uploadProps}
+        importOrderAnalysisFile={importOrderAnalysisFile}
+        exportOrderAnalysis={exportOrderAnalysis}
+        orderSummary={orderSummary}
+        orderProfitSummary={orderProfitSummary}
+        orderPlatformRows={orderPlatformRows}
+        orderPayBandRows={orderPayBandRows}
+        orderMealPeriodRows={orderMealPeriodRows}
+        orderHourRows={orderHourRows}
+        orderActivityRows={orderActivityRows}
+        orderActivityComboRows={orderActivityComboRows}
+        orderPlatformPayBandRows={orderPlatformPayBandRows}
+        orderMealPayBandRows={orderMealPayBandRows}
+        orderActivityComboPayBandRows={orderActivityComboPayBandRows}
+        orderProductRows={orderProductRows}
+        enrichedOrderRecords={enrichedOrderRecords}
+        orderImportRows={orderImportRows}
+        orderOperationRecommendations={orderOperationRecommendations}
+        orderInsights={orderInsights}
+        money={money}
+        rateText={rateText}
+        roundMoney={roundMoney}
+        businessDateRangeText={businessDateRangeText}
+        orderImportedAtText={orderImportedAtText}
+        recommendationPriorityColor={recommendationPriorityColor}
+        recommendationPriorityText={recommendationPriorityText}
+      />
     );
   }
 
@@ -13670,6 +14730,58 @@ function WaimaiCalculatorInner() {
     );
   }
 
+  function renderBusinessNoteEditorModal() {
+    if (!businessNoteEditor) return null;
+    const dateStart = businessDateToDayjs(businessNoteEditor.dateStart);
+    const dateEnd = businessDateToDayjs(businessNoteEditor.dateEnd);
+    const dateRangeValue = dateStart && dateEnd ? [dateStart, dateEnd] as [Dayjs, Dayjs] : null;
+    return (
+      <Modal
+        title={businessNoteEditor.id ? '编辑备忘录' : '新增备忘录'}
+        open
+        width={680}
+        destroyOnHidden
+        okText="保存"
+        cancelText="取消"
+        onOk={saveBusinessMemoNote}
+        onCancel={() => setBusinessNoteEditor(null)}
+      >
+        <Space direction="vertical" style={{ width: '100%' }} size="middle">
+          <Space wrap>
+            <Text type="secondary">日期</Text>
+            <RangePicker
+              format="YYYY-MM-DD"
+              placeholder={['开始日期', '结束日期']}
+              value={dateRangeValue}
+              onChange={(_, dateStrings) => updateBusinessMemoNoteDateRange(Array.isArray(dateStrings) ? dateStrings : [])}
+            />
+            <Text type="secondary">平台</Text>
+            <Select
+              style={{ width: 130 }}
+              value={businessNoteEditor.platform}
+              onChange={value => setBusinessNoteEditor(prev => prev ? { ...prev, platform: value as Platform | 'all' } : prev)}
+              options={[
+                { value: 'all', label: '全部平台' },
+                ...PLATFORMS.map(platform => ({ value: platform, label: PLATFORM_NAMES[platform] }))
+              ]}
+            />
+          </Space>
+          <Input
+            value={businessNoteEditor.title}
+            placeholder="标题，例如：平台活动、缺货、天气、竞品变化"
+            onChange={event => setBusinessNoteEditor(prev => prev ? { ...prev, title: event.target.value } : prev)}
+          />
+          <Input.TextArea
+            rows={5}
+            value={businessNoteEditor.content}
+            placeholder="记录当天发生的事情，例如：午高峰主推饭团缺货，曝光正常但下单率下降。"
+            onChange={event => setBusinessNoteEditor(prev => prev ? { ...prev, content: event.target.value } : prev)}
+          />
+        </Space>
+      </Modal>
+    );
+  }
+
   function renderActivityDiscountTierEditorModal() {
     const rows = activityDiscountTierDraft.map((row, index) => ({ ...row, rowIndex: index }));
     const columns: TableColumnsType<ActivityOriginalDiscountTier & { rowIndex: number }> = [
@@ -13792,6 +14904,7 @@ function WaimaiCalculatorInner() {
     if (state.activePage === 'meituan') return renderActivityPage('meituan');
     if (state.activePage === 'eleme') return renderActivityPage('eleme');
     if (state.activePage === 'activity-design') return renderActivityDesignPage();
+    if (state.activePage === 'order-analysis') return renderOrderAnalysisPage();
     if (state.activePage === 'data-analysis') return renderDataAnalysisPage();
     if (state.activePage === 'pricing') return renderPricingEvaluationPage();
     return renderResultsPage();
@@ -13831,6 +14944,7 @@ function WaimaiCalculatorInner() {
               { key: 'meituan', label: '美团活动' },
               { key: 'eleme', label: '饿了么活动' },
               { key: 'activity-design', label: '活动设计' },
+              { key: 'order-analysis', label: '订单分析' },
               { key: 'data-analysis', label: '数据分析' },
               { key: 'pricing', label: '定价评估' },
               { key: 'results', label: '测算结果' }
@@ -13840,6 +14954,7 @@ function WaimaiCalculatorInner() {
         <Content className="app-content">{pageContent()}</Content>
       </Layout>
     </Layout>
+    {renderBusinessNoteEditorModal()}
     {renderActivityDiscountTierEditorModal()}
     </>
   );
