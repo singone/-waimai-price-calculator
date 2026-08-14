@@ -1,7 +1,7 @@
 'use client';
 
 import dynamic from 'next/dynamic';
-import { usePathname, useRouter } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import React, { useMemo, useState } from 'react';
 import {
   App as AntApp,
@@ -13,8 +13,6 @@ import {
   Flex,
   Input,
   InputNumber,
-  Layout,
-  Menu,
   Modal,
   Row,
   Col,
@@ -22,7 +20,6 @@ import {
   Space,
   Spin,
   Steps,
-  Switch,
   Table,
   Tabs,
   Tag,
@@ -45,13 +42,16 @@ import {
 } from '@ant-design/icons';
 import dayjs, { type Dayjs } from 'dayjs';
 import * as XLSX from 'xlsx';
-import { DEFAULT_PAGE_KEY, isPageKey, pageFromPathname, pathForPage, type PageKey } from './pageRoutes';
+import { DEFAULT_PAGE_KEY, isPageKey, pathForPage, type PageKey } from './pageRoutes';
 import { ActivityPage } from './components/activity/ActivityPage';
-import { ActivityDiscountTierEditorModal, type ActivityDiscountTierBatchDraft } from './components/modals/ActivityDiscountTierEditorModal';
+import { CalculatorShell } from './components/layout/CalculatorShell';
 import { BusinessNoteEditorModal } from './components/modals/BusinessNoteEditorModal';
 import { OrderAnalysisPage } from './components/orderAnalysis/OrderAnalysisPage';
 import { PlatformPage } from './components/platform/PlatformPage';
+import { PricingEvaluationPage } from './components/pricing/PricingEvaluationPage';
 import { ProductsPage } from './components/products/ProductsPage';
+import { PayBandAnalysisPanel } from './components/shared/PayBandAnalysisPanel';
+import { ProductDiscountSuggestionPanel } from './components/shared/ProductDiscountSuggestionPanel';
 import { StorePage } from './components/store/StorePage';
 import { SystemStrategyPage } from './components/systemStrategy/SystemStrategyPage';
 import { summarizePriceBands as summarizeDomainPriceBands } from './domain/core';
@@ -81,34 +81,16 @@ import type {
   MeasurementResult,
   MeasurementSettings,
   PriceBandRow,
-  PricingEvaluationResult as RedesignedPricingEvaluationResult,
-  PricingProductRow
+  PricingEvaluationResult as RedesignedPricingEvaluationResult
 } from './domain/types';
 import { buildActivityRouteKey } from './domain/activity/shared';
 import {
-  aggregateEnrichedOrdersByProduct,
-  aggregateOrdersByActivityCombo,
-  aggregateOrdersByActivityComboPayBand,
-  aggregateOrdersByActivityType,
-  aggregateOrdersByHour,
-  aggregateOrdersByMealPeriod,
-  aggregateOrdersByMealPeriodPayBand,
-  aggregateOrdersByPayBand,
-  aggregateOrdersByPlatform,
-  aggregateOrdersByPlatformPayBand,
-  buildOrderInsights,
-  buildOrderOperationRecommendations,
-  enrichOrderRecords,
   findOrderWorkbookHeader,
   normalizeOrderAnalysisState,
   normalizeOrderDetailRecord,
-  orderAnalysisExportRows,
-  parseOrderWorkbook,
-  summarizeOrderProfit,
-  summarizeOrderRecords
+  parseOrderWorkbook
 } from './domain/orderAnalysis';
 import type {
-  OrderAnalysisPlatformFilter,
   OrderAnalysisState,
   OrderDetailRecord,
   ParsedOrderWorkbook
@@ -386,27 +368,6 @@ type ActivityFullReductionLogSegment = {
   type: ActivityFullReductionLogSegmentType;
   title: string;
   detail: string[];
-};
-
-type ActivityDiscountTierEditorScope = 'system' | 'store';
-type ActivityDiscountTierEditorState = {
-  scope: ActivityDiscountTierEditorScope;
-  objective: RedesignedActivityDesignObjective;
-  title: string;
-  fallback: ActivityOriginalDiscountTier[];
-};
-
-type PayBandAnalysisPanelProps = {
-  title: string;
-  chartTitle: string;
-  platformName: string;
-  payBands: PriceBandRow[];
-  selectedPayBandKey: string;
-  rowCount: number;
-  riskCount: number;
-  loading: boolean;
-  columns: TableColumnsType<PriceBandRow>;
-  onSelectPayBand: (key: string) => void;
 };
 
 type MeasurementPersistenceMeta = {
@@ -908,8 +869,6 @@ type PricingEvaluationSettings = ComboRangeSettings & {
   fixedCostAllocation?: number;
 };
 
-type ProductSortField = 'name' | 'category' | 'stapleServingCount' | 'price' | 'cost' | 'packageFee' | 'meituanPrice' | 'elemePrice' | 'meituanPackageFee' | 'elemePackageFee';
-type ProductStatusFilter = 'all' | 'meituanEnabled' | 'meituanDisabled' | 'elemeEnabled' | 'elemeDisabled' | 'nonStandalone' | 'missingCost';
 type TableBreakpoint = 'xxxl' | 'xxl' | 'xl' | 'lg' | 'md' | 'sm' | 'xs';
 
 type PricingOrderRow = {
@@ -947,9 +906,6 @@ type CouponDesignBaseRow = {
   cost: number;
 };
 
-type ProductBulkPriceField = 'price' | 'cost' | 'packageFee' | 'meituanPrice' | 'elemePrice' | 'meituanPackageFee' | 'elemePackageFee';
-type ProductBulkPriceMode = 'set' | 'increase' | 'discount';
-
 type Summary = {
   resultCount: number;
   comboCount: number;
@@ -984,7 +940,6 @@ type PlatformProductRecord = {
 
 const EMPTY_SUMMARY: Summary = { resultCount: 0, comboCount: 0, validComboCount: 0, elapsedTime: null };
 
-const { Header, Sider, Content } = Layout;
 const { Text, Title } = Typography;
 
 const STORAGE_KEY = 'waimai_store_activity_calculator_v2';
@@ -2629,29 +2584,17 @@ function productDiscountSourceName(source: ProductDiscountSuggestionSource) {
   return '测算结果';
 }
 
-function productDiscountRiskLabel(level: ProductDiscountSuggestionRiskLevel) {
-  if (level === 'safe') return '可执行';
-  if (level === 'watch') return '需复核';
-  return '需调价';
-}
-
-function productDiscountRiskColor(level: ProductDiscountSuggestionRiskLevel) {
-  if (level === 'safe') return 'green';
-  if (level === 'watch') return 'orange';
-  return 'red';
+function productDiscountActionLabel(action: ProductDiscountSuggestionAction) {
+  if (action === 'discount') return '可降价';
+  if (action === 'raisePrice') return '需涨价/规避';
+  if (action === 'watch') return '检查凑单风险';
+  return '无需处理';
 }
 
 function productDiscountRoleLabel(role: ProductDiscountSuggestionRole) {
   if (role === 'main') return '主商品';
   if (role === 'addOn') return '凑单品';
   return '混合';
-}
-
-function productDiscountActionLabel(action: ProductDiscountSuggestionAction) {
-  if (action === 'discount') return '可降价';
-  if (action === 'raisePrice') return '需涨价/规避';
-  if (action === 'watch') return '检查凑单风险';
-  return '无需处理';
 }
 
 function finiteRate(value: number | null | undefined): value is number {
@@ -3478,23 +3421,6 @@ function normalizeProductList(value: unknown): Product[] {
       seenIds.add(nextId);
       return { ...product, id: nextId };
     });
-}
-
-function productTextValue(value: unknown) {
-  return String(value ?? '').trim();
-}
-
-function productNumberValue(value: unknown) {
-  const numberValue = Number(value);
-  return Number.isFinite(numberValue) ? numberValue : 0;
-}
-
-function compareProductText(a: unknown, b: unknown) {
-  return productTextValue(a).localeCompare(productTextValue(b), 'zh-CN');
-}
-
-function compareProductNumber(a: unknown, b: unknown) {
-  return productNumberValue(a) - productNumberValue(b);
 }
 
 function normalizeActivities(data: Partial<Activities> | undefined, platformName: string): Activities {
@@ -6553,91 +6479,6 @@ function productNameSimilarity(a: unknown, b: unknown) {
   return Math.max(containsScore, coverage * 0.65 + jaccard * 0.35);
 }
 
-function productHasPlatformOverride(product: Product, platform: Platform) {
-  if (platform === 'meituan') return product.meituanPrice !== '' || product.meituanPackageFee !== '';
-  return product.elemePrice !== '' || product.elemePackageFee !== '';
-}
-
-function productMergeCompatible(a: Product, b: Product) {
-  const similarity = productNameSimilarity(a.name, b.name);
-  if (similarity < 0.82) return false;
-  if (a.category !== b.category && a.category !== 'other' && b.category !== 'other') return false;
-  if (a.stapleServingCount > 0 && b.stapleServingCount > 0 && a.stapleServingCount !== b.stapleServingCount) return false;
-  return true;
-}
-
-function productDataCompleteness(product: Product) {
-  return [
-    product.cost > 0,
-    product.packageFee > 0,
-    product.meituanPrice !== '',
-    product.elemePrice !== '',
-    product.meituanPackageFee !== '',
-    product.elemePackageFee !== '',
-    product.category !== 'other',
-    product.stapleServingCount > 0
-  ].filter(Boolean).length;
-}
-
-function mergeOptionalPrice<T extends 'meituanPrice' | 'elemePrice' | 'meituanPackageFee' | 'elemePackageFee'>(target: Product, source: Product, field: T) {
-  if (target[field] === '' && source[field] !== '') target[field] = source[field];
-}
-
-function mergeProductRecords(primary: Product, duplicates: Product[]) {
-  const merged = normalizeProduct(primary);
-  duplicates.forEach(source => {
-    if (merged.price <= 0 && source.price > 0) merged.price = source.price;
-    if (merged.cost <= 0 && source.cost > 0) merged.cost = source.cost;
-    if (merged.packageFee <= 0 && source.packageFee > 0) merged.packageFee = source.packageFee;
-    const hadMeituanOverride = productHasPlatformOverride(merged, 'meituan');
-    const hadElemeOverride = productHasPlatformOverride(merged, 'eleme');
-    mergeOptionalPrice(merged, source, 'meituanPrice');
-    mergeOptionalPrice(merged, source, 'elemePrice');
-    mergeOptionalPrice(merged, source, 'meituanPackageFee');
-    mergeOptionalPrice(merged, source, 'elemePackageFee');
-    if (productHasPlatformOverride(source, 'meituan') && !hadMeituanOverride) {
-      merged.meituanEnabled = source.meituanEnabled;
-    } else {
-      merged.meituanEnabled = merged.meituanEnabled || source.meituanEnabled;
-    }
-    if (productHasPlatformOverride(source, 'eleme') && !hadElemeOverride) {
-      merged.elemeEnabled = source.elemeEnabled;
-    } else {
-      merged.elemeEnabled = merged.elemeEnabled || source.elemeEnabled;
-    }
-    if (merged.category === 'other' && source.category !== 'other') merged.category = source.category;
-    merged.stapleServingCount = Math.max(merged.stapleServingCount, source.stapleServingCount);
-    merged.nonStandalone = merged.nonStandalone || source.nonStandalone;
-  });
-  return normalizeProduct(merged);
-}
-
-function chooseProductMergePrimary(products: Product[]) {
-  return products
-    .slice()
-    .sort((a, b) => productDataCompleteness(b) - productDataCompleteness(a) || a.name.length - b.name.length || a.name.localeCompare(b.name, 'zh-CN'))[0];
-}
-
-function findDuplicateProductGroups(products: Product[]) {
-  const groups: Product[][] = [];
-  const used = new Set<string>();
-  for (let i = 0; i < products.length; i++) {
-    const product = products[i];
-    if (used.has(product.id)) continue;
-    const group = [product];
-    for (let j = i + 1; j < products.length; j++) {
-      const candidate = products[j];
-      if (used.has(candidate.id)) continue;
-      if (group.some(item => productMergeCompatible(item, candidate))) group.push(candidate);
-    }
-    if (group.length > 1) {
-      group.forEach(item => used.add(item.id));
-      groups.push(group);
-    }
-  }
-  return groups.sort((a, b) => b.length - a.length || b.reduce((sum, item) => sum + productDataCompleteness(item), 0) - a.reduce((sum, item) => sum + productDataCompleteness(item), 0));
-}
-
 function platformImportPriceField(platform: Platform): 'meituanPrice' | 'elemePrice' {
   return platform === 'meituan' ? 'meituanPrice' : 'elemePrice';
 }
@@ -8247,79 +8088,6 @@ const browserDataRepository: AppDataRepository = {
   loadMeasurementRows: loadMeasurementRowsFromBrowserDb
 };
 
-function PriceBandVolumeProfitChart({ rows, title }: { rows: PriceBandRow[]; title: string }) {
-  const data = rows.slice(0, 24).map(row => ({
-    key: row.key,
-    label: row.label,
-    comboCount: row.comboCount,
-    avgProfitRate: row.avgProfitRate === null ? null : roundMoney(row.avgProfitRate * 100),
-    riskCount: row.riskCount,
-    platformName: row.platformName
-  }));
-  if (!data.length) return <div className="chart-empty">暂无{title}区间数据</div>;
-  return (
-    <div className="chart-frame">
-      <AntvDualAxes
-        data={data}
-        height={280}
-        autoFit
-        xField="label"
-        axis={{
-          x: { title, labelAutoRotate: false },
-          y: { title: '组合数', labelFormatter: (value: number | string) => `${Math.round(Number(value))}` }
-        }}
-        scale={{
-          y: { independent: true, nice: true },
-          color: { range: ['#5b7c99', '#b85f32'] }
-        }}
-        children={[
-          {
-            type: 'interval',
-            yField: 'comboCount',
-            style: {
-              fill: '#5b7c99',
-              radiusTopLeft: 4,
-              radiusTopRight: 4
-            }
-          },
-          {
-            type: 'line',
-            yField: 'avgProfitRate',
-            shapeField: 'smooth',
-            axis: {
-              y: {
-                position: 'right',
-                title: '平均利润率',
-                labelFormatter: (value: number | string) => `${Number(value).toFixed(0)}%`
-              }
-            },
-            style: {
-              stroke: '#b85f32',
-              lineWidth: 2.4
-            },
-            point: {
-              sizeField: 4,
-              style: {
-                fill: (datum: { riskCount?: number }) => (datum.riskCount || 0) > 0 ? '#d4380d' : '#b85f32',
-                stroke: '#fff',
-                lineWidth: 1
-              }
-            }
-          }
-        ]}
-        tooltip={{
-          title: (datum: { platformName?: string; label?: string }) => `${datum.platformName || ''} ${datum.label || ''}`.trim(),
-          items: [
-            { field: 'comboCount', name: '组合数' },
-            { field: 'avgProfitRate', name: '平均利润率', valueFormatter: (value: number) => Number.isFinite(Number(value)) ? `${Number(value).toFixed(2)}%` : '-' },
-            { field: 'riskCount', name: '异常数' }
-          ]
-        }}
-      />
-    </div>
-  );
-}
-
 function PriceBucketProfitChart({ rows }: { rows: ActivityPriceBucketRow[] }) {
   const data = rows.slice(0, 80).map(row => ({
     key: row.key,
@@ -8432,115 +8200,10 @@ function PriceBucketProfitChart({ rows }: { rows: ActivityPriceBucketRow[] }) {
   );
 }
 
-function PriceBandMoneyTrendChart({ rows }: { rows: PriceBandRow[] }) {
-  const data = rows.slice(0, 24).flatMap(row => [
-    { key: `${row.key}-avg-profit`, label: row.label, metric: '平均利润', amount: roundMoney(row.avgProfit) },
-    { key: `${row.key}-min-profit`, label: row.label, metric: '最低利润', amount: roundMoney(row.minProfit ?? 0) },
-    { key: `${row.key}-max-profit`, label: row.label, metric: '最高利润', amount: roundMoney(row.maxProfit ?? 0) }
-  ]);
-  if (!data.length) return <div className="chart-empty">暂无价格趋势数据</div>;
-  return (
-    <div className="chart-frame">
-      <AntvLine
-        data={data}
-        height={280}
-        autoFit
-        xField="label"
-        yField="amount"
-        colorField="metric"
-        shapeField="smooth"
-        axis={{
-          x: { title: '支付价区间', labelAutoRotate: false },
-          y: { title: '金额', labelFormatter: (value: number | string) => `¥${money(value)}` }
-        }}
-        scale={{
-          y: { nice: true },
-          color: { range: ['#496f5d', '#a66a3f', '#6d6aa8'] }
-        }}
-        style={{
-          lineWidth: 2.2
-        }}
-        point={{
-          sizeField: 3.5,
-          style: {
-            stroke: '#fff',
-            lineWidth: 1
-          }
-        }}
-        tooltip={{
-          title: (datum: { label?: string }) => datum.label || '',
-          items: [
-            { field: 'metric', name: '指标' },
-            { field: 'amount', name: '金额', valueFormatter: (value: number) => `¥${money(value)}` }
-          ]
-        }}
-      />
-    </div>
-  );
-}
-
-function PayBandAnalysisPanel({
-  title,
-  chartTitle,
-  platformName,
-  payBands,
-  selectedPayBandKey,
-  rowCount,
-  riskCount,
-  loading,
-  columns,
-  onSelectPayBand
-}: PayBandAnalysisPanelProps) {
-  const effectiveSelectedKey = payBands.some(row => row.key === selectedPayBandKey) ? selectedPayBandKey : 'all';
-  return (
-    <Card title={title}>
-      <Space direction="vertical" style={{ width: '100%' }} size="middle">
-        <Space wrap>
-          <Text type="secondary">查看区间</Text>
-          <Select
-            style={{ width: 260 }}
-            value={effectiveSelectedKey}
-            onChange={onSelectPayBand}
-            options={[
-              { value: 'all', label: '全部支付价区间' },
-              ...payBands.map(row => ({
-                value: row.key,
-                label: `${row.platformName}${row.scenarioName === '全部组合' ? '' : ` / ${row.scenarioName}`} / ¥${row.label}`
-              }))
-            ]}
-          />
-          <Button onClick={() => onSelectPayBand('all')}>查看全部组合</Button>
-          <Text type="secondary">{platformName} 当前 {rowCount} 条，风险 {riskCount} 条</Text>
-        </Space>
-        <Row gutter={[12, 12]}>
-          <Col xs={24} lg={12}><PriceBandVolumeProfitChart rows={payBands} title={chartTitle} /></Col>
-          <Col xs={24} lg={12}><PriceBandMoneyTrendChart rows={payBands} /></Col>
-        </Row>
-        <Table
-          loading={loading}
-          rowKey="key"
-          size="small"
-          columns={columns}
-          dataSource={payBands}
-          pagination={tablePagination(20)}
-          scroll={{ x: 1760 }}
-          tableLayout="fixed"
-          rowClassName={row => row.key === effectiveSelectedKey ? 'risk-config' : ''}
-          onRow={row => ({
-            onClick: () => onSelectPayBand(row.key)
-          })}
-        />
-      </Space>
-    </Card>
-  );
-}
-
-function WaimaiCalculatorInner() {
+function WaimaiCalculatorInner({ activePage }: { activePage: PageKey }) {
   const { message, modal } = AntApp.useApp();
   const router = useRouter();
-  const pathname = usePathname();
-  const routePage = useMemo(() => pageFromPathname(pathname || '/'), [pathname]);
-  const routePageRef = React.useRef(routePage);
+  const activePageRef = React.useRef(activePage);
   const stateRef = React.useRef<CalculatorState>(deepClone(defaultState));
   const asyncCalculationSeqRef = React.useRef(0);
   const measurementCacheWarmupSeqRef = React.useRef(0);
@@ -8558,46 +8221,19 @@ function WaimaiCalculatorInner() {
   const [state, setState] = useState<CalculatorState>(() => deepClone(defaultState));
   const [resultPlatformTab, setResultPlatformTab] = useState<Platform>('meituan');
   const [activityDesignPlatformTab, setActivityDesignPlatformTab] = useState<Platform>('meituan');
-  const [pricingPlatformFilter, setPricingPlatformFilter] = useState<Platform | 'all'>('all');
   const [businessAnalysisPlatform, setBusinessAnalysisPlatform] = useState<Platform | 'all'>('all');
   const [businessAnalysisDateStart, setBusinessAnalysisDateStart] = useState('');
   const [businessAnalysisDateEnd, setBusinessAnalysisDateEnd] = useState('');
-  const [orderAnalysisPlatform, setOrderAnalysisPlatform] = useState<OrderAnalysisPlatformFilter>('all');
-  const [orderAnalysisDateStart, setOrderAnalysisDateStart] = useState('');
-  const [orderAnalysisDateEnd, setOrderAnalysisDateEnd] = useState('');
   const [businessNoteEditor, setBusinessNoteEditor] = useState<BusinessNoteEditorState | null>(null);
   const [activityDesignFilters, setActivityDesignFilters] = useState<ActivityDesignPageFilters>(DEFAULT_ACTIVITY_DESIGN_PAGE_FILTERS);
-  const [pricingSettings, setPricingSettings] = useState<PricingEvaluationSettings>(DEFAULT_PRICING_EVALUATION_SETTINGS);
   const [measurementSettings, setMeasurementSettings] = useState<MeasurementSettings>(DEFAULT_MEASUREMENT_SETTINGS);
   const [riskOnly, setRiskOnly] = useState(false);
-  const [isStoreEditing, setIsStoreEditing] = useState(false);
-  const [storeDraft, setStoreDraft] = useState<Store | null>(null);
-  const [isProductsEditing, setIsProductsEditing] = useState(false);
-  const [productsDraft, setProductsDraft] = useState<Product[] | null>(null);
   const [isPlatformEditing, setIsPlatformEditing] = useState(false);
   const [platformDraft, setPlatformDraft] = useState<FeeRule | null>(null);
-  const [isSystemStrategyEditing, setIsSystemStrategyEditing] = useState(false);
-  const [systemStrategyDraft, setSystemStrategyDraft] = useState<ActivityStrategySettings | null>(null);
-  const [activityDiscountTierEditor, setActivityDiscountTierEditor] = useState<ActivityDiscountTierEditorState | null>(null);
-  const [activityDiscountTierDraft, setActivityDiscountTierDraft] = useState<ActivityOriginalDiscountTier[]>([]);
-  const [activityDiscountTierBatchDraft, setActivityDiscountTierBatchDraft] = useState<ActivityDiscountTierBatchDraft>({ start: 0, end: 80, step: 10, rate: 30 });
   const [editingActivityPlatform, setEditingActivityPlatform] = useState<Platform | null>(null);
   const [activityDraft, setActivityDraft] = useState<Activities | null>(null);
   const [isRiskEditing, setIsRiskEditing] = useState(false);
   const [riskDraft, setRiskDraft] = useState<number | null>(null);
-  const [selectedProductRowKeys, setSelectedProductRowKeys] = useState<React.Key[]>([]);
-  const [bulkPriceField, setBulkPriceField] = useState<ProductBulkPriceField>('price');
-  const [bulkPriceMode, setBulkPriceMode] = useState<ProductBulkPriceMode>('set');
-  const [bulkPriceValue, setBulkPriceValue] = useState<number | null>(null);
-  const [bulkProductCategory, setBulkProductCategory] = useState<ProductCategory>('staple');
-  const [bulkStapleServingCount, setBulkStapleServingCount] = useState<number | null>(null);
-  const [bulkText, setBulkText] = useState('');
-  const [productSearchText, setProductSearchText] = useState('');
-  const [productStatusFilter, setProductStatusFilter] = useState<ProductStatusFilter>('all');
-  const [productCategoryFilter, setProductCategoryFilter] = useState<ProductCategory | 'all'>('all');
-  const [productSortField, setProductSortField] = useState<ProductSortField>('name');
-  const [productSortAsc, setProductSortAsc] = useState(true);
-  const [pricingResultSearchText, setPricingResultSearchText] = useState('');
   const resultScenario = MEASUREMENT_RESULT_SCENARIO;
   const [lastResultsByScenario, setLastResultsByScenario] = useState(() => createScenarioRecord<ComboEvaluationRow[]>(() => []));
   const [resultPayBandsByScenario, setResultPayBandsByScenario] = useState(() => createScenarioRecord<PriceBandRow[]>(() => []));
@@ -8610,7 +8246,6 @@ function WaimaiCalculatorInner() {
   const [optimizationWarningsByScenario, setOptimizationWarningsByScenario] = useState(() => createScenarioRecord<string[]>(() => []));
   const [activityDesignByScenario, setActivityDesignByScenario] = useState(() => createScenarioRecord<RedesignedActivityDesignResult | null>(() => null));
   const [pricingEvaluation, setPricingEvaluation] = useState<RedesignedPricingEvaluationResult | null>(null);
-  const [selectedPricingProductKey, setSelectedPricingProductKey] = useState('');
   const [selectedResultBand, setSelectedResultBand] = useState<SelectedResultBand | null>(null);
   const [selectedActivityDesignBand, setSelectedActivityDesignBand] = useState<SelectedResultBand | null>(null);
   const [selectedActivityDesignPayBandKeyByPlatform, setSelectedActivityDesignPayBandKeyByPlatform] = useState<Record<Platform, string>>(() => ({ meituan: 'all', eleme: 'all' }));
@@ -8683,72 +8318,6 @@ function WaimaiCalculatorInner() {
       .filter(row => !businessAnalysisDateEnd || row.date <= businessAnalysisDateEnd)
       .sort((a, b) => a.date.localeCompare(b.date) || a.platform.localeCompare(b.platform));
   }, [businessAnalysisDateEnd, businessAnalysisDateStart, businessAnalysisPlatform, businessStoreRecords]);
-  const orderStoreRecords = useMemo(() => {
-    return state.orderAnalysis.records.filter(row => row.storeId === store.id && row.isValid);
-  }, [state.orderAnalysis.records, store.id]);
-  const orderDataDateBounds = useMemo(() => {
-    if (!orderStoreRecords.length) return { start: '', end: '' };
-    const dates = orderStoreRecords.map(row => row.orderDate).sort();
-    return { start: dates[0], end: dates[dates.length - 1] };
-  }, [orderStoreRecords]);
-  const orderDateRangePickerValue = useMemo(() => {
-    const start = businessDateToDayjs(orderAnalysisDateStart);
-    const end = businessDateToDayjs(orderAnalysisDateEnd);
-    return start && end ? [start, end] as [Dayjs, Dayjs] : null;
-  }, [orderAnalysisDateEnd, orderAnalysisDateStart]);
-  const orderDateRangePresets = useMemo(() => {
-    const presets: Array<{ label: React.ReactNode; value: [Dayjs, Dayjs] }> = [];
-    const addPreset = (label: React.ReactNode, startText: string, endText: string) => {
-      const start = businessDateToDayjs(startText);
-      const end = businessDateToDayjs(endText);
-      if (start && end) presets.push({ label, value: [start, end] });
-    };
-    if (!orderDataDateBounds.start || !orderDataDateBounds.end) return presets;
-    addPreset('全部订单', orderDataDateBounds.start, orderDataDateBounds.end);
-    const latest7Start = businessAddDays(orderDataDateBounds.end, -6);
-    addPreset('最近7天', latest7Start < orderDataDateBounds.start ? orderDataDateBounds.start : latest7Start, orderDataDateBounds.end);
-    const latest30Start = businessAddDays(orderDataDateBounds.end, -29);
-    addPreset('最近30天', latest30Start < orderDataDateBounds.start ? orderDataDateBounds.start : latest30Start, orderDataDateBounds.end);
-    return presets;
-  }, [orderDataDateBounds.end, orderDataDateBounds.start]);
-  const updateOrderAnalysisDateRange = (dateStrings: string[]) => {
-    setOrderAnalysisDateStart(normalizeBusinessDate(dateStrings[0]));
-    setOrderAnalysisDateEnd(normalizeBusinessDate(dateStrings[1]));
-  };
-  const filteredOrderRecords = useMemo(() => {
-    return orderStoreRecords
-      .filter(row => orderAnalysisPlatform === 'all' || row.platform === orderAnalysisPlatform)
-      .filter(row => !orderAnalysisDateStart || row.orderDate >= orderAnalysisDateStart)
-      .filter(row => !orderAnalysisDateEnd || row.orderDate <= orderAnalysisDateEnd)
-      .sort((a, b) => a.orderDate.localeCompare(b.orderDate) || a.orderTime.localeCompare(b.orderTime) || a.orderId.localeCompare(b.orderId));
-  }, [orderAnalysisDateEnd, orderAnalysisDateStart, orderAnalysisPlatform, orderStoreRecords]);
-  const orderSummary = useMemo(() => summarizeOrderRecords(filteredOrderRecords), [filteredOrderRecords]);
-  const orderActiveDateRangeText = businessDateRangeText(
-    orderAnalysisDateStart || orderSummary.dateStart,
-    orderAnalysisDateEnd || orderSummary.dateEnd
-  );
-  const orderPlatformRows = useMemo(() => aggregateOrdersByPlatform(filteredOrderRecords), [filteredOrderRecords]);
-  const orderPayBandRows = useMemo(() => aggregateOrdersByPayBand(filteredOrderRecords), [filteredOrderRecords]);
-  const orderMealPeriodRows = useMemo(() => aggregateOrdersByMealPeriod(filteredOrderRecords), [filteredOrderRecords]);
-  const orderHourRows = useMemo(() => aggregateOrdersByHour(filteredOrderRecords), [filteredOrderRecords]);
-  const orderActivityRows = useMemo(() => aggregateOrdersByActivityType(filteredOrderRecords), [filteredOrderRecords]);
-  const enrichedOrderRecords = useMemo(() => enrichOrderRecords(filteredOrderRecords, store.products), [filteredOrderRecords, store.products]);
-  const orderProfitSummary = useMemo(() => summarizeOrderProfit(enrichedOrderRecords), [enrichedOrderRecords]);
-  const orderActivityComboRows = useMemo(() => aggregateOrdersByActivityCombo(enrichedOrderRecords), [enrichedOrderRecords]);
-  const orderPlatformPayBandRows = useMemo(() => aggregateOrdersByPlatformPayBand(enrichedOrderRecords), [enrichedOrderRecords]);
-  const orderMealPayBandRows = useMemo(() => aggregateOrdersByMealPeriodPayBand(enrichedOrderRecords), [enrichedOrderRecords]);
-  const orderActivityComboPayBandRows = useMemo(() => aggregateOrdersByActivityComboPayBand(enrichedOrderRecords), [enrichedOrderRecords]);
-  const orderProductRows = useMemo(() => aggregateEnrichedOrdersByProduct(enrichedOrderRecords, store.products), [enrichedOrderRecords, store.products]);
-  const orderOperationRecommendations = useMemo(
-    () => buildOrderOperationRecommendations(orderSummary, orderProfitSummary, orderPayBandRows, orderPlatformPayBandRows, orderMealPayBandRows, orderActivityComboRows, orderProductRows),
-    [orderActivityComboRows, orderMealPayBandRows, orderPayBandRows, orderPlatformPayBandRows, orderProductRows, orderProfitSummary, orderSummary]
-  );
-  const orderInsights = useMemo(() => buildOrderInsights(orderSummary, orderPayBandRows, orderMealPeriodRows, orderActivityRows), [orderActivityRows, orderMealPeriodRows, orderPayBandRows, orderSummary]);
-  const orderImportRows = useMemo(() => {
-    return state.orderAnalysis.imports
-      .filter(row => row.storeId === store.id)
-      .sort((a, b) => b.importedAt.localeCompare(a.importedAt));
-  }, [state.orderAnalysis.imports, store.id]);
   const businessSummary = useMemo(() => summarizeBusinessRecords(filteredBusinessRecords), [filteredBusinessRecords]);
   const businessActiveDateRangeText = businessDateRangeText(
     businessAnalysisDateStart || businessSummary.dateStart,
@@ -8781,7 +8350,7 @@ function WaimaiCalculatorInner() {
     routeObjectiveOptionsFromSettings
   ), [routeObjectiveOptionsFromSettings, storeActivityDesignSettings]);
   const measurementPayBandSize = Math.max(1, Math.floor(Number(storeActivityDesignSettings.payBandSize) || 5));
-  const shouldPrepareResultsView = state.activePage === 'results';
+  const shouldPrepareResultsView = activePage === 'results';
   const lastResults = shouldPrepareResultsView ? lastResultsByScenario[resultScenario] : [];
   const filteredResultRows = useMemo(() => {
     if (!shouldPrepareResultsView) return [];
@@ -8964,14 +8533,12 @@ function WaimaiCalculatorInner() {
       maxProfit
     };
   }, [selectedResultProductFilteredRows]);
-  const selectedPricingIssue = useMemo(() => pricingEvaluation?.productRows.find(issue => issue.key === selectedPricingProductKey), [pricingEvaluation, selectedPricingProductKey]);
-
   React.useEffect(() => {
-    routePageRef.current = routePage;
-    setState(prev => prev.activePage === routePage ? prev : normalizeState({ ...prev, activePage: routePage }));
+    activePageRef.current = activePage;
+    setState(prev => prev.activePage === activePage ? prev : normalizeState({ ...prev, activePage }));
     cancelAllEdits();
-    applyPendingAsyncCalculationResult(routePage);
-  }, [routePage]);
+    applyPendingAsyncCalculationResult(activePage);
+  }, [activePage]);
 
   React.useEffect(() => {
     let ignore = false;
@@ -8988,7 +8555,7 @@ function WaimaiCalculatorInner() {
   }, []);
 
   React.useEffect(() => {
-    if (routePage !== 'results') return undefined;
+    if (activePage !== 'results') return undefined;
     let ignore = false;
     const storeId = store.id;
     const scenario = MEASUREMENT_RESULT_SCENARIO;
@@ -9031,10 +8598,10 @@ function WaimaiCalculatorInner() {
     return () => {
       ignore = true;
     };
-  }, [measurementPayBandSize, routePage, store.id]);
+  }, [measurementPayBandSize, activePage, store.id]);
 
   React.useEffect(() => {
-    if (routePage !== 'activity-design') return undefined;
+    if (activePage !== 'activity-design') return undefined;
     const scenario = ACTIVITY_DESIGN_RESULT_SCENARIO;
     const currentScan = activityDesignByScenarioRef.current[scenario];
     const currentMeta = activityPriceScanPersistenceMetaRef.current;
@@ -9055,7 +8622,7 @@ function WaimaiCalculatorInner() {
         if (
           ignore
           || activityPriceScanLoadSeqRef.current !== seq
-          || routePageRef.current !== 'activity-design'
+          || activePageRef.current !== 'activity-design'
           || currentStoreFrom(stateRef.current).id !== targetStore.id
           || activeAsyncCalculationRef.current.activityDesign
         ) {
@@ -9095,7 +8662,7 @@ function WaimaiCalculatorInner() {
     return () => {
       ignore = true;
     };
-  }, [routePage, state, store]);
+  }, [activePage, state, store]);
 
   React.useEffect(() => {
     setLoadedResultBandRows(null);
@@ -9133,7 +8700,7 @@ function WaimaiCalculatorInner() {
 
   function stateWithCurrentRoutePage(value: unknown) {
     const next = normalizeState(value);
-    next.activePage = routePageRef.current;
+    next.activePage = activePageRef.current;
     return next;
   }
 
@@ -9144,321 +8711,44 @@ function WaimaiCalculatorInner() {
     });
   }
 
-  function startStoreEdit() {
-    cancelSystemStrategyEdit();
-    cancelProductsEdit();
+  function prepareConfigEdit(options: { cancelRisk?: boolean } = {}) {
     cancelPlatformEdit();
     cancelActivityEdit();
-    setStoreDraft(deepClone(store));
-    setIsStoreEditing(true);
+    if (options.cancelRisk) cancelRiskEdit();
   }
 
-  function updateStoreDraft(mutator: (draft: Store) => void) {
-    setStoreDraft(prev => {
-      const draft = deepClone(prev || store);
-      mutator(draft);
-      return draft;
-    });
-  }
-
-  function cancelStoreEdit() {
-    setIsStoreEditing(false);
-    setStoreDraft(null);
-  }
-
-  async function saveStoreEdit() {
-    if (!storeDraft) return;
-    const nextStore = deepClone(storeDraft);
-    if (nextStore.calculationTotalMax !== '' && nextStore.calculationTotalMax < nextStore.calculationTotalMin) {
-      nextStore.calculationTotalMax = nextStore.calculationTotalMin;
-    }
-    if (nextStore.stapleCountMax !== '' && nextStore.stapleCountMax < nextStore.stapleCountMin) {
-      nextStore.stapleCountMax = nextStore.stapleCountMin;
-    }
-    nextStore.activityDesignSettings = normalizeActivityDesignSettings(nextStore.activityDesignSettings);
-    await commitState(draft => {
-      draft.stores = draft.stores.map(item => item.id === nextStore.id ? nextStore : item);
-    }, '门店信息已保存到浏览器数据库。');
-    setIsStoreEditing(false);
-    setStoreDraft(null);
+  async function saveConfigState(mutator: (draft: CalculatorState) => void, successMessage: string) {
+    const saved = await commitState(mutator, successMessage);
+    if (!saved) return false;
     clearCalculatedState();
-  }
-
-  function startProductsEdit() {
-    cancelSystemStrategyEdit();
-    cancelStoreEdit();
-    cancelPlatformEdit();
-    cancelActivityEdit();
-    setProductsDraft(normalizeProductList(store.products));
-    setIsProductsEditing(true);
-    resetProductBulkState();
-  }
-
-  function updateProductsDraft(mutator: (draft: Product[]) => void) {
-    setProductsDraft(prev => {
-      const draft = deepClone(prev || store.products);
-      mutator(draft);
-      return normalizeProductList(draft);
-    });
-  }
-
-  function cancelProductsEdit() {
-    setIsProductsEditing(false);
-    setProductsDraft(null);
-    setBulkText('');
-    resetProductBulkState();
-  }
-
-  async function saveProductsEdit() {
-    if (!productsDraft) return;
-    await commitState(draft => {
-      currentStoreFrom(draft).products = normalizeProductList(productsDraft);
-    }, '商品信息已保存到浏览器数据库。');
-    setIsProductsEditing(false);
-    setProductsDraft(null);
-    setBulkText('');
-    resetProductBulkState();
-    clearCalculatedState();
-  }
-
-  function resetProductBulkState() {
-    setSelectedProductRowKeys([]);
-    setBulkPriceValue(null);
-    setBulkProductCategory('staple');
-    setBulkStapleServingCount(null);
-  }
-
-  function startSystemStrategyEdit() {
-    cancelStoreEdit();
-    cancelProductsEdit();
-    cancelPlatformEdit();
-    cancelActivityEdit();
-    cancelRiskEdit();
-    setSystemStrategyDraft(normalizeActivityStrategySettings(state.activityStrategySettings));
-    setIsSystemStrategyEditing(true);
-  }
-
-  function updateSystemStrategyDraft(mutator: (draft: ActivityStrategySettings) => void) {
-    setSystemStrategyDraft(prev => {
-      const draft = normalizeActivityStrategySettings(deepClone(prev || state.activityStrategySettings));
-      mutator(draft);
-      return normalizeActivityStrategySettings(draft);
-    });
-  }
-
-  function cancelSystemStrategyEdit() {
-    setIsSystemStrategyEditing(false);
-    setSystemStrategyDraft(null);
-  }
-
-  async function saveSystemStrategyEdit() {
-    if (!systemStrategyDraft) return;
-    const nextSettings = normalizeActivityStrategySettings(systemStrategyDraft);
-    if (!activityObjectiveOptionsFromSettings(nextSettings).length) {
-      message.warning('请至少启用一个经营目标。');
-      return;
-    }
-    const saved = await commitState(draft => {
-      draft.activityStrategySettings = nextSettings;
-    }, '系统活动策略已保存到浏览器数据库。');
-    if (!saved) return;
-    setIsSystemStrategyEditing(false);
-    setSystemStrategyDraft(null);
-    clearCalculatedState();
-  }
-
-  function selectedProductIdSet() {
-    return new Set(selectedProductRowKeys.map(String));
-  }
-
-  function requireSelectedProducts() {
-    if (selectedProductRowKeys.length > 0) return true;
-    message.warning('请先选择需要批量操作的商品。');
-    return false;
-  }
-
-  function updateSelectedProducts(mutator: (product: Product) => void) {
-    if (!requireSelectedProducts()) return false;
-    const selectedIds = selectedProductIdSet();
-    updateProductsDraft(draft => {
-      draft.forEach(product => {
-        if (selectedIds.has(product.id)) mutator(product);
-      });
-    });
     return true;
   }
 
-  function bulkSetProductFlag(field: 'meituanEnabled' | 'elemeEnabled' | 'nonStandalone', value: boolean) {
-    const ok = updateSelectedProducts(product => {
-      product[field] = value;
-    });
-    if (ok) message.success(`已批量更新 ${selectedProductRowKeys.length} 个商品。`);
+  async function saveStore(storeToSave: Store) {
+    const nextStore = deepClone(storeToSave);
+    return saveConfigState(draft => {
+      draft.stores = draft.stores.map(item => item.id === nextStore.id ? nextStore : item);
+    }, '门店信息已保存到浏览器数据库。');
   }
 
-  function bulkSetProductCategory() {
-    const ok = updateSelectedProducts(product => {
-      product.category = bulkProductCategory;
-      product.stapleServingCount = inferStapleServingCount(product.name, bulkProductCategory);
-    });
-    if (ok) message.success(`已批量设置 ${selectedProductRowKeys.length} 个商品分类。`);
+  async function saveProducts(products: Product[]) {
+    return saveConfigState(draft => {
+      currentStoreFrom(draft).products = normalizeProductList(products);
+    }, '商品信息已保存到浏览器数据库。');
   }
 
-  function bulkSetStapleServingCount() {
-    if (bulkStapleServingCount === null || !Number.isFinite(bulkStapleServingCount)) {
-      message.warning('请输入主食份数。');
-      return;
+  async function saveSystemStrategy(settings: ActivityStrategySettings) {
+    const nextSettings = normalizeActivityStrategySettings(settings);
+    if (!activityObjectiveOptionsFromSettings(nextSettings).length) {
+      message.warning('请至少启用一个经营目标。');
+      return false;
     }
-    const nextCount = Math.max(0, Math.floor(bulkStapleServingCount));
-    const ok = updateSelectedProducts(product => {
-      product.stapleServingCount = nextCount;
-    });
-    if (ok) message.success(`已批量设置 ${selectedProductRowKeys.length} 个商品主食份数。`);
-  }
-
-  function bulkClearPlatformOverride(field: 'meituanPrice' | 'elemePrice' | 'meituanPackageFee' | 'elemePackageFee') {
-    const ok = updateSelectedProducts(product => {
-      product[field] = '';
-    });
-    if (ok) message.success(`已清空 ${selectedProductRowKeys.length} 个商品的平台覆盖值。`);
-  }
-
-  function bulkPriceBaseValue(product: Product, field: ProductBulkPriceField) {
-    if (field === 'meituanPrice') return platformPrice(product, 'meituan');
-    if (field === 'elemePrice') return platformPrice(product, 'eleme');
-    if (field === 'meituanPackageFee') return platformPackageFee(product, 'meituan');
-    if (field === 'elemePackageFee') return platformPackageFee(product, 'eleme');
-    return Number(product[field]) || 0;
-  }
-
-  function resolveBulkPriceValue(product: Product, field: ProductBulkPriceField, value: number) {
-    const current = bulkPriceBaseValue(product, field);
-    if (bulkPriceMode === 'set') return Math.max(0, value);
-    if (bulkPriceMode === 'increase') return Math.max(0, current + value);
-    return Math.max(0, current * normalizeDiscountRate(value));
-  }
-
-  function applyBulkPriceEdit() {
-    if (!requireSelectedProducts()) return;
-    if (bulkPriceValue === null || !Number.isFinite(bulkPriceValue)) {
-      message.warning('请输入批量调整的数值。');
-      return;
-    }
-    const selectedIds = selectedProductIdSet();
-    updateProductsDraft(draft => {
-      draft.forEach(product => {
-        if (!selectedIds.has(product.id)) return;
-        product[bulkPriceField] = roundMoney(resolveBulkPriceValue(product, bulkPriceField, bulkPriceValue));
-      });
-    });
-    message.success(`已批量调整 ${selectedProductRowKeys.length} 个商品。`);
-  }
-
-  function bulkDeleteProducts() {
-    if (!requireSelectedProducts()) return;
-    const selectedIds = selectedProductIdSet();
-    const selectedProducts = displayedProducts.filter(product => selectedIds.has(product.id));
-    const preview = selectedProducts.slice(0, 5).map(product => product.name).join('、');
-    modal.confirm({
-      title: '批量删除商品',
-      content: `确定删除选中的 ${selectedProducts.length} 个商品吗？${preview ? `包括：${preview}${selectedProducts.length > 5 ? '等' : ''}` : ''}。删除只会先进入编辑草稿，保存商品后才会生效。`,
-      okText: '删除',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      onOk: () => {
-        updateProductsDraft(draft => {
-          for (let index = draft.length - 1; index >= 0; index--) {
-            if (selectedIds.has(draft[index].id)) draft.splice(index, 1);
-          }
-        });
-        setSelectedProductRowKeys([]);
-      }
-    });
-  }
-
-  function deleteZeroPriceProducts() {
-    const zeroProducts = displayedProducts.filter(product =>
-      roundMoney(product.price) <= 0 &&
-      (product.meituanPrice === '' || roundMoney(product.meituanPrice) <= 0) &&
-      (product.elemePrice === '' || roundMoney(product.elemePrice) <= 0)
-    );
-    if (!zeroProducts.length) {
-      message.info('当前没有 0 元商品。');
-      return;
-    }
-    const zeroIds = new Set(zeroProducts.map(product => product.id));
-    const preview = zeroProducts.slice(0, 5).map(product => product.name).join('、');
-    modal.confirm({
-      title: '删除0元商品',
-      content: `确定删除 ${zeroProducts.length} 个 0 元商品吗？${preview ? `包括：${preview}${zeroProducts.length > 5 ? '等' : ''}` : ''}。删除只会先进入编辑草稿，保存商品后才会生效。`,
-      okText: '删除',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      onOk: () => {
-        updateProductsDraft(draft => {
-          for (let index = draft.length - 1; index >= 0; index--) {
-            if (zeroIds.has(draft[index].id)) draft.splice(index, 1);
-          }
-        });
-        setSelectedProductRowKeys(prev => prev.filter(key => !zeroIds.has(String(key))));
-      }
-    });
-  }
-
-  function selectFirstDuplicateProductGroup() {
-    if (!productDuplicateGroups.length) {
-      message.info('当前没有识别到高置信疑似重复商品。');
-      return;
-    }
-    setSelectedProductRowKeys(productDuplicateGroups[0].map(product => product.id));
-    message.info(`已选择疑似重复商品：${productDuplicateGroups[0].map(product => product.name).join('、')}`);
-  }
-
-  function mergeSelectedDuplicateProducts() {
-    if (selectedProductRowKeys.length < 2) {
-      message.warning('请至少选择 2 个需要合并的商品。');
-      return;
-    }
-    const selectedIds = selectedProductIdSet();
-    const sourceProducts = productsDraft || store.products;
-    const selectedProducts = sourceProducts.filter(product => selectedIds.has(product.id));
-    if (selectedProducts.length < 2) {
-      message.warning('请至少选择 2 个需要合并的商品。');
-      return;
-    }
-    const primary = chooseProductMergePrimary(selectedProducts);
-    const duplicates = selectedProducts.filter(product => product.id !== primary.id);
-    const merged = mergeProductRecords(primary, duplicates);
-    modal.confirm({
-      title: '合并选中商品',
-      content: (
-        <Space direction="vertical">
-          <Text>将 {selectedProducts.length} 个商品合并为「{merged.name}」。</Text>
-          <Text type="secondary">主商品：{primary.name}。合并会保留主商品已有字段，并用其他商品补齐缺失的平台价、打包费、成本、分类和上下架状态。</Text>
-          <Text type="secondary">被合并商品：{duplicates.map(product => product.name).join('、')}</Text>
-          <Text type="secondary">该操作只修改当前编辑草稿，点击“保存商品”后才会生效。</Text>
-        </Space>
-      ),
-      okText: '合并',
-      cancelText: '取消',
-      onOk: () => {
-        updateProductsDraft(draft => {
-          const duplicateIds = new Set(duplicates.map(product => product.id));
-          const primaryIndex = draft.findIndex(product => product.id === primary.id);
-          if (primaryIndex >= 0) draft[primaryIndex] = merged;
-          for (let index = draft.length - 1; index >= 0; index--) {
-            if (duplicateIds.has(draft[index].id)) draft.splice(index, 1);
-          }
-        });
-        setSelectedProductRowKeys([merged.id]);
-        message.success(`已合并 ${selectedProducts.length} 个商品，保存商品后生效。`);
-      }
-    });
+    return saveConfigState(draft => {
+      draft.activityStrategySettings = nextSettings;
+    }, '系统活动策略已保存到浏览器数据库。');
   }
 
   function startPlatformEdit() {
-    cancelSystemStrategyEdit();
-    cancelStoreEdit();
-    cancelProductsEdit();
     cancelActivityEdit();
     setPlatformDraft(deepClone(state.platformRules));
     setIsPlatformEditing(true);
@@ -9488,9 +8778,6 @@ function WaimaiCalculatorInner() {
   }
 
   function startActivityEdit(platform: Platform) {
-    cancelSystemStrategyEdit();
-    cancelStoreEdit();
-    cancelProductsEdit();
     cancelPlatformEdit();
     setEditingActivityPlatform(platform);
     setActivityDraft(deepClone(store.activities[platform]));
@@ -9522,9 +8809,6 @@ function WaimaiCalculatorInner() {
   }
 
   function startRiskEdit() {
-    cancelSystemStrategyEdit();
-    cancelStoreEdit();
-    cancelProductsEdit();
     cancelPlatformEdit();
     cancelActivityEdit();
     setRiskDraft(state.riskSafetyMargin);
@@ -9545,78 +8829,10 @@ function WaimaiCalculatorInner() {
     clearCalculatedState();
   }
 
-  function openActivityDiscountTierEditor(
-    scope: ActivityDiscountTierEditorScope,
-    objective: RedesignedActivityDesignObjective,
-    title: string,
-    tiers: ActivityOriginalDiscountTier[],
-    fallback: ActivityOriginalDiscountTier[]
-  ) {
-    const normalized = normalizeActivityOriginalDiscountTiers(tiers, fallback);
-    setActivityDiscountTierEditor({ scope, objective, title, fallback });
-    setActivityDiscountTierDraft(normalized);
-    const first = normalized[0];
-    const last = normalized[normalized.length - 1];
-    setActivityDiscountTierBatchDraft({
-      start: first?.originalMin ?? 0,
-      end: last?.originalMax && last.originalMax < 999 ? last.originalMax : '',
-      step: Math.max(1, roundMoney((first?.originalMax ?? 10) - (first?.originalMin ?? 0)) || 10),
-      rate: first?.discountRate ?? 30
-    });
-  }
-
-  function closeActivityDiscountTierEditor() {
-    setActivityDiscountTierEditor(null);
-    setActivityDiscountTierDraft([]);
-  }
-
-  function saveActivityDiscountTierEditor() {
-    if (!activityDiscountTierEditor) return;
-    const nextTiers = normalizeActivityOriginalDiscountTiers(activityDiscountTierDraft, activityDiscountTierEditor.fallback);
-    if (activityDiscountTierEditor.scope === 'system') {
-      setSystemStrategyDraft(prev => {
-        const settings = normalizeActivityStrategySettings(deepClone(prev || state.activityStrategySettings));
-        const options = normalizeActivityObjectiveTemplates(settings.objectiveTemplates).map(activityObjectiveOptionFromTemplate);
-        const current = normalizeActivityObjectiveStrategies(settings.objectiveStrategies, DEFAULT_ACTIVITY_DESIGN_SETTINGS.targetProfitRate, options)[activityDiscountTierEditor.objective];
-        settings.objectiveStrategies[activityDiscountTierEditor.objective] = { ...current, originalDiscountTiers: nextTiers };
-        return normalizeActivityStrategySettings(settings);
-      });
-    } else {
-      updateStoreDraft(draft => {
-        const settings = normalizeActivityDesignSettings(draft.activityDesignSettings);
-        const effectiveSettings = effectiveActivityDesignSettingsFromStore({ ...draft, activityDesignSettings: settings }, state.activityStrategySettings);
-        const options = activityObjectiveOptionsFromSettings(effectiveSettings);
-        const current = normalizeActivityObjectiveStrategies(effectiveSettings.objectiveStrategies, effectiveSettings.targetProfitRate, options)[activityDiscountTierEditor.objective];
-        settings.useDefaultObjectiveStrategies = false;
-        settings.objectiveStrategies = {
-          ...(settings.objectiveStrategies || {}),
-          [activityDiscountTierEditor.objective]: { ...current, originalDiscountTiers: nextTiers }
-        };
-        settings.objectiveTemplates = options.map(option => ({
-          key: option.value,
-          enabled: option.enabled,
-          name: option.label,
-          group: option.group,
-          targetPayLabel: option.targetPayLabel,
-          targetPayMin: option.targetPayMin,
-          targetPayMax: option.targetPayMax,
-          description: option.description,
-          baseObjective: option.baseObjective
-        }));
-        draft.activityDesignSettings = normalizeActivityDesignSettings(settings);
-      });
-    }
-    closeActivityDiscountTierEditor();
-  }
-
   function cancelAllEdits() {
-    cancelSystemStrategyEdit();
-    cancelStoreEdit();
-    cancelProductsEdit();
     cancelPlatformEdit();
     cancelActivityEdit();
     cancelRiskEdit();
-    closeActivityDiscountTierEditor();
   }
 
   function cancelAsyncCalculations(slots: AsyncCalculationSlot[] = ['measurement', 'activityDesign', 'pricingEvaluation']) {
@@ -9644,7 +8860,6 @@ function WaimaiCalculatorInner() {
     setOptimizationWarningsByScenario(createScenarioRecord<string[]>(() => []));
     setActivityDesignByScenario(createScenarioRecord<RedesignedActivityDesignResult | null>(() => null));
     setPricingEvaluation(null);
-    setSelectedPricingProductKey('');
     setSelectedResultBand(null);
     setSelectedActivityDesignBand(null);
     setSelectedActivityDesignPayBandKeyByPlatform({ meituan: 'all', eleme: 'all' });
@@ -9773,34 +8988,6 @@ function WaimaiCalculatorInner() {
     });
   }
 
-  function updateProductDraft(productId: string, patch: Partial<Product>) {
-    updateProductsDraft(draft => {
-      const index = draft.findIndex(product => product.id === productId);
-      if (index < 0) return;
-      draft[index] = normalizeProduct({ ...draft[index], ...patch });
-    });
-  }
-
-  function deleteProductDraft(productId: string) {
-    const product = (productsDraft || store.products).find(item => item.id === productId);
-    if (!product) return;
-    modal.confirm({
-      title: '删除商品',
-      content: `确定删除「${product.name}」吗？删除后当前门店的该商品价格、成本和上下架状态都会移除。`,
-      okText: '删除',
-      cancelText: '取消',
-      okButtonProps: { danger: true },
-      onOk: () => {
-        updateProductsDraft(draft => {
-          const index = draft.findIndex(item => item.id === productId);
-          if (index < 0) return;
-          draft.splice(index, 1);
-        });
-        setSelectedProductRowKeys(prev => prev.filter(key => String(key) !== product.id));
-      }
-    });
-  }
-
   function uploadProps(handler: (file: File) => void): UploadProps {
     return {
       accept: '.xls,.xlsx,.csv,.txt,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,text/csv,text/plain,application/json',
@@ -9810,116 +8997,6 @@ function WaimaiCalculatorInner() {
         return false;
       }
     };
-  }
-
-  function syncUnifiedPackageFeeFromImport(product: Product, importedPackageFee: number | undefined) {
-    if (importedPackageFee === undefined || importedPackageFee <= 0) return false;
-    const nextPackageFee = roundMoney(importedPackageFee);
-    if (roundMoney(product.packageFee) === nextPackageFee) return false;
-    product.packageFee = nextPackageFee;
-    return true;
-  }
-
-  async function importPlatformProducts(file: File, platform: Platform) {
-    if (!isProductsEditing) {
-      message.warning('请先进入商品编辑状态。');
-      return;
-    }
-    try {
-      const parsed = parsePlatformProductWorkbook(await readWorkbook(file), platform);
-      if (!parsed.products.length) {
-        message.warning(`没有识别到有效${PLATFORM_NAMES[platform]}商品，请确认表格包含商品名称和价格列。`);
-        return;
-      }
-      const rule = PLATFORM_PRODUCT_IMPORT_RULES[platform];
-      let added = 0;
-      let updated = 0;
-      let unchanged = 0;
-      let similarMerged = 0;
-      updateProductsDraft(draft => {
-        const productMap = new Map(draft.map(product => [normalizeProductMatchName(product.name), product]));
-        parsed.products.forEach(item => {
-          const key = normalizeProductMatchName(item.name);
-          const exactExisting = productMap.get(key);
-          const similarExisting = exactExisting ? null : findSimilarProductForPlatformImport(draft, item, platform);
-          const existing = exactExisting || similarExisting;
-          if (existing) {
-            const oldValue = normalizeOptionalPrice(existing[rule.priceField]);
-            const oldPackageFee = existing[rule.packageFeeField];
-            const oldEnabled = isProductListedOnPlatform(existing, platform);
-            existing[rule.priceField] = item.price;
-            if (item.packageFee !== undefined) existing[rule.packageFeeField] = item.packageFee;
-            const unifiedPackageFeeChanged = syncUnifiedPackageFeeFromImport(existing, item.packageFee);
-            if (item.platformEnabled !== undefined) existing[rule.enabledField] = item.platformEnabled;
-            const enabledChanged = item.platformEnabled !== undefined && oldEnabled !== item.platformEnabled;
-            const packageFeeChanged = item.packageFee !== undefined && oldPackageFee !== item.packageFee;
-            if (oldValue === item.price && !enabledChanged && !packageFeeChanged && !unifiedPackageFeeChanged) unchanged++;
-            else updated++;
-            if (similarExisting) {
-              similarMerged++;
-              productMap.set(key, existing);
-            }
-            return;
-          }
-          const product = normalizeProduct({
-            id: uid('p'),
-            name: item.name,
-            price: item.price,
-            cost: 0,
-            meituanPrice: '',
-            elemePrice: '',
-            meituanEnabled: true,
-            elemeEnabled: true,
-            nonStandalone: false
-          });
-          product[rule.priceField] = item.price;
-          if (item.packageFee !== undefined) product[rule.packageFeeField] = item.packageFee;
-          syncUnifiedPackageFeeFromImport(product, item.packageFee);
-          if (item.platformEnabled !== undefined) product[rule.enabledField] = item.platformEnabled;
-          draft.push(product);
-          productMap.set(key, product);
-          added++;
-        });
-      });
-      message.success(`已导入${PLATFORM_NAMES[platform]}商品：识别 ${parsed.products.length} 个，更新 ${updated} 个，新增 ${added} 个，相似合并 ${similarMerged} 个，未变化 ${unchanged} 个。`);
-      if (parsed.disabled) message.info(`其中 ${parsed.disabled} 个商品为下架或暂停售卖状态。`);
-    } catch {
-      message.error(`导入${PLATFORM_NAMES[platform]}商品表失败，请确认文件格式。`);
-    }
-  }
-
-  async function importCostFile(file: File) {
-    if (!isProductsEditing) {
-      message.warning('请先进入商品编辑状态。');
-      return;
-    }
-    try {
-      const parsed = parseCostWorkbook(await readWorkbook(file));
-      if (!parsed.costs.length) {
-        message.warning('没有识别到有效成本数据，请确认表格包含商品名称和成本价列。');
-        return;
-      }
-      let updated = 0;
-      let unchanged = 0;
-      let unmatched = 0;
-      updateProductsDraft(draft => {
-        const productMap = new Map(draft.map(product => [normalizeProductMatchName(product.name), product]));
-        parsed.costs.forEach(item => {
-          const product = productMap.get(normalizeProductMatchName(item.name));
-          if (!product) {
-            unmatched++;
-            return;
-          }
-          const oldCost = roundMoney(product.cost);
-          product.cost = item.cost;
-          if (oldCost === item.cost) unchanged++;
-          else updated++;
-        });
-      });
-      message.success(`成本导入完成：识别 ${parsed.costs.length} 条，更新 ${updated} 个，未变化 ${unchanged} 个，未匹配 ${unmatched} 个。`);
-    } catch {
-      message.error('导入成本表失败，请确认文件包含商品名称和成本价列。');
-    }
   }
 
   async function importBusinessReport(file: File) {
@@ -10053,25 +9130,6 @@ function WaimaiCalculatorInner() {
     }
   }
 
-  function exportOrderAnalysis() {
-    const ok = downloadCsv(
-      `${store.name}_订单分析_${businessDateRangeText(orderSummary.dateStart, orderSummary.dateEnd)}.csv`,
-      orderAnalysisExportRows(
-        orderSummary,
-        orderPayBandRows,
-        orderMealPeriodRows,
-        orderActivityRows,
-        orderProductRows,
-        orderProfitSummary,
-        orderActivityComboRows,
-        orderPlatformPayBandRows,
-        orderMealPayBandRows,
-        orderOperationRecommendations
-      )
-    );
-    if (!ok) message.warning('当前筛选范围没有可导出的订单分析。');
-  }
-
   function openBusinessMemoNoteEditor(note?: BusinessAnalysisNote) {
     if (note) {
       setBusinessNoteEditor({
@@ -10185,59 +9243,6 @@ function WaimaiCalculatorInner() {
     }, '当前经营诊断已保存。');
   }
 
-  function importProductsFile(file: File) {
-    if (!isProductsEditing) {
-      message.warning('请先进入商品编辑状态。');
-      return;
-    }
-    file.text().then(text => {
-      const products = parseProducts(text);
-      if (!products.length) {
-        message.warning('没有识别到有效商品。');
-        return;
-      }
-      updateProductsDraft(draft => {
-        draft.push(...products);
-      });
-      message.success(`已导入 ${products.length} 个商品。`);
-    });
-  }
-
-  function applyBulkProducts(mode: 'append' | 'replace') {
-    if (!isProductsEditing) {
-      message.warning('请先进入商品编辑状态。');
-      return;
-    }
-    const products = parseProducts(bulkText);
-    if (!products.length) {
-      message.warning('没有识别到有效商品。');
-      return;
-    }
-    const apply = () => {
-      updateProductsDraft(draft => {
-        if (mode === 'replace') {
-          draft.splice(0, draft.length, ...products);
-          return;
-        }
-        draft.push(...products);
-      });
-      if (mode === 'replace') setSelectedProductRowKeys([]);
-      setBulkText('');
-    };
-    if (mode === 'replace') {
-      modal.confirm({
-        title: '替换商品',
-        content: `确定用 ${products.length} 个商品替换当前门店商品吗？当前门店原商品会被移除。`,
-        okText: '替换',
-        cancelText: '取消',
-        okButtonProps: { danger: true },
-        onOk: apply
-      });
-      return;
-    }
-    apply();
-  }
-
   function beginAsyncCalculation(slot: AsyncCalculationSlot, page: PageKey): AsyncCalculationTask {
     activeAsyncCalculationRef.current[slot]?.controller.abort();
     const token = `${slot}-${Date.now().toString(36)}-${asyncCalculationSeqRef.current++}`;
@@ -10267,7 +9272,7 @@ function WaimaiCalculatorInner() {
   }
 
   function shouldWriteAsyncCalculation(slot: AsyncCalculationSlot, token: string, page: PageKey) {
-    return isAsyncCalculationCurrent(slot, token) && routePageRef.current === page;
+    return isAsyncCalculationCurrent(slot, token) && activePageRef.current === page;
   }
 
   function applyAsyncCalculationResult(pending: PendingAsyncCalculationResult) {
@@ -10291,7 +9296,7 @@ function WaimaiCalculatorInner() {
 
   function applyOrQueueAsyncCalculationResult(pending: PendingAsyncCalculationResult) {
     if (!isAsyncCalculationCurrent(pending.slot, pending.token)) return;
-    if (routePageRef.current === pending.page) {
+    if (activePageRef.current === pending.page) {
       applyAsyncCalculationResult(pending);
       return;
     }
@@ -10308,7 +9313,7 @@ function WaimaiCalculatorInner() {
   }
 
   function reportAsyncCalculationError(slot: AsyncCalculationSlot, token: string, page: PageKey, error: unknown, fallback: string) {
-    if (isCalculationAbortError(error) || !isAsyncCalculationCurrent(slot, token) || routePageRef.current !== page) return;
+    if (isCalculationAbortError(error) || !isAsyncCalculationCurrent(slot, token) || activePageRef.current !== page) return;
     message.error(error instanceof Error ? error.message : fallback);
   }
 
@@ -10328,7 +9333,7 @@ function WaimaiCalculatorInner() {
 
   function applyWarmupMeasurementRecord(storeId: string, scenario: StapleScenario, record: PersistedMeasurementRecord) {
     if (currentStoreFrom(stateRef.current).id !== storeId) return;
-    if (routePageRef.current !== 'results') return;
+    if (activePageRef.current !== 'results') return;
     if (resultScenarioRef.current !== scenario) return;
     const result = measurementRecordToResult(record, measurementPayBandSize);
     setLastResultsByScenario(prev => ({ ...prev, [scenario]: result.rows }));
@@ -10716,19 +9721,18 @@ function WaimaiCalculatorInner() {
     }
   }
 
-  async function runPricingEvaluation() {
+  async function runPricingEvaluation(settings: PricingEvaluationSettings, platformFilter: Platform | 'all') {
     if (isPricingEvaluationLoading) return;
     const task = beginAsyncCalculation('pricingEvaluation', 'pricing');
     setIsPricingEvaluationLoading(true);
     await waitForLoadingPaint();
     try {
       setPricingEvaluation(null);
-      setSelectedPricingProductKey('');
       setSummary({ resultCount: 0, comboCount: 0, validComboCount: 0, elapsedTime: null });
       const result = await runCalculationTask('pricingEvaluation', {
         state,
-        platformFilter: pricingPlatformFilter,
-        settings: pricingSettings
+        platformFilter,
+        settings
       }, undefined, asyncCalculationOptions(task));
       applyOrQueueAsyncCalculationResult({ slot: 'pricingEvaluation', token: task.token, page: 'pricing', result });
     } catch (error) {
@@ -10820,50 +9824,15 @@ function WaimaiCalculatorInner() {
       includeBlocked: true,
       includeNeutral: options.includeNeutral
     });
-    const columns: TableColumnsType<ProductDiscountSuggestion> = [
-      { title: '状态', dataIndex: 'riskLevel', width: 95, render: value => <Tag color={productDiscountRiskColor(value as ProductDiscountSuggestionRiskLevel)}>{productDiscountRiskLabel(value as ProductDiscountSuggestionRiskLevel)}</Tag> },
-      { title: '商品', dataIndex: 'productName', width: 220, fixed: 'left', render: value => <Text className="table-text-wrap">{String(value || '')}</Text> },
-      { title: '分类', dataIndex: 'categoryName', width: 90, render: value => <Tag>{String(value || '-')}</Tag> },
-      { title: '角色', dataIndex: 'role', width: 90, render: value => <Tag color={value === 'addOn' ? 'cyan' : 'blue'}>{productDiscountRoleLabel(value as ProductDiscountSuggestionRole)}</Tag> },
-      { title: '结论', dataIndex: 'actionLabel', width: 120, render: (_, row) => <Tag color={productDiscountRiskColor(row.riskLevel)}>{row.actionLabel}</Tag> },
-      { title: '售价', dataIndex: 'unitPrice', width: 90, render: value => `¥${money(value)}`, sorter: (a, b) => a.unitPrice - b.unitPrice },
-      { title: '当前成本', dataIndex: 'avgUnitCost', width: 105, render: value => `¥${money(value)}`, sorter: (a, b) => a.avgUnitCost - b.avgUnitCost },
-      { title: '活动合理成本', dataIndex: 'avgReasonableCost', width: 125, render: value => `¥${money(value)}`, sorter: (a, b) => a.avgReasonableCost - b.avgReasonableCost },
-      { title: '合理空间', dataIndex: 'avgCostGap', width: 105, render: value => <Text type={Number(value) < 0 ? 'danger' : 'success'}>¥{money(value)}</Text>, sorter: (a, b) => a.avgCostGap - b.avgCostGap },
-      { title: '合理标价', dataIndex: 'reasonablePriceFromCost', width: 105, render: value => value === null ? '-' : `¥${money(value)}`, sorter: (a, b) => (a.reasonablePriceFromCost || 0) - (b.reasonablePriceFromCost || 0) },
-      { title: '差值范围', width: 130, render: (_, row) => row.minCostGap === null ? '-' : `${money(row.minCostGap)} ~ ${money(row.maxCostGap)}` },
-      { title: '建议折扣', width: 115, render: (_, row) => row.actionType === 'discount' ? `${money(row.discountRate)}折 / ¥${money(row.discountAmountPerUnit)}` : '-' },
-      { title: '影响组合', width: 115, render: (_, row) => `${row.affectedComboCount} 条`, sorter: (a, b) => a.affectedComboCount - b.affectedComboCount },
-      { title: '风险/空间', width: 115, render: (_, row) => `${row.riskComboCount}/${row.opportunityComboCount}`, sorter: (a, b) => a.riskComboCount - b.riskComboCount || a.opportunityComboCount - b.opportunityComboCount },
-      { title: '说明', dataIndex: 'reason', width: 360, render: value => <Text type="secondary" className="table-text-wrap">{String(value || '')}</Text> },
-      {
-        title: '操作',
-        width: 110,
-        fixed: 'right',
-        render: (_, row) => allowApply && row.actionType === 'discount'
-          ? <Button size="small" disabled={row.riskLevel === 'blocked'} onClick={() => applyProductDiscountSuggestion(row)}>应用</Button>
-          : <Text type="secondary">只观察</Text>
-      }
-    ];
     return (
-      <Card size="small" title={options.title || '商品维度活动合理成本结论'}>
-        <Space direction="vertical" style={{ width: '100%' }} size="small">
-          <Text type="secondary">{options.description || '商品结论按当前活动路线下的合理成本反推；主商品比较活动合理成本和当前成本，凑单品只判断分摊到手是否覆盖成本。'}</Text>
-          {suggestions.length ? (
-            <Table
-              rowKey="key"
-              size="small"
-              columns={columns}
-              dataSource={suggestions}
-              pagination={false}
-              scroll={{ x: 1925 }}
-              tableLayout="fixed"
-            />
-          ) : (
-            <Text type="secondary">当前范围没有需要商品折扣、调价或凑单风险处理的商品。</Text>
-          )}
-        </Space>
-      </Card>
+      <ProductDiscountSuggestionPanel
+        title={options.title}
+        description={options.description}
+        suggestions={suggestions}
+        allowApply={allowApply}
+        money={money}
+        onApply={applyProductDiscountSuggestion}
+      />
     );
   }
 
@@ -10943,207 +9912,7 @@ function WaimaiCalculatorInner() {
     );
   }
 
-  const rawProductSource = isProductsEditing && productsDraft ? productsDraft : store.products;
-  const productSource = useMemo(() => normalizeProductList(rawProductSource), [rawProductSource]);
-  const displayedProducts = useMemo(() => {
-    try {
-      const keyword = String(productSearchText || '').trim().toLowerCase();
-      const filtered = productSource.filter(product => {
-        if (keyword) {
-          const text = [
-            product.name,
-            product.price,
-            product.cost,
-            product.packageFee,
-            product.meituanPrice,
-            product.elemePrice,
-            product.meituanPackageFee,
-            product.elemePackageFee,
-            productCategoryName(product.category),
-            product.stapleServingCount
-          ].map(productTextValue).join(' ').toLowerCase();
-          if (!text.includes(keyword)) return false;
-        }
-        if (productCategoryFilter !== 'all' && product.category !== productCategoryFilter) return false;
-        if (productStatusFilter === 'meituanEnabled') return product.meituanEnabled;
-        if (productStatusFilter === 'meituanDisabled') return !product.meituanEnabled;
-        if (productStatusFilter === 'elemeEnabled') return product.elemeEnabled;
-        if (productStatusFilter === 'elemeDisabled') return !product.elemeEnabled;
-        if (productStatusFilter === 'nonStandalone') return product.nonStandalone;
-        if (productStatusFilter === 'missingCost') return roundMoney(product.cost) <= 0;
-        return true;
-      });
-      const sorted = filtered.slice().sort((a, b) => {
-        let result = 0;
-        if (productSortField === 'name') result = compareProductText(a.name, b.name);
-        else if (productSortField === 'category') result = compareProductText(productCategoryName(a.category), productCategoryName(b.category));
-        else if (productSortField === 'stapleServingCount') result = compareProductNumber(a.stapleServingCount, b.stapleServingCount);
-        else if (productSortField === 'price') result = compareProductNumber(a.price, b.price);
-        else if (productSortField === 'cost') result = compareProductNumber(a.cost, b.cost);
-        else if (productSortField === 'packageFee') result = compareProductNumber(a.packageFee, b.packageFee);
-        else if (productSortField === 'meituanPrice') result = compareProductNumber(platformPrice(a, 'meituan'), platformPrice(b, 'meituan'));
-        else if (productSortField === 'elemePrice') result = compareProductNumber(platformPrice(a, 'eleme'), platformPrice(b, 'eleme'));
-        else if (productSortField === 'meituanPackageFee') result = compareProductNumber(platformPackageFee(a, 'meituan'), platformPackageFee(b, 'meituan'));
-        else result = compareProductNumber(platformPackageFee(a, 'eleme'), platformPackageFee(b, 'eleme'));
-        return productSortAsc ? result : -result;
-      });
-      return sorted;
-    } catch {
-      return productSource;
-    }
-  }, [productSource, productSearchText, productCategoryFilter, productStatusFilter, productSortField, productSortAsc]);
-  const productDuplicateGroups = useMemo(() => (
-    isProductsEditing ? findDuplicateProductGroups(productSource) : []
-  ), [isProductsEditing, productSource]);
-
-  React.useEffect(() => {
-    if (!isProductsEditing) return;
-    const availableIds = new Set(productSource.map(product => product.id));
-    setSelectedProductRowKeys(prev => {
-      const next = prev.filter(key => availableIds.has(String(key)));
-      return next.length === prev.length ? prev : next;
-    });
-  }, [isProductsEditing, productSource]);
-  const selectedProductCount = selectedProductRowKeys.length;
-  const productRowSelection = isProductsEditing ? {
-    selectedRowKeys: selectedProductRowKeys,
-    onChange: (keys: React.Key[]) => setSelectedProductRowKeys(keys)
-  } : undefined;
-  const productColumns: TableColumnsType<Product> = [
-    {
-      title: '商品名',
-      dataIndex: 'name',
-      width: 260,
-      sorter: (a, b) => compareProductText(a.name, b.name),
-      render: (_, row) => isProductsEditing
-        ? <Input value={row.name} onChange={e => updateProductDraft(row.id, { name: e.target.value })} />
-        : <Text>{row.name || '-'}</Text>
-    },
-    {
-      title: '分类',
-      dataIndex: 'category',
-      width: 125,
-      sorter: (a, b) => compareProductText(productCategoryName(a.category), productCategoryName(b.category)),
-      render: (_, row) => isProductsEditing
-        ? (
-          <Select
-            value={row.category}
-            style={{ width: 110 }}
-            onChange={(value: ProductCategory) => updateProductDraft(row.id, { category: value, stapleServingCount: inferStapleServingCount(row.name, value) })}
-            options={PRODUCT_CATEGORIES.map(category => ({ value: category, label: productCategoryName(category) }))}
-          />
-        )
-        : <Tag>{productCategoryName(row.category)}</Tag>
-    },
-    {
-      title: '主食份数',
-      dataIndex: 'stapleServingCount',
-      width: 110,
-      align: 'center',
-      sorter: (a, b) => compareProductNumber(a.stapleServingCount, b.stapleServingCount),
-      render: (_, row) => isProductsEditing
-        ? <InputNumber min={0} precision={0} value={row.stapleServingCount} onChange={value => updateProductDraft(row.id, { stapleServingCount: Number(value) || 0 })} />
-        : <Tag color={row.stapleServingCount > 0 ? 'blue' : 'default'}>{row.stapleServingCount}</Tag>
-    },
-    {
-      title: '销售价',
-      dataIndex: 'price',
-      width: 120,
-      sorter: (a, b) => compareProductNumber(a.price, b.price),
-      render: (_, row) => isProductsEditing
-        ? <InputNumber min={0} precision={2} value={row.price} onChange={value => updateProductDraft(row.id, { price: Number(value) || 0 })} />
-        : `¥${money(row.price)}`
-    },
-    {
-      title: '成本价',
-      dataIndex: 'cost',
-      width: 120,
-      sorter: (a, b) => compareProductNumber(a.cost, b.cost),
-      render: (_, row) => isProductsEditing
-        ? <InputNumber min={0} precision={2} value={row.cost} onChange={value => updateProductDraft(row.id, { cost: Number(value) || 0 })} />
-        : `¥${money(row.cost)}`
-    },
-    {
-      title: '统一打包费',
-      dataIndex: 'packageFee',
-      width: 130,
-      sorter: (a, b) => compareProductNumber(a.packageFee, b.packageFee),
-      render: (_, row) => isProductsEditing
-        ? <InputNumber min={0} precision={2} value={row.packageFee} onChange={value => updateProductDraft(row.id, { packageFee: Number(value) || 0 })} />
-        : `¥${money(row.packageFee)}`
-    },
-    {
-      title: '美团价',
-      dataIndex: 'meituanPrice',
-      width: 120,
-      sorter: (a, b) => compareProductNumber(platformPrice(a, 'meituan'), platformPrice(b, 'meituan')),
-      render: (_, row) => isProductsEditing
-        ? <InputNumber min={0} precision={2} placeholder="空=销售价" value={row.meituanPrice === '' ? null : row.meituanPrice} onChange={value => updateProductDraft(row.id, { meituanPrice: value === null ? '' : Number(value) })} />
-        : (row.meituanPrice === '' ? '同销售价' : `¥${money(row.meituanPrice)}`)
-    },
-    {
-      title: '美团打包费',
-      dataIndex: 'meituanPackageFee',
-      width: 130,
-      sorter: (a, b) => compareProductNumber(platformPackageFee(a, 'meituan'), platformPackageFee(b, 'meituan')),
-      render: (_, row) => isProductsEditing
-        ? <InputNumber min={0} precision={2} placeholder="空=统一" value={row.meituanPackageFee === '' ? null : row.meituanPackageFee} onChange={value => updateProductDraft(row.id, { meituanPackageFee: value === null ? '' : Number(value) })} />
-        : (row.meituanPackageFee === '' ? '同统一' : `¥${money(row.meituanPackageFee)}`)
-    },
-    {
-      title: '饿了么价',
-      dataIndex: 'elemePrice',
-      width: 120,
-      sorter: (a, b) => compareProductNumber(platformPrice(a, 'eleme'), platformPrice(b, 'eleme')),
-      render: (_, row) => isProductsEditing
-        ? <InputNumber min={0} precision={2} placeholder="空=销售价" value={row.elemePrice === '' ? null : row.elemePrice} onChange={value => updateProductDraft(row.id, { elemePrice: value === null ? '' : Number(value) })} />
-        : (row.elemePrice === '' ? '同销售价' : `¥${money(row.elemePrice)}`)
-    },
-    {
-      title: '饿了么打包费',
-      dataIndex: 'elemePackageFee',
-      width: 140,
-      sorter: (a, b) => compareProductNumber(platformPackageFee(a, 'eleme'), platformPackageFee(b, 'eleme')),
-      render: (_, row) => isProductsEditing
-        ? <InputNumber min={0} precision={2} placeholder="空=统一" value={row.elemePackageFee === '' ? null : row.elemePackageFee} onChange={value => updateProductDraft(row.id, { elemePackageFee: value === null ? '' : Number(value) })} />
-        : (row.elemePackageFee === '' ? '同统一' : `¥${money(row.elemePackageFee)}`)
-    },
-    {
-      title: '美团上架',
-      dataIndex: 'meituanEnabled',
-      width: 100,
-      align: 'center',
-      sorter: (a, b) => Number(a.meituanEnabled) - Number(b.meituanEnabled),
-      render: (_, row) => isProductsEditing
-        ? <Switch checked={row.meituanEnabled} onChange={checked => updateProductDraft(row.id, { meituanEnabled: checked })} />
-        : <Tag color={row.meituanEnabled ? 'green' : 'default'}>{row.meituanEnabled ? '上架' : '下架'}</Tag>
-    },
-    {
-      title: '饿了么上架',
-      dataIndex: 'elemeEnabled',
-      width: 110,
-      align: 'center',
-      sorter: (a, b) => Number(a.elemeEnabled) - Number(b.elemeEnabled),
-      render: (_, row) => isProductsEditing
-        ? <Switch checked={row.elemeEnabled} onChange={checked => updateProductDraft(row.id, { elemeEnabled: checked })} />
-        : <Tag color={row.elemeEnabled ? 'green' : 'default'}>{row.elemeEnabled ? '上架' : '下架'}</Tag>
-    },
-    {
-      title: '单点不送',
-      dataIndex: 'nonStandalone',
-      width: 100,
-      align: 'center',
-      sorter: (a, b) => Number(a.nonStandalone) - Number(b.nonStandalone),
-      render: (_, row) => isProductsEditing
-        ? <Switch checked={row.nonStandalone} onChange={checked => updateProductDraft(row.id, { nonStandalone: checked })} />
-        : <Tag color={row.nonStandalone ? 'orange' : 'green'}>{row.nonStandalone ? '是' : '否'}</Tag>
-    },
-    ...(isProductsEditing ? [{
-      title: '',
-      width: 70,
-      render: (_: unknown, row: Product) => <Button danger icon={<DeleteOutlined />} onClick={() => deleteProductDraft(row.id)} />
-    }] : [])
-  ];
+  const productSource = useMemo(() => normalizeProductList(store.products), [store.products]);
 
   const renderComboProductTags = (row: ComboEvaluationRow) => (
     <Space wrap>
@@ -11223,68 +9992,6 @@ function WaimaiCalculatorInner() {
     { title: '示例组合', dataIndex: 'example', render: example => itemsText((example as OptimizationRow['example']).items) }
   ];
 
-  const pricingIssueColumns: TableColumnsType<PricingProductIssue> = [
-    { title: '等级', dataIndex: 'severity', width: 80, fixed: 'left', render: value => <Tag color={severityColor(value as Severity)}>{severityLabel(value as Severity)}</Tag>, sorter: (a, b) => severityRank(a.severity) - severityRank(b.severity), defaultSortOrder: 'descend' },
-    { title: '平台', dataIndex: 'platformName', width: 80, fixed: 'left', sorter: (a, b) => a.platformName.localeCompare(b.platformName, 'zh-CN') },
-    { title: '商品', dataIndex: 'productName', width: 220, fixed: 'left', render: (_, row) => <Button className="table-link-wrap" type="link" title={row.productName} onClick={() => setSelectedPricingProductKey(row.key)}>{row.productName}</Button>, sorter: (a, b) => a.productName.localeCompare(b.productName, 'zh-CN') },
-    { title: '类型', dataIndex: 'productTypeName', width: 80, render: value => <Tag>{String(value || '-')}</Tag>, sorter: (a, b) => a.productTypeName.localeCompare(b.productTypeName, 'zh-CN') },
-    { title: '当前平台价', dataIndex: 'currentPrice', width: 110, render: value => `¥${money(value)}`, sorter: (a, b) => a.currentPrice - b.currentPrice },
-    { title: '打包费', dataIndex: 'packageFee', width: 90, responsive: SHOW_LG, render: value => `¥${money(value)}`, sorter: (a, b) => a.packageFee - b.packageFee },
-    { title: '当前含打包费', dataIndex: 'currentOriginalPrice', width: 125, render: value => `¥${money(value)}`, sorter: (a, b) => a.currentOriginalPrice - b.currentOriginalPrice },
-    { title: '成本价', dataIndex: 'costPrice', width: 90, render: value => `¥${money(value)}`, sorter: (a, b) => a.costPrice - b.costPrice },
-    { title: '到手目标', dataIndex: 'targetProfitRate', width: 100, responsive: SHOW_LG, render: value => rateText(value as number | null), sorter: (a, b) => a.targetProfitRate - b.targetProfitRate },
-    { title: '实付目标', dataIndex: 'targetPayProfitRate', width: 100, responsive: SHOW_LG, render: value => rateText(value as number | null), sorter: (a, b) => a.targetPayProfitRate - b.targetPayProfitRate },
-    { title: '最低利润率', dataIndex: 'minProfitRate', width: 110, render: value => rateText(value as number | null), sorter: (a, b) => (a.minProfitRate || 0) - (b.minProfitRate || 0) },
-    { title: '平均利润率', dataIndex: 'avgProfitRate', width: 110, render: value => rateText(value as number | null), sorter: (a, b) => (a.avgProfitRate || 0) - (b.avgProfitRate || 0) },
-    { title: '平均目标', dataIndex: 'avgRequiredRate', width: 100, responsive: SHOW_LG, render: value => rateText(value as number | null), sorter: (a, b) => (a.avgRequiredRate || 0) - (b.avgRequiredRate || 0) },
-    { title: '亏损组合', dataIndex: 'lossCount', width: 95, sorter: (a, b) => a.lossCount - b.lossCount },
-    { title: '低于目标', dataIndex: 'lowCount', width: 95, sorter: (a, b) => a.lowCount - b.lowCount },
-    { title: '组合数', dataIndex: 'comboCount', width: 90, sorter: (a, b) => a.comboCount - b.comboCount },
-    { title: '剩余空间', dataIndex: 'minAffordableSpace', width: 100, responsive: SHOW_LG, render: value => value === null ? '-' : <Text type={Number(value) < 0 ? 'danger' : 'success'}>¥{money(value)}</Text>, sorter: (a, b) => (a.minAffordableSpace || 0) - (b.minAffordableSpace || 0) },
-    { title: '建议平台价', dataIndex: 'suggestedPrice', width: 110, render: value => value === null ? '-' : `¥${money(value)}`, sorter: (a, b) => (a.suggestedPrice || a.currentPrice) - (b.suggestedPrice || b.currentPrice) },
-    { title: '建议含打包费', dataIndex: 'suggestedOriginalPrice', width: 125, render: value => value === null ? '-' : `¥${money(value)}`, sorter: (a, b) => (a.suggestedOriginalPrice || a.currentOriginalPrice) - (b.suggestedOriginalPrice || b.currentOriginalPrice) },
-    { title: '建议调价', dataIndex: 'suggestedIncrease', width: 125, render: (_, row) => row.suggestedIncrease === 0 ? '-' : <Text type={row.suggestedIncrease > 0 ? 'danger' : 'success'}>{row.suggestedIncrease > 0 ? '+' : ''}¥{money(row.suggestedIncrease)} / {rateText(row.suggestedIncreaseRate)}</Text>, sorter: (a, b) => a.suggestedIncrease - b.suggestedIncrease },
-    { title: '诊断', dataIndex: 'reasons', width: 240, responsive: SHOW_XL, render: (reasons: string[]) => reasons.join('，') },
-    {
-      title: '操作',
-      width: 190,
-      fixed: 'right',
-      render: (_, row) => (
-        <Space>
-          <Button size="small" onClick={() => setSelectedPricingProductKey(row.key)}>查看组合</Button>
-          <Button size="small" disabled={row.suggestedPrice === null || row.suggestedIncrease === 0} onClick={() => applyPricingSuggestedPrice(row)}>应用建议价</Button>
-        </Space>
-      )
-    }
-  ];
-
-  const pricingDetailColumns: TableColumnsType<PricingComboDetail> = [
-    { title: '状态', dataIndex: 'belowTarget', width: 95, fixed: 'left', render: (_, row) => row.belowMinimum ? <Tag color="red">低于下限</Tag> : row.belowTarget ? <Tag color="orange">低于目标</Tag> : <Tag color="green">正常</Tag>, sorter: (a, b) => Number(a.belowMinimum) - Number(b.belowMinimum) || Number(a.belowTarget) - Number(b.belowTarget) },
-    { title: '场景说明', dataIndex: 'comboLabel', width: 360, fixed: 'left', render: value => <Text className="table-text-wrap" title={String(value || '')}>{String(value || '')}</Text> },
-    { title: '策略场景', dataIndex: 'strategyScenarioName', width: 95 },
-    { title: '策略档位', dataIndex: 'strategyTierName', width: 150 },
-    { title: '原价小计', dataIndex: 'originalTotal', width: 100, render: value => `¥${money(value)}`, sorter: (a, b) => a.originalTotal - b.originalTotal },
-    { title: '基础红包', dataIndex: 'baseRedAmount', width: 95, render: value => `¥${money(value)}`, sorter: (a, b) => a.baseRedAmount - b.baseRedAmount },
-    { title: '加码空间', dataIndex: 'redAddOnSpace', width: 100, render: value => `¥${money(value)}`, sorter: (a, b) => a.redAddOnSpace - b.redAddOnSpace },
-    { title: '用户实付', dataIndex: 'orderFinalPay', width: 100, render: value => `¥${money(value)}`, sorter: (a, b) => a.orderFinalPay - b.orderFinalPay },
-    { title: '平台佣金', dataIndex: 'orderCommission', width: 95, render: value => `¥${money(value)}`, sorter: (a, b) => a.orderCommission - b.orderCommission },
-    { title: '服务费', dataIndex: 'orderServiceFee', width: 90, render: value => `¥${money(value)}`, sorter: (a, b) => a.orderServiceFee - b.orderServiceFee },
-    { title: '配送补贴', dataIndex: 'orderFreightSubsidy', width: 95, render: value => `¥${money(value)}`, sorter: (a, b) => a.orderFreightSubsidy - b.orderFreightSubsidy },
-    { title: '整单到手价', dataIndex: 'orderNetPay', width: 105, render: value => `¥${money(value)}`, sorter: (a, b) => a.orderNetPay - b.orderNetPay },
-    { title: '到手下限', dataIndex: 'requiredNetRate', width: 95, render: value => rateText(value as number | null), sorter: (a, b) => a.requiredNetRate - b.requiredNetRate },
-    { title: '到手目标', dataIndex: 'targetNetRate', width: 95, render: value => rateText(value as number | null), sorter: (a, b) => a.targetNetRate - b.targetNetRate },
-    { title: '实付下限', dataIndex: 'requiredPayRate', width: 95, render: value => rateText(value as number | null), sorter: (a, b) => a.requiredPayRate - b.requiredPayRate },
-    { title: '实付目标', dataIndex: 'targetPayRate', width: 95, render: value => rateText(value as number | null), sorter: (a, b) => a.targetPayRate - b.targetPayRate },
-    { title: '商品用户实付', dataIndex: 'productFinalPay', width: 115, render: value => `¥${money(value)}`, sorter: (a, b) => a.productFinalPay - b.productFinalPay },
-    { title: '商品费用分摊', dataIndex: 'productFee', width: 115, render: value => `¥${money(value)}`, sorter: (a, b) => a.productFee - b.productFee },
-    { title: '商品到手价', dataIndex: 'productNetPay', width: 105, render: value => `¥${money(value)}`, sorter: (a, b) => a.productNetPay - b.productNetPay },
-    { title: '商品成本', dataIndex: 'productCost', width: 95, render: value => `¥${money(value)}`, sorter: (a, b) => a.productCost - b.productCost },
-    { title: '商品利润', dataIndex: 'productProfit', width: 95, render: value => <Text type={Number(value) < 0 ? 'danger' : 'success'}>¥{money(value)}</Text>, sorter: (a, b) => a.productProfit - b.productProfit },
-    { title: '到手利润率', dataIndex: 'productProfitRate', width: 110, render: value => rateText(value as number | null), sorter: (a, b) => (a.productProfitRate || 0) - (b.productProfitRate || 0) },
-    { title: '实付利润率', dataIndex: 'productPayProfitRate', width: 110, render: value => rateText(value as number | null), sorter: (a, b) => (a.productPayProfitRate || 0) - (b.productPayProfitRate || 0) },
-    { title: '剩余空间', dataIndex: 'affordableSpace', width: 95, render: value => value === null ? '-' : <Text type={Number(value) < 0 ? 'danger' : 'success'}>¥{money(value)}</Text>, sorter: (a, b) => (a.affordableSpace || 0) - (b.affordableSpace || 0) }
-  ];
-
   const couponDesignColumns: TableColumnsType<CouponDesignRow> = [
     { title: '平台', dataIndex: 'platformName', width: 80, fixed: 'left', sorter: (a, b) => a.platformName.localeCompare(b.platformName, 'zh-CN') },
     {
@@ -11311,38 +10018,6 @@ function WaimaiCalculatorInner() {
     { title: '平均到手', dataIndex: 'avgNetPay', width: 100, responsive: SHOW_XL, render: value => `¥${money(value)}`, sorter: (a, b) => a.avgNetPay - b.avgNetPay },
     { title: '平均基础红包', dataIndex: 'avgBaseRedAmount', width: 120, responsive: SHOW_XL, render: value => `¥${money(value)}`, sorter: (a, b) => a.avgBaseRedAmount - b.avgBaseRedAmount },
     { title: '平均加码', dataIndex: 'avgRedAddOnSpace', width: 100, responsive: SHOW_XL, render: value => `¥${money(value)}`, sorter: (a, b) => a.avgRedAddOnSpace - b.avgRedAddOnSpace }
-  ];
-
-  const pricingProductColumns: TableColumnsType<PricingProductRow> = [
-    { title: '等级', dataIndex: 'severity', width: 80, fixed: 'left', render: value => <Tag color={severityColor(value as Severity)}>{severityLabel(value as Severity)}</Tag>, sorter: (a, b) => severityRank(a.severity) - severityRank(b.severity), defaultSortOrder: 'descend' },
-    { title: '平台', dataIndex: 'platformName', width: 80, fixed: 'left', sorter: (a, b) => a.platformName.localeCompare(b.platformName, 'zh-CN') },
-    { title: '商品', dataIndex: 'productName', width: 220, fixed: 'left', render: (_, row) => <Button className="table-link-wrap" type="link" title={row.productName} onClick={() => setSelectedPricingProductKey(row.key)}>{row.productName}</Button>, sorter: (a, b) => a.productName.localeCompare(b.productName, 'zh-CN') },
-    { title: '分类', dataIndex: 'categoryName', width: 95, render: value => <Tag>{String(value || '-')}</Tag> },
-    { title: '场景', dataIndex: 'scenarioName', width: 80, render: value => <Tag color="blue">{String(value || '-')}</Tag> },
-    { title: '当前售价', dataIndex: 'currentPrice', width: 105, render: value => `¥${money(value)}`, sorter: (a, b) => a.currentPrice - b.currentPrice },
-    { title: '打包费', dataIndex: 'packageFee', width: 90, responsive: SHOW_LG, render: value => `¥${money(value)}`, sorter: (a, b) => a.packageFee - b.packageFee },
-    { title: '销售价合计', dataIndex: 'currentOriginalPrice', width: 115, render: value => `¥${money(value)}`, sorter: (a, b) => a.currentOriginalPrice - b.currentOriginalPrice },
-    { title: '商品成本', dataIndex: 'productCost', width: 100, render: value => `¥${money(value)}`, sorter: (a, b) => a.productCost - b.productCost },
-    { title: '固定成本分摊', dataIndex: 'fixedCostAllocation', width: 125, responsive: SHOW_LG, render: value => `¥${money(value)}`, sorter: (a, b) => a.fixedCostAllocation - b.fixedCostAllocation },
-    { title: '基础成本', dataIndex: 'baseCost', width: 100, render: value => `¥${money(value)}`, sorter: (a, b) => a.baseCost - b.baseCost },
-    { title: '目标利润率', dataIndex: 'targetProfitRate', width: 110, render: value => rateText(value as number | null), sorter: (a, b) => a.targetProfitRate - b.targetProfitRate },
-    { title: '当前利润率', dataIndex: 'currentProfitRate', width: 110, render: value => rateText(value as number | null), sorter: (a, b) => (a.currentProfitRate || 0) - (b.currentProfitRate || 0) },
-    { title: '利润空间', dataIndex: 'profitSpace', width: 105, render: value => <Text type={Number(value) < 0 ? 'danger' : 'success'}>¥{money(value)}</Text>, sorter: (a, b) => a.profitSpace - b.profitSpace },
-    { title: '目标销售价', dataIndex: 'suggestedOriginalPrice', width: 115, render: value => `¥${money(value)}`, sorter: (a, b) => a.suggestedOriginalPrice - b.suggestedOriginalPrice },
-    { title: '建议平台价', dataIndex: 'suggestedPrice', width: 110, render: value => `¥${money(value)}`, sorter: (a, b) => a.suggestedPrice - b.suggestedPrice },
-    { title: '建议调价', dataIndex: 'suggestedIncrease', width: 125, render: (_, row) => row.suggestedIncrease === 0 ? '-' : <Text type={row.suggestedIncrease > 0 ? 'danger' : 'success'}>{row.suggestedIncrease > 0 ? '+' : ''}¥{money(row.suggestedIncrease)} / {rateText(row.suggestedIncreaseRate)}</Text>, sorter: (a, b) => a.suggestedIncrease - b.suggestedIncrease },
-    { title: '诊断', dataIndex: 'reasons', width: 260, responsive: SHOW_XL, render: (reasons: string[]) => reasons.join('，') },
-    {
-      title: '操作',
-      width: 190,
-      fixed: 'right',
-      render: (_, row) => (
-        <Space>
-          <Button size="small" onClick={() => setSelectedPricingProductKey(row.key)}>查看</Button>
-          <Button size="small" disabled={Math.abs(row.suggestedIncrease) < 0.01} onClick={() => applyPricingSuggestedPrice(row)}>应用建议价</Button>
-        </Space>
-      )
-    }
   ];
 
   const priceBandColumns: TableColumnsType<PriceBandRow> = [
@@ -11719,147 +10394,39 @@ function WaimaiCalculatorInner() {
   ];
 
   function renderSystemStrategyPage() {
-    const strategySettings = normalizeActivityStrategySettings(
-      isSystemStrategyEditing && systemStrategyDraft ? systemStrategyDraft : state.activityStrategySettings
-    );
-    const objectiveOptions = normalizeActivityObjectiveTemplates(strategySettings.objectiveTemplates).map(activityObjectiveOptionFromTemplate);
-    const updateStrategySettings = (mutator: (settings: ActivityStrategySettings) => void) => {
-      updateSystemStrategyDraft(mutator);
-    };
-    const updateObjectiveTemplate = (objective: RedesignedActivityDesignObjective, patch: Partial<ActivityObjectiveTemplate>) => {
-      updateStrategySettings(settings => {
-        settings.objectiveTemplates = normalizeActivityObjectiveTemplates(settings.objectiveTemplates).map(template => (
-          template.key === objective ? normalizeActivityObjectiveTemplate({ ...template, ...patch, key: template.key }, template) : template
-        ));
-      });
-    };
-    const updateObjectiveStrategy = (objective: RedesignedActivityDesignObjective, patch: Partial<ActivityObjectiveStrategy>) => {
-      updateStrategySettings(settings => {
-        const options = normalizeActivityObjectiveTemplates(settings.objectiveTemplates).map(activityObjectiveOptionFromTemplate);
-        const current = normalizeActivityObjectiveStrategies(settings.objectiveStrategies, DEFAULT_ACTIVITY_DESIGN_SETTINGS.targetProfitRate, options)[objective];
-        settings.objectiveStrategies[objective] = { ...current, ...patch };
-      });
-    };
-    const addObjectiveStrategy = () => {
-      updateStrategySettings(settings => {
-        const key = uid('objective');
-        const template = normalizeActivityObjectiveTemplate({
-          key,
-          enabled: true,
-          name: '新经营目标',
-          group: 'marketing',
-          targetPayLabel: '0-25 自定义目标区',
-          targetPayMin: 0,
-          targetPayMax: 25,
-          description: '自定义经营目标。'
-        }, DEFAULT_ACTIVITY_OBJECTIVE_TEMPLATES[1]);
-        settings.objectiveTemplates = normalizeActivityObjectiveTemplates(settings.objectiveTemplates).concat(template);
-        const strategy = defaultActivityObjectiveStrategies(DEFAULT_ACTIVITY_DESIGN_SETTINGS.targetProfitRate, [activityObjectiveOptionFromTemplate(template)])[key];
-        settings.objectiveStrategies[key] = strategy;
-      });
-    };
-    const objectiveStrategies = normalizeActivityObjectiveStrategies(strategySettings.objectiveStrategies, DEFAULT_ACTIVITY_DESIGN_SETTINGS.targetProfitRate, objectiveOptions);
-    const objectiveStrategyRows = objectiveOptions.map(option => ({
-      ...option,
-      strategy: objectiveStrategies[option.value]
-    }));
     return (
       <SystemStrategyPage
-        strategySettings={strategySettings}
-        rows={objectiveStrategyRows}
-        isEditing={isSystemStrategyEditing}
+        strategySettings={state.activityStrategySettings}
+        defaultStrategySettings={DEFAULT_ACTIVITY_STRATEGY_SETTINGS}
+        defaultTargetProfitRate={DEFAULT_ACTIVITY_DESIGN_SETTINGS.targetProfitRate}
+        defaultObjectiveTemplate={DEFAULT_ACTIVITY_OBJECTIVE_TEMPLATES[1]}
         fullAmountBasisOptions={ACTIVITY_FULL_AMOUNT_BASIS_OPTIONS}
         couponRecommendationModeOptions={ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS}
         money={money}
         formatActivityOriginalDiscountTiers={formatActivityOriginalDiscountTiers}
         defaultActivityCouponRecommendationPolicy={defaultActivityCouponRecommendationPolicy}
-        startEdit={startSystemStrategyEdit}
-        cancelEdit={cancelSystemStrategyEdit}
-        saveEdit={saveSystemStrategyEdit}
-        restoreDefault={() => setSystemStrategyDraft(deepClone(DEFAULT_ACTIVITY_STRATEGY_SETTINGS))}
-        addObjective={addObjectiveStrategy}
-        updateSettings={updateStrategySettings}
-        updateObjectiveTemplate={updateObjectiveTemplate}
-        updateObjectiveStrategy={updateObjectiveStrategy}
-        openActivityDiscountTierEditor={(objective, title, value, fallback) => openActivityDiscountTierEditor('system', objective, title, value, fallback)}
-        fallbackStrategyForObjective={objective => defaultActivityObjectiveStrategies(DEFAULT_ACTIVITY_DESIGN_SETTINGS.targetProfitRate, objectiveOptions)[objective]}
+        normalizeActivityStrategySettings={normalizeActivityStrategySettings}
+        normalizeActivityObjectiveTemplates={normalizeActivityObjectiveTemplates}
+        normalizeActivityObjectiveTemplate={normalizeActivityObjectiveTemplate}
+        activityObjectiveOptionFromTemplate={activityObjectiveOptionFromTemplate}
+        normalizeActivityObjectiveStrategies={normalizeActivityObjectiveStrategies}
+        defaultActivityObjectiveStrategies={defaultActivityObjectiveStrategies}
+        deepClone={deepClone}
+        uid={uid}
+        onBeforeEdit={() => prepareConfigEdit({ cancelRisk: true })}
+        onSaveSettings={saveSystemStrategy}
       />
     );
   }
 
   function renderStorePage() {
-    const pageStore = isStoreEditing && storeDraft ? storeDraft : store;
-    const feeRule = effectiveFeeRule(state, pageStore);
-    const pageActivityDesignSettings = activityDesignSettingsFromStore(pageStore);
-    const effectivePageActivityDesignSettings = effectiveActivityDesignSettingsFromStore(pageStore, state.activityStrategySettings);
-    const pageObjectiveOptions = activityObjectiveOptionsFromSettings(effectivePageActivityDesignSettings);
-    const effectiveObjectiveStrategies = normalizeActivityObjectiveStrategies(effectivePageActivityDesignSettings.objectiveStrategies, effectivePageActivityDesignSettings.targetProfitRate, pageObjectiveOptions);
     const systemStrategySettings = normalizeActivityStrategySettings(state.activityStrategySettings);
-    const storeUsesDefaultObjectiveStrategies = pageActivityDesignSettings.useDefaultObjectiveStrategies !== false;
-    const updateActivityDesignDraft = (mutator: (settings: ActivityDesignSettings) => void) => {
-      updateStoreDraft(draft => {
-        const nextSettings = normalizeActivityDesignSettings(draft.activityDesignSettings);
-        mutator(nextSettings);
-        draft.activityDesignSettings = normalizeActivityDesignSettings(nextSettings);
-      });
-    };
-    const setStoreUsesDefaultObjectiveStrategies = (checked: boolean) => {
-      updateActivityDesignDraft(settings => {
-        settings.useDefaultObjectiveStrategies = checked;
-        if (checked) {
-          settings.baseOriginalDiscountRate = undefined;
-          settings.objectiveTemplates = [];
-          settings.objectivePayTargets = {};
-          settings.objectiveStrategies = {};
-        } else {
-          settings.baseOriginalDiscountRate = effectivePageActivityDesignSettings.baseOriginalDiscountRate ?? systemStrategySettings.baseOriginalDiscountRate;
-          settings.objectiveTemplates = pageObjectiveOptions.map(option => ({
-            key: option.value,
-            enabled: option.enabled,
-            name: option.label,
-            group: option.group,
-            targetPayLabel: option.targetPayLabel,
-            targetPayMin: option.targetPayMin,
-            targetPayMax: option.targetPayMax,
-            description: option.description,
-            baseObjective: option.baseObjective
-          }));
-          settings.objectiveStrategies = effectiveObjectiveStrategies;
-        }
-      });
-    };
-    const updateStoreObjectiveStrategy = (objective: RedesignedActivityDesignObjective, patch: Partial<ActivityObjectiveStrategy>) => {
-      updateActivityDesignDraft(settings => {
-        settings.useDefaultObjectiveStrategies = false;
-        const rawStrategies = (settings.objectiveStrategies || settings.objectivePayTargets) as Partial<Record<RedesignedActivityDesignObjective, Partial<ActivityObjectiveStrategy>>> | undefined;
-        const strategies = normalizeActivityObjectiveStrategies(rawStrategies, settings.targetProfitRate, pageObjectiveOptions);
-        strategies[objective] = { ...strategies[objective], ...patch };
-        settings.objectiveStrategies = strategies;
-        settings.objectiveTemplates = pageObjectiveOptions.map(option => ({
-          key: option.value,
-          enabled: option.enabled,
-          name: option.label,
-          group: option.group,
-          targetPayLabel: option.targetPayLabel,
-          targetPayMin: option.targetPayMin,
-          targetPayMax: option.targetPayMax,
-          description: option.description,
-          baseObjective: option.baseObjective
-        }));
-      });
-    };
     return (
       <StorePage
-        pageStore={pageStore}
+        store={store}
         platformProfitTargets={state.platformRules.profitTargets}
-        feeRule={feeRule}
-        isEditing={isStoreEditing}
-        activityDesignSettings={pageActivityDesignSettings}
-        effectiveActivityDesignSettings={effectivePageActivityDesignSettings}
-        objectiveOptions={pageObjectiveOptions}
-        effectiveObjectiveStrategies={effectiveObjectiveStrategies}
+        activityStrategySettings={state.activityStrategySettings}
         systemStrategySettings={systemStrategySettings}
-        usesDefaultObjectiveStrategies={storeUsesDefaultObjectiveStrategies}
         fullAmountBasisOptions={ACTIVITY_FULL_AMOUNT_BASIS_OPTIONS}
         couponRecommendationModeOptions={ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS}
         activityMinNetPay={ACTIVITY_MIN_NET_PAY}
@@ -11868,86 +10435,45 @@ function WaimaiCalculatorInner() {
         formatActivityOriginalDiscountTiers={formatActivityOriginalDiscountTiers}
         defaultActivityCouponRecommendationPolicy={defaultActivityCouponRecommendationPolicy}
         normalizeActivityObjectiveStrategies={normalizeActivityObjectiveStrategies}
-        startEdit={startStoreEdit}
-        cancelEdit={cancelStoreEdit}
-        saveEdit={saveStoreEdit}
+        activityDesignSettingsFromStore={value => normalizeActivityDesignSettings(value.activityDesignSettings)}
+        effectiveActivityDesignSettingsFromStore={(value, strategySettings) => effectiveActivityDesignSettingsFromStore(value as Pick<Store, 'activityDesignSettings'>, normalizeActivityStrategySettings(strategySettings))}
+        activityObjectiveOptionsFromSettings={activityObjectiveOptionsFromSettings}
+        effectiveFeeRule={pageStore => effectiveFeeRule(state, pageStore as Store)}
+        normalizeActivityDesignSettings={normalizeActivityDesignSettings}
+        deepClone={deepClone}
+        onBeforeEdit={prepareConfigEdit}
+        onSaveStore={pageStore => saveStore(pageStore as Store)}
         duplicateStore={duplicateStore}
         deleteStore={deleteStore}
-        updateStore={updateStoreDraft}
-        updateActivityDesign={updateActivityDesignDraft}
-        setUsesDefaultObjectiveStrategies={setStoreUsesDefaultObjectiveStrategies}
-        updateObjectiveStrategy={updateStoreObjectiveStrategy}
-        openActivityDiscountTierEditor={(objective, title, value, fallback) => openActivityDiscountTierEditor('store', objective, title, value, fallback)}
       />
     );
-  }
-
-  function clearProductFilters() {
-    setProductSearchText('');
-    setProductCategoryFilter('all');
-    setProductStatusFilter('all');
-    setProductSortField('name');
-    setProductSortAsc(true);
   }
 
   function renderProductsPage() {
     return (
       <ProductsPage
         storeId={store.id}
-        isEditing={isProductsEditing}
-        productSource={productSource}
-        displayedProducts={displayedProducts}
-        selectedProductCount={selectedProductCount}
-        duplicateGroupCount={productDuplicateGroups.length}
-        productSearchText={productSearchText}
-        productCategoryFilter={productCategoryFilter}
-        productStatusFilter={productStatusFilter}
-        productSortField={productSortField}
-        productSortAsc={productSortAsc}
+        products={productSource}
         productCategories={PRODUCT_CATEGORIES}
-        productColumns={productColumns}
-        productRowSelection={productRowSelection}
-        bulkText={bulkText}
-        bulkProductCategory={bulkProductCategory}
-        bulkStapleServingCount={bulkStapleServingCount}
-        bulkPriceField={bulkPriceField}
-        bulkPriceMode={bulkPriceMode}
-        bulkPriceValue={bulkPriceValue}
         uploadProps={uploadProps}
-        importPlatformProducts={importPlatformProducts}
-        importCostFile={importCostFile}
-        importProductsFile={importProductsFile}
-        addProduct={() => updateProductsDraft(draft => { draft.push(normalizeProduct({ id: uid('p'), name: '新商品', price: 0, cost: 0, meituanEnabled: true, elemeEnabled: true })); })}
-        startEdit={startProductsEdit}
-        cancelEdit={cancelProductsEdit}
-        saveEdit={saveProductsEdit}
-        setProductSearchText={setProductSearchText}
-        setProductCategoryFilter={setProductCategoryFilter}
-        setProductStatusFilter={setProductStatusFilter}
-        setProductSortField={setProductSortField}
-        setProductSortAsc={setProductSortAsc}
-        clearProductFilters={clearProductFilters}
-        setBulkText={setBulkText}
-        applyBulkProducts={applyBulkProducts}
-        setSelectedProductIds={ids => setSelectedProductRowKeys(ids)}
-        selectMissingCostProducts={() => setSelectedProductRowKeys(displayedProducts.filter(product => product.cost <= 0).map(product => product.id))}
-        selectFirstDuplicateProductGroup={selectFirstDuplicateProductGroup}
-        mergeSelectedDuplicateProducts={mergeSelectedDuplicateProducts}
-        clearSelectedProducts={() => setSelectedProductRowKeys([])}
-        bulkSetProductFlag={bulkSetProductFlag}
-        setBulkProductCategory={setBulkProductCategory}
-        bulkSetProductCategory={bulkSetProductCategory}
-        setBulkStapleServingCount={setBulkStapleServingCount}
-        bulkSetStapleServingCount={bulkSetStapleServingCount}
-        setBulkPriceField={setBulkPriceField}
-        setBulkPriceMode={setBulkPriceMode}
-        setBulkPriceValue={setBulkPriceValue}
-        applyBulkPriceEdit={applyBulkPriceEdit}
-        bulkClearPlatformOverride={bulkClearPlatformOverride}
-        deleteZeroPriceProducts={deleteZeroPriceProducts}
-        bulkDeleteProducts={bulkDeleteProducts}
+        readWorkbook={readWorkbook}
+        parseProducts={parseProducts}
+        parsePlatformProductWorkbook={parsePlatformProductWorkbook}
+        parseCostWorkbook={parseCostWorkbook}
+        platformProductImportRules={PLATFORM_PRODUCT_IMPORT_RULES}
+        normalizeProduct={normalizeProduct}
+        normalizeProductList={normalizeProductList}
+        normalizeProductMatchName={normalizeProductMatchName}
+        findSimilarProductForPlatformImport={findSimilarProductForPlatformImport}
+        isProductListedOnPlatform={isProductListedOnPlatform}
+        inferStapleServingCount={inferStapleServingCount}
         productCategoryName={productCategoryName}
+        platformPrice={platformPrice}
+        platformPackageFee={platformPackageFee}
+        money={money}
         tablePagination={tablePagination}
+        onBeforeEdit={prepareConfigEdit}
+        onSaveProducts={saveProducts}
       />
     );
   }
@@ -12510,6 +11036,8 @@ function WaimaiCalculatorInner() {
             riskCount={payBandRiskCount}
             loading={isActivityDesignLoading}
             columns={activityPriceBandColumns}
+            money={money}
+            pagination={tablePagination(20)}
             onSelectPayBand={key => {
               updateActivityDesignPayBandKey(platform, key);
               setSelectedActivityDesignBand({ platform, payBandKey: key });
@@ -12788,144 +11316,23 @@ function WaimaiCalculatorInner() {
   }
 
   function renderPricingEvaluationPage() {
-    const pricingSummary = pricingEvaluation?.summary || (isPricingEvaluationLoading ? summary : { resultCount: 0, comboCount: 0, validComboCount: 0, elapsedTime: null });
     const pricingStrategy = normalizePricingStrategy(effectiveFeeRule(state, store).pricingStrategy);
-    const pricingIssues = pricingEvaluation?.productRows || [];
-    const pricingResultKeyword = pricingResultSearchText.trim().toLowerCase();
-    const visiblePricingIssues = pricingResultKeyword
-      ? pricingIssues.filter(issue => [
-        severityLabel(issue.severity),
-        issue.platformName,
-        issue.productName,
-        issue.categoryName,
-        issue.scenarioName,
-        issue.currentPrice,
-        issue.packageFee,
-        issue.currentOriginalPrice,
-        issue.productCost,
-        issue.fixedCostAllocation,
-        issue.baseCost,
-        issue.targetProfitRate,
-        issue.currentProfitRate,
-        issue.profitSpace,
-        issue.suggestedPrice,
-        issue.suggestedOriginalPrice,
-        issue.suggestedIncrease,
-        issue.reasons.join(' ')
-      ].join(' ').toLowerCase().includes(pricingResultKeyword))
-      : pricingIssues;
-    const abnormalPricingIssueCount = pricingIssues.filter(issue => issue.severity !== 'none').length;
     return (
-      <div className="section-stack">
-        <Card title="定价评估" extra={
-          <Space wrap>
-            <Select value={pricingPlatformFilter} onChange={setPricingPlatformFilter} options={[{ value: 'all', label: '全部平台' }, { value: 'meituan', label: '只看美团' }, { value: 'eleme', label: '只看饿了么' }]} />
-            <Button type="primary" loading={isPricingEvaluationLoading} onClick={runPricingEvaluation}>生成定价评估</Button>
-          </Space>
-        }>
-          <Space direction="vertical" style={{ width: '100%' }} size="middle">
-            <Text type="secondary">基于商品成本、主食/套餐固定成本分摊和分类目标利润率评估销售价。单点不送商品不分摊固定成本，只按商品成本和目标利润率计算；活动影响由活动设计和测算结果页校验。</Text>
-            <Card size="small" title="定价评估参数">
-              <Row gutter={[12, 12]}>
-                <Col xs={24} md={8}>
-                  <div className="field">
-                    <Text type="secondary">商品名称筛选</Text>
-                    <Input allowClear placeholder="空=全部商品，支持模糊匹配" value={pricingSettings.productNameKeyword} onChange={event => setPricingSettings(prev => ({ ...prev, productNameKeyword: event.target.value }))} />
-                  </div>
-                </Col>
-                <Col xs={12} md={4}>
-                  <div className="field">
-                    <Text type="secondary">原价小计最低</Text>
-                    <InputNumber min={0} precision={2} value={pricingSettings.originalMin} onChange={value => setPricingSettings(prev => ({ ...prev, originalMin: Number(value) || 0 }))} />
-                  </div>
-                </Col>
-                <Col xs={12} md={4}>
-                  <div className="field">
-                    <Text type="secondary">原价小计最高</Text>
-                    <InputNumber min={0} precision={2} placeholder="空=不限" value={pricingSettings.originalMax === '' ? null : pricingSettings.originalMax} onChange={value => setPricingSettings(prev => ({ ...prev, originalMax: value === null ? '' : Number(value) || 0 }))} />
-                  </div>
-                </Col>
-                <Col xs={12} md={4}>
-                  <div className="field">
-                    <Text type="secondary">主食/套餐固定成本分摊</Text>
-                    <InputNumber min={0} precision={2} value={pricingSettings.fixedCostAllocation ?? 0} onChange={value => setPricingSettings(prev => ({ ...prev, fixedCostAllocation: Number(value) || 0 }))} />
-                  </div>
-                </Col>
-                <Col xs={24}>
-                  <Space wrap>
-                    <Text type="secondary">分类目标利润率</Text>
-                    <Tag>普通 {money(state.platformRules.pricingEvaluation.fallbackTargetProfitRate)}%</Tag>
-                    <Tag>加料 {money(state.platformRules.pricingEvaluation.addOnTargetProfitRate)}%</Tag>
-                    <Tag>主食 {money(state.platformRules.pricingEvaluation.riceBallTargetProfitRate)}%</Tag>
-                    <Tag>套餐 {money(state.platformRules.pricingEvaluation.setMealTargetProfitRate)}%</Tag>
-                    <Text type="secondary">场景策略</Text>
-                    {STAPLE_SCENARIOS.map(scenario => <Tag key={scenario}>{stapleScenarioName(scenario)} {pricingStrategy[scenario].filter(row => row.enabled).length} 档</Tag>)}
-                  </Space>
-                </Col>
-              </Row>
-            </Card>
-            <Row gutter={[12, 12]}>
-              <Col xs={12} md={6}><Card size="small"><Text type="secondary">商品诊断</Text><Title level={3}>{pricingSummary.resultCount}</Title></Card></Col>
-              <Col xs={12} md={6}><Card size="small"><Text type="secondary">检查商品</Text><Title level={3}>{pricingSummary.comboCount}</Title></Card></Col>
-              <Col xs={12} md={6}><Card size="small"><Text type="secondary">可用结果</Text><Title level={3}>{pricingSummary.validComboCount}</Title></Card></Col>
-              <Col xs={12} md={6}><Card size="small"><Text type="secondary">异常商品</Text><Title level={3}>{abnormalPricingIssueCount}</Title></Card></Col>
-            </Row>
-            {pricingEvaluation?.warnings.length ? <Card size="small">{pricingEvaluation.warnings.map(item => <Text key={item} type="warning">{item}</Text>)}</Card> : null}
-            <Card size="small">
-              <Space wrap style={{ width: '100%', justifyContent: 'space-between' }}>
-                <Input.Search
-                  allowClear
-                  placeholder="搜索商品、平台、类型、诊断或价格"
-                  style={{ width: 320, maxWidth: '100%' }}
-                  value={pricingResultSearchText}
-                  onChange={event => setPricingResultSearchText(event.target.value)}
-                />
-                <Text type="secondary">当前显示 {visiblePricingIssues.length} / {pricingIssues.length} 个结果</Text>
-              </Space>
-            </Card>
-            <Table loading={isPricingEvaluationLoading} rowKey="key" size="small" columns={pricingProductColumns} dataSource={visiblePricingIssues} pagination={tablePagination(20)} scroll={{ x: 2240 }} tableLayout="fixed" />
-          </Space>
-        </Card>
-
-        <Modal
-          title={selectedPricingIssue ? `${selectedPricingIssue.platformName} / ${selectedPricingIssue.productName} 定价诊断` : '定价诊断'}
-          open={Boolean(selectedPricingIssue)}
-          width={960}
-          className="cost-analysis-modal"
-          style={{ top: 16, paddingBottom: 0 }}
-          footer={null}
-          onCancel={() => setSelectedPricingProductKey('')}
-        >
-          {selectedPricingIssue ? (
-            <Space direction="vertical" style={{ width: '100%' }} size="middle">
-              <Space wrap>
-                <Tag color={severityColor(selectedPricingIssue.severity)}>{severityLabel(selectedPricingIssue.severity)}</Tag>
-                <Text type="secondary">定价评估只看商品自身的基础成本和目标利润率，活动空间由后续页面继续校验。</Text>
-              </Space>
-              <Row gutter={[12, 12]}>
-                <Col xs={12} md={4}><Card size="small"><Text type="secondary">当前平台价</Text><Title level={4}>¥{money(selectedPricingIssue.currentPrice)}</Title></Card></Col>
-                <Col xs={12} md={4}><Card size="small"><Text type="secondary">含打包费价</Text><Title level={4}>¥{money(selectedPricingIssue.currentOriginalPrice)}</Title></Card></Col>
-                <Col xs={12} md={4}><Card size="small"><Text type="secondary">商品成本</Text><Title level={4}>¥{money(selectedPricingIssue.productCost)}</Title></Card></Col>
-                <Col xs={12} md={4}><Card size="small"><Text type="secondary">固定成本分摊</Text><Title level={4}>¥{money(selectedPricingIssue.fixedCostAllocation)}</Title></Card></Col>
-                <Col xs={12} md={4}><Card size="small"><Text type="secondary">目标利润率</Text><Title level={4}>{rateText(selectedPricingIssue.targetProfitRate)}</Title></Card></Col>
-                <Col xs={12} md={4}><Card size="small"><Text type="secondary">当前利润率</Text><Title level={4}>{rateText(selectedPricingIssue.currentProfitRate)}</Title></Card></Col>
-              </Row>
-              <Card size="small" title="建议">
-                <Space direction="vertical" style={{ width: '100%' }}>
-                  <Text>{selectedPricingIssue.reasons.join('，')}</Text>
-                  <Text type="secondary">目标销售价 = (商品成本 + 适用固定成本分摊) / (1 - 目标利润率)，并按 x.9 尾价向上取整；单点不送商品的适用固定成本分摊为 0。</Text>
-                </Space>
-              </Card>
-              <Row gutter={[12, 12]}>
-                <Col xs={12} md={6}><Card size="small"><Text type="secondary">目标销售价</Text><Title level={4}>¥{money(selectedPricingIssue.suggestedOriginalPrice)}</Title></Card></Col>
-                <Col xs={12} md={6}><Card size="small"><Text type="secondary">建议平台价</Text><Title level={4}>¥{money(selectedPricingIssue.suggestedPrice)}</Title></Card></Col>
-                <Col xs={12} md={6}><Card size="small"><Text type="secondary">建议调价</Text><Title level={4}>{selectedPricingIssue.suggestedIncrease > 0 ? '+' : ''}¥{money(selectedPricingIssue.suggestedIncrease)}</Title></Card></Col>
-                <Col xs={12} md={6}><Card size="small"><Text type="secondary">利润空间</Text><Title level={4}>¥{money(selectedPricingIssue.profitSpace)}</Title></Card></Col>
-              </Row>
-            </Space>
-          ) : null}
-        </Modal>
-      </div>
+      <PricingEvaluationPage
+        pricingEvaluation={pricingEvaluation}
+        isLoading={isPricingEvaluationLoading}
+        fallbackSummary={summary}
+        pricingRule={state.platformRules.pricingEvaluation}
+        pricingStrategy={pricingStrategy}
+        money={money}
+        rateText={rateText}
+        severityLabel={severityLabel}
+        severityColor={severityColor}
+        severityRank={severityRank}
+        tablePagination={tablePagination}
+        onRunPricingEvaluation={runPricingEvaluation}
+        onApplySuggestedPrice={applyPricingSuggestedPrice}
+      />
     );
   }
 
@@ -14401,38 +12808,16 @@ function WaimaiCalculatorInner() {
       <OrderAnalysisPage
         platforms={PLATFORMS}
         platformNames={PLATFORM_NAMES}
-        orderAnalysisPlatform={orderAnalysisPlatform}
-        setOrderAnalysisPlatform={setOrderAnalysisPlatform}
-        orderStoreRecords={orderStoreRecords}
-        orderDataDateBounds={orderDataDateBounds}
-        orderDateRangePresets={orderDateRangePresets}
-        orderDateRangePickerValue={orderDateRangePickerValue}
-        updateOrderAnalysisDateRange={updateOrderAnalysisDateRange}
-        orderActiveDateRangeText={orderActiveDateRangeText}
+        storeId={store.id}
+        storeName={store.name}
+        products={store.products}
+        records={state.orderAnalysis.records}
+        imports={state.orderAnalysis.imports}
         uploadProps={uploadProps}
         importOrderAnalysisFile={importOrderAnalysisFile}
-        exportOrderAnalysis={exportOrderAnalysis}
-        orderSummary={orderSummary}
-        orderProfitSummary={orderProfitSummary}
-        orderPlatformRows={orderPlatformRows}
-        orderPayBandRows={orderPayBandRows}
-        orderMealPeriodRows={orderMealPeriodRows}
-        orderHourRows={orderHourRows}
-        orderActivityRows={orderActivityRows}
-        orderActivityComboRows={orderActivityComboRows}
-        orderPlatformPayBandRows={orderPlatformPayBandRows}
-        orderMealPayBandRows={orderMealPayBandRows}
-        orderActivityComboPayBandRows={orderActivityComboPayBandRows}
-        orderProductRows={orderProductRows}
-        enrichedOrderRecords={enrichedOrderRecords}
-        orderImportRows={orderImportRows}
-        orderOperationRecommendations={orderOperationRecommendations}
-        orderInsights={orderInsights}
+        downloadCsv={downloadCsv}
         money={money}
         rateText={rateText}
-        roundMoney={roundMoney}
-        businessDateRangeText={businessDateRangeText}
-        orderImportedAtText={orderImportedAtText}
         recommendationPriorityColor={recommendationPriorityColor}
         recommendationPriorityText={recommendationPriorityText}
       />
@@ -14468,6 +12853,8 @@ function WaimaiCalculatorInner() {
             riskCount={platformRiskCount}
             loading={isResultsLoading || isMeasurementCacheLoading}
             columns={priceBandColumns}
+            money={money}
+            pagination={tablePagination(20)}
             onSelectPayBand={key => {
               updateResultPayBandKey(view.platform, key);
               void openResultBandDetail(view.platform, key);
@@ -14731,240 +13118,69 @@ function WaimaiCalculatorInner() {
   }
 
   function renderBusinessNoteEditorModal() {
-    if (!businessNoteEditor) return null;
-    const dateStart = businessDateToDayjs(businessNoteEditor.dateStart);
-    const dateEnd = businessDateToDayjs(businessNoteEditor.dateEnd);
+    const dateStart = businessNoteEditor ? businessDateToDayjs(businessNoteEditor.dateStart) : null;
+    const dateEnd = businessNoteEditor ? businessDateToDayjs(businessNoteEditor.dateEnd) : null;
     const dateRangeValue = dateStart && dateEnd ? [dateStart, dateEnd] as [Dayjs, Dayjs] : null;
     return (
-      <Modal
-        title={businessNoteEditor.id ? '编辑备忘录' : '新增备忘录'}
-        open
-        width={680}
-        destroyOnHidden
-        okText="保存"
-        cancelText="取消"
-        onOk={saveBusinessMemoNote}
+      <BusinessNoteEditorModal
+        editor={businessNoteEditor}
+        dateRangeValue={dateRangeValue}
+        platforms={PLATFORMS}
+        platformNames={PLATFORM_NAMES}
+        onSave={saveBusinessMemoNote}
         onCancel={() => setBusinessNoteEditor(null)}
-      >
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <Space wrap>
-            <Text type="secondary">日期</Text>
-            <RangePicker
-              format="YYYY-MM-DD"
-              placeholder={['开始日期', '结束日期']}
-              value={dateRangeValue}
-              onChange={(_, dateStrings) => updateBusinessMemoNoteDateRange(Array.isArray(dateStrings) ? dateStrings : [])}
-            />
-            <Text type="secondary">平台</Text>
-            <Select
-              style={{ width: 130 }}
-              value={businessNoteEditor.platform}
-              onChange={value => setBusinessNoteEditor(prev => prev ? { ...prev, platform: value as Platform | 'all' } : prev)}
-              options={[
-                { value: 'all', label: '全部平台' },
-                ...PLATFORMS.map(platform => ({ value: platform, label: PLATFORM_NAMES[platform] }))
-              ]}
-            />
-          </Space>
-          <Input
-            value={businessNoteEditor.title}
-            placeholder="标题，例如：平台活动、缺货、天气、竞品变化"
-            onChange={event => setBusinessNoteEditor(prev => prev ? { ...prev, title: event.target.value } : prev)}
-          />
-          <Input.TextArea
-            rows={5}
-            value={businessNoteEditor.content}
-            placeholder="记录当天发生的事情，例如：午高峰主推饭团缺货，曝光正常但下单率下降。"
-            onChange={event => setBusinessNoteEditor(prev => prev ? { ...prev, content: event.target.value } : prev)}
-          />
-        </Space>
-      </Modal>
-    );
-  }
-
-  function renderActivityDiscountTierEditorModal() {
-    const rows = activityDiscountTierDraft.map((row, index) => ({ ...row, rowIndex: index }));
-    const columns: TableColumnsType<ActivityOriginalDiscountTier & { rowIndex: number }> = [
-      {
-        title: '起始原价',
-        dataIndex: 'originalMin',
-        width: 120,
-        render: (_, row) => (
-          <InputNumber
-            min={0}
-            precision={2}
-            value={row.originalMin}
-            onChange={value => updateActivityDiscountTierDraft(row.rowIndex, { originalMin: Number(value) || 0 })}
-          />
-        )
-      },
-      {
-        title: '结束原价',
-        dataIndex: 'originalMax',
-        width: 120,
-        render: (_, row) => (
-          <InputNumber
-            min={0}
-            precision={2}
-            placeholder="999=不限"
-            value={row.originalMax >= 999 ? 999 : row.originalMax}
-            onChange={value => updateActivityDiscountTierDraft(row.rowIndex, { originalMax: value === null ? 999 : Number(value) || 0 })}
-          />
-        )
-      },
-      {
-        title: '覆盖让利率%',
-        dataIndex: 'discountRate',
-        width: 140,
-        render: (_, row) => (
-          <InputNumber
-            min={0}
-            max={95}
-            precision={2}
-            value={row.discountRate}
-            onChange={value => updateActivityDiscountTierDraft(row.rowIndex, { discountRate: Number(value) || 0 })}
-          />
-        )
-      },
-      {
-        title: '说明',
-        width: 220,
-        render: (_, row) => <Text type="secondary">原价 ¥{money(row.originalMin)}-{row.originalMax >= 999 ? '不限' : `¥${money(row.originalMax)}`}，覆盖让利 {money(row.discountRate)}%</Text>
-      },
-      {
-        title: '操作',
-        width: 80,
-        render: (_, row) => (
-          <Button
-            danger
-            size="small"
-            onClick={() => setActivityDiscountTierDraft(prev => prev.filter((_, index) => index !== row.rowIndex))}
-          >
-            删除
-          </Button>
-        )
-      }
-    ];
-    return (
-      <Modal
-        title={activityDiscountTierEditor?.title || '原价让利设置'}
-        open={Boolean(activityDiscountTierEditor)}
-        width={880}
-        destroyOnHidden
-        onCancel={closeActivityDiscountTierEditor}
-        footer={[
-          <Button key="cancel" onClick={closeActivityDiscountTierEditor}>取消</Button>,
-          <Button key="save" type="primary" onClick={saveActivityDiscountTierEditor}>保存阶梯</Button>
-        ]}
-      >
-        <Space direction="vertical" style={{ width: '100%' }} size="middle">
-          <Text type="secondary">全路线基准让利率在系统策略或门店活动配置中统一设置；下方阶梯只用于覆盖特殊原价段。系统会先扣除默认神券/爆红包已经形成的基准让利，再把剩余空间分给满减、优惠券和加码。</Text>
-          <Card size="small" title="批量生成阶梯">
-            <Space wrap>
-              <Text type="secondary">范围</Text>
-              <InputNumber min={0} precision={2} value={activityDiscountTierBatchDraft.start} onChange={value => setActivityDiscountTierBatchDraft(prev => ({ ...prev, start: Number(value) || 0 }))} />
-              <InputNumber min={0} precision={2} placeholder="空=不限" value={activityDiscountTierBatchDraft.end === '' ? null : activityDiscountTierBatchDraft.end} onChange={value => setActivityDiscountTierBatchDraft(prev => ({ ...prev, end: value === null ? '' : Number(value) || 0 }))} />
-              <Text type="secondary">步长</Text>
-              <InputNumber min={1} precision={0} value={activityDiscountTierBatchDraft.step} onChange={value => setActivityDiscountTierBatchDraft(prev => ({ ...prev, step: Math.max(1, Math.floor(Number(value) || 1)) }))} />
-              <Text type="secondary">让利率%</Text>
-              <InputNumber min={0} max={95} precision={2} value={activityDiscountTierBatchDraft.rate} onChange={value => setActivityDiscountTierBatchDraft(prev => ({ ...prev, rate: Number(value) || 0 }))} />
-              <Button onClick={() => setActivityDiscountTierDraft(createActivityDiscountTiersByStep(activityDiscountTierBatchDraft))}>生成阶梯</Button>
-              <Button onClick={addActivityDiscountTierDraftRow}>添加一档</Button>
-            </Space>
-          </Card>
-          <Card size="small" title="批量调整利率">
-            <Space wrap>
-              <Button onClick={() => setActivityDiscountTierDraft(prev => shiftActivityDiscountTierRates(prev, 5))}>全部 +5%</Button>
-              <Button onClick={() => setActivityDiscountTierDraft(prev => shiftActivityDiscountTierRates(prev, -5))}>全部 -5%</Button>
-              <Button onClick={() => setActivityDiscountTierDraft(prev => setActivityDiscountTierRates(prev, activityDiscountTierBatchDraft.rate))}>全部设为 {money(activityDiscountTierBatchDraft.rate)}%</Button>
-              <Button onClick={() => {
-                setActivityDiscountTierDraft(activityDiscountTierEditor?.fallback || []);
-              }}>恢复默认</Button>
-            </Space>
-          </Card>
-          <Table
-            rowKey="rowIndex"
-            size="small"
-            columns={columns}
-            dataSource={rows}
-            pagination={false}
-            scroll={{ x: 680 }}
-            tableLayout="fixed"
-          />
-        </Space>
-      </Modal>
+        onChangeDateRange={updateBusinessMemoNoteDateRange}
+        onChange={mutator => setBusinessNoteEditor(prev => prev ? mutator(prev) : prev)}
+      />
     );
   }
 
   function pageContent() {
-    if (state.activePage === 'store') return renderStorePage();
-    if (state.activePage === 'products') return renderProductsPage();
-    if (state.activePage === 'system-strategy') return renderSystemStrategyPage();
-    if (state.activePage === 'platform') return renderPlatformPage();
-    if (state.activePage === 'meituan') return renderActivityPage('meituan');
-    if (state.activePage === 'eleme') return renderActivityPage('eleme');
-    if (state.activePage === 'activity-design') return renderActivityDesignPage();
-    if (state.activePage === 'order-analysis') return renderOrderAnalysisPage();
-    if (state.activePage === 'data-analysis') return renderDataAnalysisPage();
-    if (state.activePage === 'pricing') return renderPricingEvaluationPage();
+    if (activePage === 'store') return renderStorePage();
+    if (activePage === 'products') return renderProductsPage();
+    if (activePage === 'system-strategy') return renderSystemStrategyPage();
+    if (activePage === 'platform') return renderPlatformPage();
+    if (activePage === 'meituan') return renderActivityPage('meituan');
+    if (activePage === 'eleme') return renderActivityPage('eleme');
+    if (activePage === 'activity-design') return renderActivityDesignPage();
+    if (activePage === 'order-analysis') return renderOrderAnalysisPage();
+    if (activePage === 'data-analysis') return renderDataAnalysisPage();
+    if (activePage === 'pricing') return renderPricingEvaluationPage();
     return renderResultsPage();
   }
 
   return (
     <>
-    <Layout className="app-shell">
-      <Header className="app-header">
-        <div>
-          <h1 className="app-title">外卖门店活动测算工具</h1>
-          <p className="app-subtitle">按门店维护商品、平台活动和利润率阶梯，测算组合利润并导出结果。</p>
-        </div>
-        <Space wrap>
-          <Select style={{ width: 220 }} value={state.selectedStoreId} onChange={value => { cancelAllEdits(); mutateState(draft => { draft.selectedStoreId = value; }); clearCalculatedState(); }} options={state.stores.map(item => ({ value: item.id, label: item.name }))} />
-          <Button icon={<PlusOutlined />} onClick={addStore}>新增门店</Button>
-          <Button icon={<SaveOutlined />} onClick={saveState}>保存设置</Button>
-          <Button onClick={loadState}>读取保存</Button>
-          <Button icon={<DownloadOutlined />} onClick={() => exportConfigFile(state)}>导出配置</Button>
-          <Upload {...uploadProps(importConfig)}><Button icon={<UploadOutlined />}>导入配置</Button></Upload>
-          <Button danger icon={<ReloadOutlined />} onClick={resetState}>恢复示例</Button>
-        </Space>
-      </Header>
-      <Layout>
-        <Sider width={210} theme="light" breakpoint="lg" collapsedWidth={0}>
-          <Menu
-            className="side-menu"
-            selectedKeys={[state.activePage]}
-            onClick={item => {
-              if (isPageKey(item.key)) navigatePage(item.key);
-            }}
-            items={[
-              { key: 'store', label: '门店维护' },
-              { key: 'products', label: '商品维护' },
-              { key: 'system-strategy', label: '系统活动策略' },
-              { key: 'platform', label: '平台通用规则' },
-              { key: 'meituan', label: '美团活动' },
-              { key: 'eleme', label: '饿了么活动' },
-              { key: 'activity-design', label: '活动设计' },
-              { key: 'order-analysis', label: '订单分析' },
-              { key: 'data-analysis', label: '数据分析' },
-              { key: 'pricing', label: '定价评估' },
-              { key: 'results', label: '测算结果' }
-            ]}
-          />
-        </Sider>
-        <Content className="app-content">{pageContent()}</Content>
-      </Layout>
-    </Layout>
+    <CalculatorShell
+      activePage={activePage}
+      selectedStoreId={state.selectedStoreId}
+      stores={state.stores}
+      uploadProps={uploadProps}
+      onNavigate={navigatePage}
+      onSelectStore={value => {
+        cancelAllEdits();
+        mutateState(draft => { draft.selectedStoreId = value; });
+        clearCalculatedState();
+      }}
+      onAddStore={addStore}
+      onSaveState={saveState}
+      onLoadState={loadState}
+      onExportConfig={() => exportConfigFile(state)}
+      onImportConfig={importConfig}
+      onResetState={resetState}
+    >
+      {pageContent()}
+    </CalculatorShell>
     {renderBusinessNoteEditorModal()}
-    {renderActivityDiscountTierEditorModal()}
     </>
   );
 }
 
-export default function WaimaiCalculator() {
+export default function WaimaiCalculator({ activePage }: { activePage: PageKey }) {
   return (
     <ConfigProvider locale={zhCN} theme={{ token: { colorPrimary: '#d95b18', borderRadius: 8 } }}>
       <AntApp>
-        <WaimaiCalculatorInner />
+        <WaimaiCalculatorInner activePage={activePage} />
       </AntApp>
     </ConfigProvider>
   );

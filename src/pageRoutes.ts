@@ -24,11 +24,6 @@ export function isPageKey(value: unknown): value is PageKey {
   return typeof value === 'string' && PAGE_KEYS.includes(value as PageKey);
 }
 
-export function pageFromPathname(pathname: string) {
-  const segment = pathname.split('/').filter(Boolean)[0];
-  return isPageKey(segment) ? segment : DEFAULT_PAGE_KEY;
-}
-
 export function pathForPage(page: PageKey) {
   return PAGE_PATHS[page] || PAGE_PATHS[DEFAULT_PAGE_KEY];
 }
