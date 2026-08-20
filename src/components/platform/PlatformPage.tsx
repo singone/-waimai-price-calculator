@@ -1,9 +1,13 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Button, Card, Col, InputNumber, Row, Space, Typography } from 'antd';
 import { SaveOutlined } from '@ant-design/icons';
+import { STAPLE_SCENARIOS } from '../../config/calculation';
+import { deepClone, stapleScenarioName } from '../../domain/core';
+import { money as formatMoney } from '../../utils/format';
 import { PricingStrategyCard, ProfitTargetsCard, RedTierCard } from '../shared/FeeRuleCards';
-import type { FeeRule, Platform, PricingStrategyTier, ProfitTarget, RedTier, StapleScenario } from '../../domain/types';
+import type { FeeRule, StapleScenario } from '../../domain/types';
 
 const { Text } = Typography;
 
@@ -20,18 +24,10 @@ type PlatformFeeField =
 
 type PlatformPageProps = {
   fee: FeeRule;
-  isEditing: boolean;
-  scenarios: StapleScenario[];
   money: (value: unknown) => string;
   stapleScenarioName: (scenario: StapleScenario) => string;
-  startEdit: () => void;
-  cancelEdit: () => void;
-  saveEdit: () => void;
-  updateFeeField: (field: PlatformFeeField, value: number) => void;
-  changeProfitTargets: (rows: ProfitTarget[]) => void;
-  addProfitTarget: () => void;
-  changePricingStrategy: (strategy: Record<StapleScenario, PricingStrategyTier[]>) => void;
-  changeRedTiers: (platform: Platform, rows: RedTier[]) => void;
+  deepClone: <T>(value: T) => T;
+  onSaveFee: (fee: FeeRule) => Promise<unknown> | unknown;
 };
 
 const PLATFORM_FEE_FIELDS: Array<[PlatformFeeField, string]> = [
@@ -46,21 +42,46 @@ const PLATFORM_FEE_FIELDS: Array<[PlatformFeeField, string]> = [
   ['freightAbove5', '5公里以上运费补贴']
 ];
 
-export function PlatformPage({
-  fee,
-  isEditing,
-  scenarios,
-  money,
-  stapleScenarioName,
-  startEdit,
-  cancelEdit,
-  saveEdit,
-  updateFeeField,
-  changeProfitTargets,
-  addProfitTarget,
-  changePricingStrategy,
-  changeRedTiers
-}: PlatformPageProps) {
+export function PlatformPage(props: Partial<PlatformPageProps> = {}) {
+  const fee = props.fee as FeeRule;
+  const money = props.money || formatMoney;
+  const onSaveFee = props.onSaveFee as (fee: FeeRule) => Promise<unknown> | unknown;
+  const [draft, setDraft] = useState<FeeRule | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const isEditing = draft !== null;
+  const pageFee = draft || fee;
+
+  useEffect(() => {
+    setDraft(null);
+  }, [fee]);
+
+  const startEdit = () => {
+    setDraft(deepClone(fee));
+  };
+
+  const cancelEdit = () => {
+    setDraft(null);
+  };
+
+  const updateDraft = (mutator: (value: FeeRule) => void) => {
+    setDraft(prev => {
+      const next = deepClone(prev || fee);
+      mutator(next);
+      return next;
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!draft) return;
+    setIsSaving(true);
+    try {
+      await onSaveFee(deepClone(draft));
+      setDraft(null);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   return (
     <div className="section-stack">
       <Card
@@ -68,7 +89,7 @@ export function PlatformPage({
         extra={isEditing ? (
           <Space>
             <Button onClick={cancelEdit}>取消</Button>
-            <Button type="primary" icon={<SaveOutlined />} onClick={saveEdit}>保存平台规则</Button>
+            <Button type="primary" icon={<SaveOutlined />} loading={isSaving} onClick={saveEdit}>保存平台规则</Button>
           </Space>
         ) : (
           <Button type="primary" onClick={startEdit}>编辑平台规则</Button>
@@ -80,9 +101,9 @@ export function PlatformPage({
               <div className="field">
                 <Text type="secondary">{label}</Text>
                 {isEditing ? (
-                  <InputNumber precision={2} value={Number(fee[field])} onChange={value => updateFeeField(field, Number(value) || 0)} />
+                  <InputNumber precision={2} value={Number(pageFee[field])} onChange={value => updateDraft(next => { (next as unknown as Record<PlatformFeeField, number>)[field] = Number(value) || 0; })} />
                 ) : (
-                  <div className="field-value">{money(fee[field])}</div>
+                  <div className="field-value">{money(pageFee[field])}</div>
                 )}
               </div>
             </Col>
@@ -91,27 +112,27 @@ export function PlatformPage({
       </Card>
       <ProfitTargetsCard
         title="平台通用利润率阶梯"
-        rows={fee.profitTargets}
+        rows={pageFee.profitTargets}
         disabled={!isEditing}
         money={money}
-        onChange={changeProfitTargets}
-        onAdd={addProfitTarget}
+        onChange={rows => updateDraft(next => { next.profitTargets = rows; })}
+        onAdd={() => updateDraft(next => { next.profitTargets.push({ enabled: true, payMin: 0, payMax: 20, rateMin: 20, rateMax: 30 }); })}
       />
       <PricingStrategyCard
         title="平台通用定价策略阶梯"
-        strategy={fee.pricingStrategy}
+        strategy={pageFee.pricingStrategy}
         disabled={!isEditing}
-        scenarios={scenarios}
+        scenarios={STAPLE_SCENARIOS}
         money={money}
         stapleScenarioName={stapleScenarioName}
-        onChange={changePricingStrategy}
+        onChange={strategy => updateDraft(next => { next.pricingStrategy = strategy; })}
       />
       <Row gutter={[16, 16]}>
         <Col xs={24} lg={12}>
-          <RedTierCard title="美团基础神券" rows={fee.redTiers.meituan} disabled={!isEditing} money={money} onChange={rows => changeRedTiers('meituan', rows)} />
+          <RedTierCard title="美团基础神券" rows={pageFee.redTiers.meituan} disabled={!isEditing} money={money} onChange={rows => updateDraft(next => { next.redTiers.meituan = rows; })} />
         </Col>
         <Col xs={24} lg={12}>
-          <RedTierCard title="饿了么基础爆红包" rows={fee.redTiers.eleme} disabled={!isEditing} money={money} onChange={rows => changeRedTiers('eleme', rows)} />
+          <RedTierCard title="饿了么基础爆红包" rows={pageFee.redTiers.eleme} disabled={!isEditing} money={money} onChange={rows => updateDraft(next => { next.redTiers.eleme = rows; })} />
         </Col>
       </Row>
     </div>

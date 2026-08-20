@@ -2,38 +2,21 @@
 
 import { Button, Card, Space, Table, Tag, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
-import type { ProductCategory } from '../../domain/types';
+import type {
+  ProductDiscountSuggestionAction,
+  ProductDiscountSuggestionRiskLevel,
+  ProductDiscountSuggestionRole,
+  ProductDiscountSuggestionViewRow
+} from './productDiscountSuggestionUtils';
+
+export type {
+  ProductDiscountSuggestionAction,
+  ProductDiscountSuggestionRiskLevel,
+  ProductDiscountSuggestionRole,
+  ProductDiscountSuggestionViewRow
+} from './productDiscountSuggestionUtils';
 
 const { Text } = Typography;
-
-export type ProductDiscountSuggestionRiskLevel = 'safe' | 'watch' | 'blocked';
-export type ProductDiscountSuggestionRole = 'main' | 'addOn' | 'mixed';
-export type ProductDiscountSuggestionAction = 'discount' | 'raisePrice' | 'watch' | 'none';
-export type ProductDiscountSuggestionViewRow = {
-  key: string;
-  platformName: string;
-  productId: string;
-  productName: string;
-  category: ProductCategory;
-  categoryName: string;
-  role: ProductDiscountSuggestionRole;
-  actionType: ProductDiscountSuggestionAction;
-  actionLabel: string;
-  unitPrice: number;
-  avgUnitCost: number;
-  avgReasonableCost: number;
-  reasonablePriceFromCost: number | null;
-  avgCostGap: number;
-  minCostGap: number | null;
-  maxCostGap: number | null;
-  discountRate: number;
-  discountAmountPerUnit: number;
-  affectedComboCount: number;
-  opportunityComboCount: number;
-  riskComboCount: number;
-  riskLevel: ProductDiscountSuggestionRiskLevel;
-  reason: string;
-} & Record<string, unknown>;
 
 type ProductDiscountSuggestionPanelProps<T extends ProductDiscountSuggestionViewRow> = {
   title?: string;

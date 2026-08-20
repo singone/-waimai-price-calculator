@@ -2,12 +2,26 @@
 
 import dynamic from 'next/dynamic';
 import React from 'react';
-import { Button, Card, Col, DatePicker, Row, Select, Space, Table, Tag, Typography, Upload } from 'antd';
-import type { TableColumnsType, UploadProps } from 'antd';
+import { App as AntApp, Button, Card, Col, DatePicker, Row, Select, Space, Table, Tag, Typography, Upload } from 'antd';
+import type { TableColumnsType } from 'antd';
 import { DownloadOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
+import { PLATFORM_NAMES, PLATFORMS } from '../../domain/core';
 import { roundMoney } from '../../domain/money';
+import { downloadCsv } from '../../utils/csv';
+import {
+  money,
+  rateText,
+  recommendationPriorityColor,
+  recommendationPriorityText
+} from '../../utils/format';
+import { uploadProps } from '../../utils/upload';
+import {
+  importOrderAnalysisFileToState,
+  loadOrderAnalysisState,
+  saveOrderAnalysisState
+} from './orderAnalysisPageData';
 import {
   aggregateEnrichedOrdersByProduct,
   aggregateOrdersByActivityCombo,
@@ -33,9 +47,9 @@ import type {
   OrderActivityComboRow,
   OrderActivityType,
   OrderAggregateRow,
+  OrderAnalysisState,
   OrderAnalysisPlatformFilter,
   OrderCrossAggregateRow,
-  OrderDetailRecord,
   OrderImportBatch,
   OrderInsightItem,
   OrderOperationRecommendation,
@@ -43,7 +57,7 @@ import type {
   OrderProfitSummary,
   OrderSummary
 } from '../../domain/orderAnalysis';
-import type { Platform, Product, Severity } from '../../domain/types';
+import type { Product } from '../../domain/types';
 
 const AntvColumn = dynamic(() => import('@ant-design/charts').then(mod => mod.Column), { ssr: false });
 const AntvDualAxes = dynamic(() => import('@ant-design/charts').then(mod => mod.DualAxes), { ssr: false });
@@ -51,23 +65,11 @@ const { RangePicker } = DatePicker;
 const { Text } = Typography;
 
 type OrderAnalysisDateBounds = { start: string; end: string };
-type DownloadCsv = (filename: string, rows: Array<Record<string, unknown>>) => boolean;
 
 type OrderAnalysisPageProps = {
-  platforms: Platform[];
-  platformNames: Record<Platform, string>;
   storeId: string;
   storeName: string;
   products: Product[];
-  records: OrderDetailRecord[];
-  imports: OrderImportBatch[];
-  uploadProps: (handler: (file: File) => void) => UploadProps;
-  importOrderAnalysisFile: (file: File) => void;
-  downloadCsv: DownloadCsv;
-  money: (value: unknown) => string;
-  rateText: (rate: number | null | undefined) => string;
-  recommendationPriorityColor: (priority: Severity) => string;
-  recommendationPriorityText: (priority: Severity) => string;
 };
 
 function normalizeDate(value: unknown) {
@@ -98,25 +100,43 @@ function importedAtText(value: string) {
   return parsed.isValid() ? parsed.format('YYYY-MM-DD HH:mm') : value;
 }
 
-export function OrderAnalysisPage({
-  platforms,
-  platformNames,
+export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {}) {
+  const { message } = AntApp.useApp();
+  const {
   storeId,
   storeName,
-  products,
-  records,
-  imports,
-  uploadProps,
-  importOrderAnalysisFile,
-  downloadCsv,
-  money,
-  rateText,
-  recommendationPriorityColor,
-  recommendationPriorityText
-}: OrderAnalysisPageProps) {
+  products
+  } = pageProps as OrderAnalysisPageProps;
+  const [orderAnalysisState, setOrderAnalysisState] = React.useState<OrderAnalysisState>({ records: [], imports: [] });
   const [orderAnalysisPlatform, setOrderAnalysisPlatform] = React.useState<OrderAnalysisPlatformFilter>('all');
   const [orderAnalysisDateStart, setOrderAnalysisDateStart] = React.useState('');
   const [orderAnalysisDateEnd, setOrderAnalysisDateEnd] = React.useState('');
+  React.useEffect(() => {
+    let cancelled = false;
+    loadOrderAnalysisState().then(nextState => {
+      if (!cancelled) setOrderAnalysisState(nextState);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const importOrderAnalysisFile = React.useCallback(async (file: File) => {
+    try {
+      const result = await importOrderAnalysisFileToState({
+        file,
+        currentState: orderAnalysisState,
+        storeId,
+        storeName
+      });
+      setOrderAnalysisState(result.state);
+      await saveOrderAnalysisState(result.state);
+      message.success(`已导入${result.platformName}订单：${result.importedCount} 单，覆盖 ${result.replacedOrders} 单。`);
+      if (result.warnings.length) message.warning(result.warnings.slice(0, 2).join('；'));
+    } catch (error) {
+      message.error(error instanceof Error ? error.message : '导入订单明细失败，请确认文件格式。');
+    }
+  }, [message, orderAnalysisState, storeId, storeName]);
+  const { records, imports } = orderAnalysisState;
   const orderStoreRecords = React.useMemo(() => {
     return records.filter(row => row.storeId === storeId && row.isValid);
   }, [records, storeId]);
@@ -327,7 +347,7 @@ export function OrderAnalysisPage({
               onChange={setOrderAnalysisPlatform}
               options={[
                 { value: 'all', label: '全部平台' },
-                ...platforms.map(platform => ({ value: platform, label: platformNames[platform] }))
+                ...PLATFORMS.map(platform => ({ value: platform, label: PLATFORM_NAMES[platform] }))
               ]}
             />
             <RangePicker

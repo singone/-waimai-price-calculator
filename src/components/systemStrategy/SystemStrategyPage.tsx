@@ -1,60 +1,55 @@
 'use client';
 
 import React from 'react';
-import { Button, Card, Col, Input, InputNumber, Row, Select, Space, Switch, Table, Tag, Tooltip, Typography } from 'antd';
+import { App as AntApp, Button, Card, Col, Input, InputNumber, Row, Select, Space, Switch, Table, Tag, Tooltip, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { EditOutlined, PlusOutlined, QuestionCircleOutlined, SaveOutlined } from '@ant-design/icons';
 import { ActivityDiscountTierEditorModal, type ActivityDiscountTierBatchDraft, type ActivityDiscountTierEditorValue } from '../modals/ActivityDiscountTierEditorModal';
+import { useCalculatorPageProps } from '../shared/CalculatorContext';
 import { useEditableDraft } from '../shared/useEditableDraft';
+import { useCalculatorStateCommit } from '../shared/useCalculatorStateCommit';
+import {
+  ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS,
+  ACTIVITY_FULL_AMOUNT_BASIS_OPTIONS
+} from '../../config/activity';
+import {
+  DEFAULT_ACTIVITY_DESIGN_SETTINGS,
+  DEFAULT_ACTIVITY_OBJECTIVE_TEMPLATES,
+  DEFAULT_ACTIVITY_STRATEGY_SETTINGS,
+  activityObjectiveOptionFromTemplate,
+  defaultActivityCouponRecommendationPolicy,
+  defaultActivityObjectiveStrategies,
+  type ActivityObjectiveOption
+} from '../../config/activityStrategy';
+import {
+  activityObjectiveOptionsFromSettings,
+  deepClone,
+  normalizeActivityObjectiveStrategies,
+  normalizeActivityObjectiveTemplate,
+  normalizeActivityObjectiveTemplates,
+  normalizeActivityStrategySettings
+} from '../../data/calculatorState';
 import { roundMoney } from '../../domain/money';
+import { formatActivityOriginalDiscountTiers, money } from '../../utils/format';
+import { uid } from '../../utils/id';
 import type {
-  ActivityCouponRecommendationMode,
-  ActivityCouponRecommendationPolicy,
   ActivityDesignObjective,
   ActivityObjectiveStrategy,
   ActivityObjectiveTemplate,
   ActivityOriginalDiscountTier,
-  ActivityStrategySettings
+  ActivityStrategySettings,
+  CalculatorState
 } from '../../domain/types';
 
 const { Text } = Typography;
-
-type ActivityObjectiveOption = ActivityObjectiveTemplate & {
-  value: ActivityDesignObjective;
-  label: string;
-};
 
 type SystemStrategyRow = ActivityObjectiveOption & {
   strategy: ActivityObjectiveStrategy;
 };
 
 type SystemStrategyPageProps = {
-  strategySettings: ActivityStrategySettings | undefined;
-  defaultStrategySettings: ActivityStrategySettings;
-  defaultTargetProfitRate: number;
-  defaultObjectiveTemplate: ActivityObjectiveTemplate;
-  fullAmountBasisOptions: Array<{ value: ActivityObjectiveStrategy['fullAmountBasis']; label: string }>;
-  couponRecommendationModeOptions: Array<{ value: ActivityCouponRecommendationMode; label: string }>;
-  money: (value: unknown) => string;
-  formatActivityOriginalDiscountTiers: (tiers: ActivityOriginalDiscountTier[]) => string;
-  defaultActivityCouponRecommendationPolicy: (mode: ActivityCouponRecommendationMode) => ActivityCouponRecommendationPolicy;
-  normalizeActivityStrategySettings: (settings: Partial<ActivityStrategySettings> | undefined) => ActivityStrategySettings;
-  normalizeActivityObjectiveTemplates: (templates: Partial<ActivityObjectiveTemplate>[] | undefined) => ActivityObjectiveTemplate[];
-  normalizeActivityObjectiveTemplate: (template: Partial<ActivityObjectiveTemplate>, fallback: ActivityObjectiveTemplate) => ActivityObjectiveTemplate;
-  activityObjectiveOptionFromTemplate: (template: ActivityObjectiveTemplate) => ActivityObjectiveOption;
-  normalizeActivityObjectiveStrategies: (
-    value: Partial<Record<ActivityDesignObjective, Partial<ActivityObjectiveStrategy>>> | undefined,
-    baseTargetProfitRate: number,
-    objectiveOptions: ActivityObjectiveOption[]
-  ) => Record<ActivityDesignObjective, ActivityObjectiveStrategy>;
-  defaultActivityObjectiveStrategies: (
-    baseTargetProfitRate?: number,
-    objectiveOptions?: ActivityObjectiveOption[]
-  ) => Record<ActivityDesignObjective, ActivityObjectiveStrategy>;
-  deepClone: <T>(value: T) => T;
-  uid: (prefix: string) => string;
-  onBeforeEdit?: () => void;
-  onSaveSettings: (settings: ActivityStrategySettings) => Promise<boolean>;
+  calculatorState: CalculatorState;
+  setCalculatorState: React.Dispatch<React.SetStateAction<CalculatorState>>;
 };
 
 function optionText<T extends string>(options: Array<{ value: T; label: string }>, value: T) {
@@ -76,27 +71,19 @@ function renderEnabled(enabled: boolean) {
   return <Tag color={enabled ? 'green' : 'default'}>{enabled ? '启用' : '停用'}</Tag>;
 }
 
-export function SystemStrategyPage({
-  strategySettings,
-  defaultStrategySettings,
-  defaultTargetProfitRate,
-  defaultObjectiveTemplate,
-  fullAmountBasisOptions,
-  couponRecommendationModeOptions,
-  money,
-  formatActivityOriginalDiscountTiers,
-  defaultActivityCouponRecommendationPolicy,
-  normalizeActivityStrategySettings,
-  normalizeActivityObjectiveTemplates,
-  normalizeActivityObjectiveTemplate,
-  activityObjectiveOptionFromTemplate,
-  normalizeActivityObjectiveStrategies,
-  defaultActivityObjectiveStrategies,
-  deepClone,
-  uid,
-  onBeforeEdit,
-  onSaveSettings
-}: SystemStrategyPageProps) {
+export function SystemStrategyPage(pageProps: Partial<SystemStrategyPageProps> = {}) {
+  const {
+    calculatorState,
+    setCalculatorState
+  } = useCalculatorPageProps(pageProps);
+  const { message } = AntApp.useApp();
+  const commitCalculatorState = useCalculatorStateCommit(calculatorState, setCalculatorState);
+  const strategySettings = calculatorState.activityStrategySettings;
+  const fullAmountBasisOptions = ACTIVITY_FULL_AMOUNT_BASIS_OPTIONS;
+  const couponRecommendationModeOptions = ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS;
+  const defaultStrategySettings = DEFAULT_ACTIVITY_STRATEGY_SETTINGS;
+  const defaultTargetProfitRate = DEFAULT_ACTIVITY_DESIGN_SETTINGS.targetProfitRate;
+  const defaultObjectiveTemplate = DEFAULT_ACTIVITY_OBJECTIVE_TEMPLATES[1];
   const [discountTierEditor, setDiscountTierEditor] = React.useState<(ActivityDiscountTierEditorValue & { objective: ActivityDesignObjective }) | null>(null);
   const [discountTierDraft, setDiscountTierDraft] = React.useState<ActivityOriginalDiscountTier[]>([]);
   const [discountTierBatchDraft, setDiscountTierBatchDraft] = React.useState<ActivityDiscountTierBatchDraft>({ start: 0, end: 80, step: 10, rate: 30 });
@@ -108,7 +95,6 @@ export function SystemStrategyPage({
     source: normalizeActivityStrategySettings(strategySettings),
     clone: deepClone,
     normalize: normalizeActivityStrategySettings,
-    onBeforeEdit,
     onExitEdit: closeDiscountTierEditor
   });
   const {
@@ -127,8 +113,19 @@ export function SystemStrategyPage({
     strategy: objectiveStrategies[option.value]
   }));
 
+  const saveSystemStrategy = React.useCallback(async (settings: ActivityStrategySettings) => {
+    const nextSettings = normalizeActivityStrategySettings(settings);
+    if (!activityObjectiveOptionsFromSettings(nextSettings).length) {
+      message.warning('请至少启用一个经营目标。');
+      return false;
+    }
+    return commitCalculatorState(draft => {
+      draft.activityStrategySettings = nextSettings;
+    }, '系统活动策略已保存到浏览器数据库。');
+  }, [commitCalculatorState, message]);
+
   const saveEdit = async () => {
-    await saveStrategyEdit(onSaveSettings);
+    await saveStrategyEdit(saveSystemStrategy);
   };
   const restoreDefault = () => replaceDraft(defaultStrategySettings);
   const updateObjectiveTemplate = (objective: ActivityDesignObjective, patch: Partial<ActivityObjectiveTemplate>) => {

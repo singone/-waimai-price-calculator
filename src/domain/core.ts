@@ -20,9 +20,10 @@ import type {
   StrategyTarget
 } from './types';
 import { average, normalizeDiscountRate, profitRateByBasis, roundMoney } from './money';
+import { PlatformUtils } from './platform';
 
-export const PLATFORMS: Platform[] = ['meituan', 'eleme'];
-export const PLATFORM_NAMES: Record<Platform, string> = { meituan: '美团', eleme: '饿了么' };
+export const PLATFORMS = PlatformUtils.PLATFORMS;
+export const PLATFORM_NAMES = PlatformUtils.NAMES;
 
 export function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
@@ -39,23 +40,19 @@ export function effectiveFeeRule(state: CalculatorState, store = currentStoreFro
 }
 
 export function isProductListedOnPlatform(product: Product, platform: Platform) {
-  return platform === 'meituan' ? product.meituanEnabled !== false : product.elemeEnabled !== false;
+  return PlatformUtils.isListed(product, platform);
 }
 
 export function platformPrice(product: Product, platform: Platform) {
-  const platformValue = platform === 'eleme' ? product.elemePrice : product.meituanPrice;
-  const n = Number(platformValue);
-  return n > 0 ? n : Number(product.price) || 0;
+  return PlatformUtils.price(product, platform);
 }
 
 export function platformPackageFee(product: Product, platform: Platform) {
-  const platformValue = platform === 'eleme' ? product.elemePackageFee : product.meituanPackageFee;
-  if (platformValue !== '') return Math.max(0, Number(platformValue) || 0);
-  return Math.max(0, Number(product.packageFee) || 0);
+  return PlatformUtils.packageFee(product, platform);
 }
 
 export function platformOriginalUnitPrice(product: Product, platform: Platform) {
-  return roundMoney(platformPrice(product, platform) + platformPackageFee(product, platform));
+  return PlatformUtils.originalUnitPrice(product, platform);
 }
 
 export function productStapleServingCount(product: Pick<Product, 'stapleServingCount'>) {

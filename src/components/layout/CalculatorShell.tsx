@@ -1,9 +1,9 @@
 'use client';
 
 import { Button, Layout, Menu, Select, Space, Upload } from 'antd';
-import type { UploadProps } from 'antd';
 import { DownloadOutlined, PlusOutlined, ReloadOutlined, SaveOutlined, UploadOutlined } from '@ant-design/icons';
 import { isPageKey, type PageKey } from '../../pageRoutes';
+import { uploadProps } from '../../utils/upload';
 
 const { Header, Sider, Content } = Layout;
 
@@ -17,7 +17,6 @@ type CalculatorShellProps = {
   selectedStoreId: string;
   stores: CalculatorShellStoreOption[];
   children: React.ReactNode;
-  uploadProps: (handler: (file: File) => void) => UploadProps;
   onNavigate: (page: PageKey) => void;
   onSelectStore: (storeId: string) => void;
   onAddStore: () => void;
@@ -47,7 +46,6 @@ export function CalculatorShell({
   selectedStoreId,
   stores,
   children,
-  uploadProps,
   onNavigate,
   onSelectStore,
   onAddStore,

@@ -1,41 +1,46 @@
 'use client';
 
 import React from 'react';
-import { Button, Card, Checkbox, Col, Input, InputNumber, Row, Select, Space, Table, Tag, Typography } from 'antd';
+import { App as AntApp, Button, Card, Checkbox, Col, Input, InputNumber, Row, Select, Space, Table, Tag, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { CopyOutlined, DeleteOutlined, SaveOutlined } from '@ant-design/icons';
 import { ActivityDiscountTierEditorModal, type ActivityDiscountTierBatchDraft, type ActivityDiscountTierEditorValue } from '../modals/ActivityDiscountTierEditorModal';
 import { ProfitTargetsCard } from '../shared/FeeRuleCards';
+import { useCalculatorPageProps } from '../shared/CalculatorContext';
+import { useCalculatorStateCommit } from '../shared/useCalculatorStateCommit';
 import { useEditableDraft } from '../shared/useEditableDraft';
+import {
+  ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS,
+  ACTIVITY_FULL_AMOUNT_BASIS_OPTIONS,
+  ACTIVITY_MIN_NET_PAY
+} from '../../config/activity';
+import { defaultActivityCouponRecommendationPolicy, type ActivityObjectiveOption } from '../../config/activityStrategy';
+import { deepClone } from '../../domain/core';
 import { roundMoney } from '../../domain/money';
+import { formatActivityOriginalDiscountTiers, money } from '../../utils/format';
+import {
+  activityDesignSettingsFromStore,
+  activityObjectiveOptionsFromSettings,
+  currentStoreFrom,
+  effectiveActivityDesignSettingsFromStore,
+  effectiveFeeRule,
+  normalizeActivityDesignSettings,
+  normalizeActivityObjectiveStrategies,
+  normalizeActivityStrategySettings,
+  normalizeState,
+  uid as calculatorUid
+} from '../../data/calculatorState';
 import type {
   ActivityCouponRecommendationMode,
-  ActivityCouponRecommendationPolicy,
   ActivityDesignObjective,
   ActivityDesignSettings,
   ActivityObjectiveStrategy,
   ActivityOriginalDiscountTier,
-  ActivityStrategySettings,
-  FeeRule,
-  ProfitTarget,
+  CalculatorState,
   Store
 } from '../../domain/types';
 
 const { Text } = Typography;
-
-type ActivityObjectiveOption = {
-  key: ActivityDesignObjective;
-  value: ActivityDesignObjective;
-  label: string;
-  enabled: boolean;
-  name: string;
-  group: 'stable' | 'marketing';
-  targetPayLabel: string;
-  targetPayMin: number;
-  targetPayMax: number;
-  description: string;
-  baseObjective?: ActivityDesignObjective;
-};
 
 type FeeRuleField =
   | 'commissionRate'
@@ -47,32 +52,8 @@ type FeeRuleField =
   | 'freightAbove5';
 
 type StorePageProps = {
-  store: Store;
-  platformProfitTargets: ProfitTarget[];
-  activityStrategySettings: ActivityStrategySettings | undefined;
-  systemStrategySettings: ActivityStrategySettings;
-  fullAmountBasisOptions: Array<{ value: ActivityObjectiveStrategy['fullAmountBasis']; label: string }>;
-  couponRecommendationModeOptions: Array<{ value: ActivityCouponRecommendationMode; label: string }>;
-  activityMinNetPay: number;
-  money: (value: unknown) => string;
-  activityDesignModeName: (mode: ActivityDesignSettings['designMode']) => string;
-  formatActivityOriginalDiscountTiers: (tiers: ActivityOriginalDiscountTier[]) => string;
-  defaultActivityCouponRecommendationPolicy: (mode: ActivityCouponRecommendationMode) => ActivityCouponRecommendationPolicy;
-  normalizeActivityObjectiveStrategies: (
-    value: Partial<Record<ActivityDesignObjective, Partial<ActivityObjectiveStrategy>>> | undefined,
-    baseTargetProfitRate: number,
-    objectiveOptions: ActivityObjectiveOption[]
-  ) => Record<ActivityDesignObjective, ActivityObjectiveStrategy>;
-  activityDesignSettingsFromStore: (store: Pick<Store, 'activityDesignSettings'>) => ActivityDesignSettings;
-  effectiveActivityDesignSettingsFromStore: (store: Pick<Store, 'activityDesignSettings'>, strategySettings?: ActivityStrategySettings) => ActivityDesignSettings;
-  activityObjectiveOptionsFromSettings: (settings: Pick<ActivityStrategySettings | ActivityDesignSettings, 'objectiveTemplates' | 'objectiveStrategies'> | undefined) => ActivityObjectiveOption[];
-  effectiveFeeRule: (store: Store) => FeeRule;
-  normalizeActivityDesignSettings: (settings: Partial<ActivityDesignSettings> | undefined) => ActivityDesignSettings;
-  deepClone: <T>(value: T) => T;
-  onBeforeEdit?: () => void;
-  onSaveStore: (store: Store) => Promise<boolean>;
-  duplicateStore: () => void;
-  deleteStore: () => void;
+  calculatorState: CalculatorState;
+  setCalculatorState: React.Dispatch<React.SetStateAction<CalculatorState>>;
 };
 
 const FEE_RULE_FIELDS: Array<[FeeRuleField, string]> = [
@@ -87,6 +68,10 @@ const FEE_RULE_FIELDS: Array<[FeeRuleField, string]> = [
 
 function optionText<T extends string>(options: Array<{ value: T; label: string }>, value: T) {
   return options.find(option => option.value === value)?.label || value;
+}
+
+function activityDesignModeName(mode: ActivityDesignSettings['designMode']) {
+  return { auto: '自动选择', full: '仅满减', coupon: '仅券', stacked: '满减+券' }[mode] || mode;
 }
 
 function StoreField({
@@ -112,30 +97,19 @@ function StoreField({
   );
 }
 
-export function StorePage({
-  store,
-  platformProfitTargets,
-  activityStrategySettings,
-  systemStrategySettings,
-  fullAmountBasisOptions,
-  couponRecommendationModeOptions,
-  activityMinNetPay,
-  money,
-  activityDesignModeName,
-  formatActivityOriginalDiscountTiers,
-  defaultActivityCouponRecommendationPolicy,
-  normalizeActivityObjectiveStrategies,
-  activityDesignSettingsFromStore,
-  effectiveActivityDesignSettingsFromStore,
-  activityObjectiveOptionsFromSettings,
-  effectiveFeeRule,
-  normalizeActivityDesignSettings,
-  deepClone,
-  onBeforeEdit,
-  onSaveStore,
-  duplicateStore,
-  deleteStore
-}: StorePageProps) {
+export function StorePage(pageProps: Partial<StorePageProps> = {}) {
+  const {
+    calculatorState,
+    setCalculatorState
+  } = useCalculatorPageProps(pageProps);
+  const { message, modal } = AntApp.useApp();
+  const commitCalculatorState = useCalculatorStateCommit(calculatorState, setCalculatorState);
+  const store = currentStoreFrom(calculatorState);
+  const platformProfitTargets = calculatorState.platformRules.profitTargets;
+  const systemStrategySettings = normalizeActivityStrategySettings(calculatorState.activityStrategySettings);
+  const fullAmountBasisOptions = ACTIVITY_FULL_AMOUNT_BASIS_OPTIONS;
+  const couponRecommendationModeOptions = ACTIVITY_COUPON_RECOMMENDATION_MODE_OPTIONS;
+  const activityMinNetPay = ACTIVITY_MIN_NET_PAY;
   const [discountTierEditor, setDiscountTierEditor] = React.useState<(ActivityDiscountTierEditorValue & { objective: ActivityDesignObjective }) | null>(null);
   const [discountTierDraft, setDiscountTierDraft] = React.useState<ActivityOriginalDiscountTier[]>([]);
   const [discountTierBatchDraft, setDiscountTierBatchDraft] = React.useState<ActivityDiscountTierBatchDraft>({ start: 0, end: 80, step: 10, rate: 30 });
@@ -151,20 +125,58 @@ export function StorePage({
     source: store,
     clone: deepClone,
     normalize: normalizeStoreDraft,
-    onBeforeEdit,
     onExitEdit: closeDiscountTierEditor,
     resetKey: store.id
   });
   const { isEditing, value: pageStore, startEdit, cancelEdit, updateDraft: updateStore } = storeEditor;
-  const feeRule = effectiveFeeRule(pageStore);
+  const feeRule = effectiveFeeRule(calculatorState, pageStore);
   const activityDesignSettings = activityDesignSettingsFromStore(pageStore);
-  const effectiveActivityDesignSettings = effectiveActivityDesignSettingsFromStore(pageStore, activityStrategySettings);
+  const effectiveActivityDesignSettings = effectiveActivityDesignSettingsFromStore(pageStore, systemStrategySettings);
   const objectiveOptions = activityObjectiveOptionsFromSettings(effectiveActivityDesignSettings);
   const effectiveObjectiveStrategies = normalizeActivityObjectiveStrategies(effectiveActivityDesignSettings.objectiveStrategies, effectiveActivityDesignSettings.targetProfitRate, objectiveOptions);
   const usesDefaultObjectiveStrategies = activityDesignSettings.useDefaultObjectiveStrategies !== false;
   const canEditStoreObjectiveModel = isEditing && !usesDefaultObjectiveStrategies;
+  const saveStore = React.useCallback(async (storeToSave: Store) => {
+    const nextStore = deepClone(storeToSave);
+    return commitCalculatorState(draft => {
+      draft.stores = draft.stores.map(item => item.id === nextStore.id ? nextStore : item);
+    }, '门店信息已保存到浏览器数据库。');
+  }, [commitCalculatorState]);
+  const duplicateStore = React.useCallback(() => {
+    setCalculatorState(prev => {
+      const draft = deepClone(prev);
+      const source = currentStoreFrom(draft);
+      const copy = deepClone(source);
+      copy.id = calculatorUid('store');
+      copy.name = `${source.name} 副本`;
+      draft.stores.push(copy);
+      draft.selectedStoreId = copy.id;
+      return normalizeState(draft);
+    });
+  }, [setCalculatorState]);
+  const deleteStore = React.useCallback(() => {
+    if (calculatorState.stores.length <= 1) {
+      message.warning('至少保留一个门店。');
+      return;
+    }
+    modal.confirm({
+      title: '删除门店',
+      content: `确定删除门店「${store.name}」吗？该门店的商品、平台活动和测算配置都会移除。`,
+      okText: '删除',
+      cancelText: '取消',
+      okButtonProps: { danger: true },
+      onOk: () => {
+        setCalculatorState(prev => {
+          const draft = deepClone(prev);
+          draft.stores = draft.stores.filter(item => item.id !== draft.selectedStoreId);
+          draft.selectedStoreId = draft.stores[0].id;
+          return normalizeState(draft);
+        });
+      }
+    });
+  }, [calculatorState.stores.length, message, modal, setCalculatorState, store.name]);
   const saveEdit = async () => {
-    await storeEditor.saveEdit(onSaveStore, draft => {
+    await storeEditor.saveEdit(saveStore, draft => {
       const nextStore = deepClone(draft);
       if (nextStore.calculationTotalMax !== '' && nextStore.calculationTotalMax < nextStore.calculationTotalMin) {
         nextStore.calculationTotalMax = nextStore.calculationTotalMin;

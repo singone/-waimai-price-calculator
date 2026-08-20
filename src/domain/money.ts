@@ -23,6 +23,10 @@ export function average(values: Array<number | null | undefined>) {
   return valid.reduce((sum, value) => sum + value, 0) / valid.length;
 }
 
+export function finiteRate(value: number | null | undefined): value is number {
+  return Number.isFinite(value);
+}
+
 export function profitRateByBasis(profit: number, basis: number) {
   return basis > 0 ? profit / basis : profit < 0 ? -1 : null;
 }

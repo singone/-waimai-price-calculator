@@ -4,8 +4,6 @@ export const DEFAULT_PAGE_KEY: PageKey = 'store';
 
 export const PAGE_KEYS: PageKey[] = ['store', 'products', 'system-strategy', 'platform', 'meituan', 'eleme', 'activity-design', 'order-analysis', 'data-analysis', 'pricing', 'results'];
 
-export const ROUTED_PAGE_KEYS: PageKey[] = PAGE_KEYS.filter(page => page !== DEFAULT_PAGE_KEY);
-
 export const PAGE_PATHS: Record<PageKey, string> = {
   store: '/',
   products: '/products',
@@ -26,4 +24,10 @@ export function isPageKey(value: unknown): value is PageKey {
 
 export function pathForPage(page: PageKey) {
   return PAGE_PATHS[page] || PAGE_PATHS[DEFAULT_PAGE_KEY];
+}
+
+export function pageForPath(pathname: string | null | undefined): PageKey {
+  const normalizedPath = pathname && pathname !== '/' ? pathname.replace(/\/$/, '') : '/';
+  const matched = PAGE_KEYS.find(page => PAGE_PATHS[page] === normalizedPath);
+  return matched || DEFAULT_PAGE_KEY;
 }

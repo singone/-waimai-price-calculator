@@ -1,27 +1,22 @@
 'use client';
 
+import { useEffect, useState } from 'react';
 import { Button, Card, Input, InputNumber, Space, Switch, Table, Tag, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
+import { deepClone, PLATFORM_NAMES } from '../../domain/core';
+import { money as formatMoney } from '../../utils/format';
 import type { Activities, Coupon, DiscountActivity, FullReduction, Platform, RedAddOn } from '../../domain/types';
 
 const { Text } = Typography;
 
-const PLATFORM_NAMES: Record<Platform, string> = { meituan: '美团', eleme: '饿了么' };
-
 type ActivityPageProps = {
   platform: Platform;
   storeName: string;
-  isEditing: boolean;
   activities: Activities;
   money: (value: unknown) => string;
-  startEdit: (platform: Platform) => void;
-  cancelEdit: () => void;
-  saveEdit: () => void;
-  changeFullReductions: (rows: FullReduction[]) => void;
-  changeCoupons: (rows: Coupon[]) => void;
-  changeRedAddOns: (rows: RedAddOn[]) => void;
-  changeDiscountActivities: (rows: DiscountActivity[]) => void;
+  deepClone: <T>(value: T) => T;
+  onSaveActivities: (platform: Platform, activities: Activities) => Promise<unknown> | unknown;
 };
 
 function SimpleActivityTable<T extends FullReduction | RedAddOn>({
@@ -185,21 +180,48 @@ function DiscountActivityTable({
   );
 }
 
-export function ActivityPage({
-  platform,
-  storeName,
-  isEditing,
-  activities,
-  money,
-  startEdit,
-  cancelEdit,
-  saveEdit,
-  changeFullReductions,
-  changeCoupons,
-  changeRedAddOns,
-  changeDiscountActivities
-}: ActivityPageProps) {
+export function ActivityPage(props: Pick<ActivityPageProps, 'platform'> & Partial<Omit<ActivityPageProps, 'platform'>>) {
+  const { platform } = props;
+  const storeName = props.storeName as string;
+  const activities = (props.activities as unknown as Record<Platform, Activities>)?.[platform] || props.activities as Activities;
+  const money = props.money || formatMoney;
+  const onSaveActivities = props.onSaveActivities as (platform: Platform, activities: Activities) => Promise<unknown> | unknown;
   const platformName = PLATFORM_NAMES[platform];
+  const [draft, setDraft] = useState<Activities | null>(null);
+  const [isSaving, setIsSaving] = useState(false);
+  const isEditing = draft !== null;
+  const pageActivities = draft || activities;
+
+  useEffect(() => {
+    setDraft(null);
+  }, [activities, platform]);
+
+  const startEdit = () => {
+    setDraft(deepClone(activities));
+  };
+
+  const cancelEdit = () => {
+    setDraft(null);
+  };
+
+  const updateDraft = (mutator: (value: Activities) => void) => {
+    setDraft(prev => {
+      const next = deepClone(prev || activities);
+      mutator(next);
+      return next;
+    });
+  };
+
+  const saveEdit = async () => {
+    if (!draft) return;
+    setIsSaving(true);
+    try {
+      await onSaveActivities(platform, deepClone(draft));
+      setDraft(null);
+    } finally {
+      setIsSaving(false);
+    }
+  };
 
   return (
     <div className="section-stack">
@@ -208,10 +230,10 @@ export function ActivityPage({
         extra={isEditing ? (
           <Space>
             <Button onClick={cancelEdit}>取消</Button>
-            <Button type="primary" icon={<SaveOutlined />} onClick={saveEdit}>保存活动</Button>
+            <Button type="primary" icon={<SaveOutlined />} loading={isSaving} onClick={saveEdit}>保存活动</Button>
           </Space>
         ) : (
-          <Button type="primary" onClick={() => startEdit(platform)}>编辑活动</Button>
+          <Button type="primary" onClick={startEdit}>编辑活动</Button>
         )}
       >
         <Text type="secondary">活动配置归属于当前门店「{storeName}」。基础{platform === 'meituan' ? '神券' : '爆红包'}阶梯来自平台通用规则，本页只维护门店加码和门店承担的活动。</Text>
@@ -219,31 +241,31 @@ export function ActivityPage({
 
       <SimpleActivityTable
         title={`${platformName}门店满减`}
-        rows={activities.fullReductions}
-        change={changeFullReductions}
+        rows={pageActivities.fullReductions}
+        change={rows => updateDraft(next => { next.fullReductions = rows; })}
         blank={{ enabled: true, threshold: 0, amount: 0 }}
         disabled={!isEditing}
         money={money}
       />
       <CouponTable
         platform={platform}
-        rows={activities.coupons}
-        change={changeCoupons}
+        rows={pageActivities.coupons}
+        change={rows => updateDraft(next => { next.coupons = rows; })}
         disabled={!isEditing}
         money={money}
       />
       <SimpleActivityTable
         title={`${platformName}${platform === 'meituan' ? '神券' : '爆红包'}加码`}
-        rows={activities.redAddOns}
-        change={changeRedAddOns}
+        rows={pageActivities.redAddOns}
+        change={rows => updateDraft(next => { next.redAddOns = rows; })}
         blank={{ enabled: true, threshold: 0, amount: 0 }}
         disabled={!isEditing}
         money={money}
       />
       <DiscountActivityTable
         platform={platform}
-        rows={activities.discountActivities}
-        change={changeDiscountActivities}
+        rows={pageActivities.discountActivities}
+        change={rows => updateDraft(next => { next.discountActivities = rows; })}
         disabled={!isEditing}
         money={money}
       />

@@ -1,10 +1,15 @@
 'use client';
 
 import React from 'react';
-import { Button, Card, Col, Input, InputNumber, Modal, Row, Select, Space, Table, Tag, Typography } from 'antd';
-import type { TableColumnsType, TableProps } from 'antd';
+import { App as AntApp, Button, Card, Col, Input, InputNumber, Modal, Row, Select, Space, Table, Tag, Typography } from 'antd';
+import type { TableColumnsType } from 'antd';
+import { EMPTY_SUMMARY, STAPLE_SCENARIOS } from '../../config/calculation';
 import { stapleScenarioName } from '../../domain/core';
+import { money, rateText, severityColor, severityLabel, severityRank } from '../../utils/format';
+import { tablePagination } from '../../utils/table';
+import { isCalculationAbortError, runCalculationTask } from '../../workers/calculationClient';
 import type {
+  CalculatorState,
   FeeRule,
   Platform,
   PricingEvaluationResult,
@@ -19,7 +24,6 @@ import type {
 
 const { Text, Title } = Typography;
 
-const STAPLE_SCENARIOS: StapleScenario[] = ['single', 'double', 'multi'];
 const SHOW_LG: Array<'lg'> = ['lg'];
 const SHOW_XL: Array<'xl'> = ['xl'];
 const DEFAULT_PRICING_EVALUATION_SETTINGS: PricingEvaluationSettings = {
@@ -36,20 +40,20 @@ const DEFAULT_PRICING_EVALUATION_SETTINGS: PricingEvaluationSettings = {
 type PricingPlatformFilter = Platform | 'all';
 
 type PricingEvaluationPageProps = {
-  pricingEvaluation: PricingEvaluationResult | null;
-  isLoading: boolean;
-  fallbackSummary: Summary;
+  calculatorState: CalculatorState;
   pricingRule: PricingEvaluationRule;
   pricingStrategy: FeeRule['pricingStrategy'];
-  money: (value: unknown) => string;
-  rateText: (rate: number | null | undefined) => string;
-  severityLabel: (severity: Severity) => string;
-  severityColor: (severity: Severity) => string;
-  severityRank: (severity: Severity) => number;
-  tablePagination: (defaultPageSize: number) => TableProps<PricingProductRow>['pagination'];
-  onRunPricingEvaluation: (settings: PricingEvaluationSettings, platformFilter: PricingPlatformFilter) => void;
   onApplySuggestedPrice: (row: Pick<PricingProductRow, 'suggestedPrice' | 'productId' | 'platform' | 'platformName'>) => void;
 };
+
+const PRICING_EVALUATION_MAX_DURATION_MS = 30000;
+const PRICING_EVALUATION_WORKER_TIMEOUT_MS = 35000;
+
+function waitForLoadingPaint() {
+  return new Promise<void>(resolve => {
+    requestAnimationFrame(() => requestAnimationFrame(() => resolve()));
+  });
+}
 
 function pricingSettingNumber(value: number | null) {
   return Number(value) || 0;
@@ -84,25 +88,68 @@ function enabledPricingStrategyCount(strategy: Record<StapleScenario, PricingStr
   return (strategy[scenario] || []).filter(row => row.enabled).length;
 }
 
-export function PricingEvaluationPage({
-  pricingEvaluation,
-  isLoading,
-  fallbackSummary,
+export function PricingEvaluationPage(pageProps: Partial<PricingEvaluationPageProps> = {}) {
+  const { message } = AntApp.useApp();
+  const {
+  calculatorState,
   pricingRule,
   pricingStrategy,
-  money,
-  rateText,
-  severityLabel,
-  severityColor,
-  severityRank,
-  tablePagination,
-  onRunPricingEvaluation,
   onApplySuggestedPrice
-}: PricingEvaluationPageProps) {
+  } = pageProps as PricingEvaluationPageProps;
+  const activePricingTaskRef = React.useRef<AbortController | null>(null);
+  const [pricingEvaluation, setPricingEvaluation] = React.useState<PricingEvaluationResult | null>(null);
+  const [isLoading, setIsLoading] = React.useState(false);
+  const [fallbackSummary, setFallbackSummary] = React.useState<Summary>({ ...EMPTY_SUMMARY });
   const [platformFilter, setPlatformFilter] = React.useState<PricingPlatformFilter>('all');
   const [pricingSettings, setPricingSettings] = React.useState<PricingEvaluationSettings>(DEFAULT_PRICING_EVALUATION_SETTINGS);
   const [pricingResultSearchText, setPricingResultSearchText] = React.useState('');
   const [selectedPricingProductKey, setSelectedPricingProductKey] = React.useState('');
+  React.useEffect(() => () => {
+    activePricingTaskRef.current?.abort();
+  }, []);
+  React.useEffect(() => {
+    setPricingEvaluation(null);
+    setSelectedPricingProductKey('');
+    setFallbackSummary({ ...EMPTY_SUMMARY });
+  }, [calculatorState?.selectedStoreId]);
+  const runPricingEvaluation = async (settings: PricingEvaluationSettings, nextPlatformFilter: PricingPlatformFilter) => {
+    if (isLoading || !calculatorState) return;
+    activePricingTaskRef.current?.abort();
+    const controller = new AbortController();
+    activePricingTaskRef.current = controller;
+    setIsLoading(true);
+    setPricingEvaluation(null);
+    setFallbackSummary({ ...EMPTY_SUMMARY });
+    await waitForLoadingPaint();
+    try {
+      const result = await runCalculationTask('pricingEvaluation', {
+        state: calculatorState,
+        platformFilter: nextPlatformFilter,
+        settings
+      }, undefined, {
+        signal: controller.signal,
+        maxDurationMs: PRICING_EVALUATION_MAX_DURATION_MS,
+        timeoutMs: PRICING_EVALUATION_WORKER_TIMEOUT_MS
+      });
+      if (activePricingTaskRef.current !== controller) return;
+      setPricingEvaluation(result);
+      setFallbackSummary(result.summary);
+    } catch (error) {
+      if (!isCalculationAbortError(error)) {
+        message.error(error instanceof Error ? error.message : '定价评估生成失败。');
+      }
+    } finally {
+      if (activePricingTaskRef.current === controller) {
+        activePricingTaskRef.current = null;
+        setIsLoading(false);
+      }
+    }
+  };
+  const applySuggestedPrice = (row: Pick<PricingProductRow, 'suggestedPrice' | 'productId' | 'platform' | 'platformName'>) => {
+    onApplySuggestedPrice(row);
+    setPricingEvaluation(null);
+    setSelectedPricingProductKey('');
+  };
   const pricingSummary = pricingEvaluation?.summary || (isLoading ? fallbackSummary : { resultCount: 0, comboCount: 0, validComboCount: 0, elapsedTime: null });
   const pricingIssues = pricingEvaluation?.productRows || [];
   const visiblePricingIssues = React.useMemo(
@@ -148,18 +195,18 @@ export function PricingEvaluationPage({
       render: (_, row) => (
         <Space>
           <Button size="small" onClick={() => setSelectedPricingProductKey(row.key)}>查看</Button>
-          <Button size="small" disabled={Math.abs(row.suggestedIncrease) < 0.01} onClick={() => onApplySuggestedPrice(row)}>应用建议价</Button>
+          <Button size="small" disabled={Math.abs(row.suggestedIncrease) < 0.01} onClick={() => applySuggestedPrice(row)}>应用建议价</Button>
         </Space>
       )
     }
-  ], [money, onApplySuggestedPrice, rateText, severityColor, severityLabel, severityRank]);
+  ], [applySuggestedPrice, money, rateText, severityColor, severityLabel, severityRank]);
 
   return (
     <div className="section-stack">
       <Card title="定价评估" extra={
         <Space wrap>
           <Select value={platformFilter} onChange={setPlatformFilter} options={[{ value: 'all', label: '全部平台' }, { value: 'meituan', label: '只看美团' }, { value: 'eleme', label: '只看饿了么' }]} />
-          <Button type="primary" loading={isLoading} onClick={() => onRunPricingEvaluation(pricingSettings, platformFilter)}>生成定价评估</Button>
+          <Button type="primary" loading={isLoading} onClick={() => runPricingEvaluation(pricingSettings, platformFilter)}>生成定价评估</Button>
         </Space>
       }>
         <Space direction="vertical" style={{ width: '100%' }} size="middle">

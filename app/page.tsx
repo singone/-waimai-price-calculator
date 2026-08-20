@@ -1,6 +1,12 @@
+'use client';
+
 import WaimaiCalculator from '@/src/WaimaiCalculator';
-import { DEFAULT_PAGE_KEY } from '@/src/pageRoutes';
+import { StorePage } from '@/src/components/store/StorePage';
 
 export default function Page() {
-  return <WaimaiCalculator activePage={DEFAULT_PAGE_KEY} />;
+  return (
+    <WaimaiCalculator>
+      <StorePage />
+    </WaimaiCalculator>
+  );
 }

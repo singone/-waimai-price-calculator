@@ -2,11 +2,19 @@
 
 import React from 'react';
 import { App as AntApp, Button, Card, Input, InputNumber, Select, Space, Switch, Table, Tag, Typography, Upload } from 'antd';
-import type { TableColumnsType, TableProps, UploadProps } from 'antd';
+import type { TableColumnsType } from 'antd';
 import { DeleteOutlined, PlusOutlined, SaveOutlined, UploadOutlined } from '@ant-design/icons';
-import type * as XLSX from 'xlsx';
+import {
+  PLATFORM_PRODUCT_IMPORT_RULES,
+  PRODUCT_CATEGORIES
+} from '../../config/products';
 import { roundMoney } from '../../domain/money';
+import { PlatformUtils } from '../../domain/platform';
 import type { Product, ProductCategory, Platform } from '../../domain/types';
+import { tablePagination } from '../../utils/table';
+import { money } from '../../utils/format';
+import { uploadProps } from '../../utils/upload';
+import { readWorkbook } from '../../utils/workbook';
 import { useEditableDraft } from '../shared/useEditableDraft';
 import {
   chooseProductMergePrimary,
@@ -16,7 +24,17 @@ import {
   DEFAULT_PRODUCT_PAGE_FILTERS,
   filterAndSortProducts,
   findDuplicateProductGroups,
+  findSimilarProductForPlatformImport,
+  inferStapleServingCount,
+  isProductListedOnPlatform,
   mergeProductRecords,
+  normalizeProduct,
+  normalizeProductList,
+  normalizeProductMatchName,
+  parseCostWorkbook,
+  parsePlatformProductWorkbook,
+  parseProducts,
+  productCategoryName,
   resolveBulkPriceValue,
   type ProductBulkPriceField,
   type ProductBulkPriceMode,
@@ -54,80 +72,17 @@ class ProductTableBoundary extends React.Component<ProductTableBoundaryProps, { 
 type ProductsPageProps = {
   storeId: string;
   products: Product[];
-  productCategories: ProductCategory[];
-  uploadProps: (handler: (file: File) => void) => UploadProps;
-  readWorkbook: (file: File) => Promise<XLSX.WorkBook>;
-  parseProducts: (raw: string) => Product[];
-  parsePlatformProductWorkbook: (workbook: XLSX.WorkBook, platform: Platform) => ParsedPlatformProductWorkbook;
-  parseCostWorkbook: (workbook: XLSX.WorkBook) => ParsedCostWorkbook;
-  platformProductImportRules: Record<Platform, PlatformProductImportRule>;
-  normalizeProduct: (product: Partial<Product>) => Product;
-  normalizeProductList: (value: unknown) => Product[];
-  normalizeProductMatchName: (value: unknown) => string;
-  findSimilarProductForPlatformImport: (products: Product[], item: PlatformProductRecord, platform: Platform) => Product | null;
-  isProductListedOnPlatform: (product: Product, platform: Platform) => boolean;
-  inferStapleServingCount: (name: string, category: ProductCategory) => number;
-  productCategoryName: (category: ProductCategory) => string;
-  platformPrice: (product: Product, platform: Platform) => number;
-  platformPackageFee: (product: Product, platform: Platform) => number;
-  money: (value: unknown) => string;
-  tablePagination: (defaultPageSize: number) => TableProps<Product>['pagination'];
-  onBeforeEdit?: () => void;
   onSaveProducts: (products: Product[]) => Promise<boolean>;
 };
 
-type PlatformProductImportRule = {
-  name: string;
-  priceField: 'meituanPrice' | 'elemePrice';
-  packageFeeField: 'meituanPackageFee' | 'elemePackageFee';
-  enabledField: 'meituanEnabled' | 'elemeEnabled';
-};
-
-type PlatformProductRecord = {
-  name: string;
-  price: number;
-  packageFee?: number;
-  platformEnabled?: boolean;
-};
-
-type ParsedPlatformProductWorkbook = {
-  products: PlatformProductRecord[];
-  disabled: number;
-};
-
-type CostRecord = {
-  name: string;
-  cost: number;
-};
-
-type ParsedCostWorkbook = {
-  costs: CostRecord[];
-};
-
-export function ProductsPage({
+export function ProductsPage(pageProps: Partial<ProductsPageProps> = {}) {
+  const {
   storeId,
   products,
-  productCategories,
-  uploadProps,
-  readWorkbook,
-  parseProducts,
-  parsePlatformProductWorkbook,
-  parseCostWorkbook,
-  platformProductImportRules,
-  normalizeProduct,
-  normalizeProductList,
-  normalizeProductMatchName,
-  findSimilarProductForPlatformImport,
-  isProductListedOnPlatform,
-  inferStapleServingCount,
-  productCategoryName,
-  platformPrice,
-  platformPackageFee,
-  money,
-  tablePagination,
-  onBeforeEdit,
   onSaveProducts
-}: ProductsPageProps) {
+  } = pageProps as ProductsPageProps;
+  const productCategories = PRODUCT_CATEGORIES;
+  const platformProductImportRules = PLATFORM_PRODUCT_IMPORT_RULES;
   const { message, modal } = AntApp.useApp();
   const [filters, setFilters] = React.useState<ProductPageFilters>(DEFAULT_PRODUCT_PAGE_FILTERS);
   const [selectedProductRowKeys, setSelectedProductRowKeys] = React.useState<React.Key[]>([]);
@@ -141,7 +96,6 @@ export function ProductsPage({
     source: products,
     clone: cloneProducts,
     normalize: normalizeProductList,
-    onBeforeEdit,
     onExitEdit: resetSelection,
     resetKey: storeId
   });
@@ -598,7 +552,7 @@ export function ProductsPage({
       title: '美团价',
       dataIndex: 'meituanPrice',
       width: 120,
-      sorter: (a, b) => compareProductNumber(platformPrice(a, 'meituan'), platformPrice(b, 'meituan')),
+      sorter: (a, b) => compareProductNumber(PlatformUtils.price(a, PlatformUtils.MEITUAN), PlatformUtils.price(b, PlatformUtils.MEITUAN)),
       render: (_, row) => isEditing
         ? <InputNumber min={0} precision={2} placeholder="空=销售价" value={row.meituanPrice === '' ? null : row.meituanPrice} onChange={value => updateProductDraft(row.id, { meituanPrice: value === null ? '' : Number(value) })} />
         : (row.meituanPrice === '' ? '同销售价' : `¥${money(row.meituanPrice)}`)
@@ -607,7 +561,7 @@ export function ProductsPage({
       title: '美团打包费',
       dataIndex: 'meituanPackageFee',
       width: 130,
-      sorter: (a, b) => compareProductNumber(platformPackageFee(a, 'meituan'), platformPackageFee(b, 'meituan')),
+      sorter: (a, b) => compareProductNumber(PlatformUtils.packageFee(a, PlatformUtils.MEITUAN), PlatformUtils.packageFee(b, PlatformUtils.MEITUAN)),
       render: (_, row) => isEditing
         ? <InputNumber min={0} precision={2} placeholder="空=统一" value={row.meituanPackageFee === '' ? null : row.meituanPackageFee} onChange={value => updateProductDraft(row.id, { meituanPackageFee: value === null ? '' : Number(value) })} />
         : (row.meituanPackageFee === '' ? '同统一' : `¥${money(row.meituanPackageFee)}`)
@@ -616,7 +570,7 @@ export function ProductsPage({
       title: '饿了么价',
       dataIndex: 'elemePrice',
       width: 120,
-      sorter: (a, b) => compareProductNumber(platformPrice(a, 'eleme'), platformPrice(b, 'eleme')),
+      sorter: (a, b) => compareProductNumber(PlatformUtils.price(a, PlatformUtils.ELEME), PlatformUtils.price(b, PlatformUtils.ELEME)),
       render: (_, row) => isEditing
         ? <InputNumber min={0} precision={2} placeholder="空=销售价" value={row.elemePrice === '' ? null : row.elemePrice} onChange={value => updateProductDraft(row.id, { elemePrice: value === null ? '' : Number(value) })} />
         : (row.elemePrice === '' ? '同销售价' : `¥${money(row.elemePrice)}`)
@@ -625,7 +579,7 @@ export function ProductsPage({
       title: '饿了么打包费',
       dataIndex: 'elemePackageFee',
       width: 140,
-      sorter: (a, b) => compareProductNumber(platformPackageFee(a, 'eleme'), platformPackageFee(b, 'eleme')),
+      sorter: (a, b) => compareProductNumber(PlatformUtils.packageFee(a, PlatformUtils.ELEME), PlatformUtils.packageFee(b, PlatformUtils.ELEME)),
       render: (_, row) => isEditing
         ? <InputNumber min={0} precision={2} placeholder="空=统一" value={row.elemePackageFee === '' ? null : row.elemePackageFee} onChange={value => updateProductDraft(row.id, { elemePackageFee: value === null ? '' : Number(value) })} />
         : (row.elemePackageFee === '' ? '同统一' : `¥${money(row.elemePackageFee)}`)
