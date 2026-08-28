@@ -10,12 +10,18 @@ import {
 } from '../../config/products';
 import { roundMoney } from '../../domain/money';
 import { PlatformUtils } from '../../domain/platform';
-import type { Product, ProductCategory, Platform } from '../../domain/types';
+import type { CalculatorState, Product, ProductCategory, Platform, Store } from '../../domain/types';
 import { tablePagination } from '../../utils/table';
 import { money } from '../../utils/format';
 import { uploadProps } from '../../utils/upload';
 import { readWorkbook } from '../../utils/workbook';
+import { useCalculatorPageProps } from '../shared/CalculatorContext';
+import { useCalculatorStateCommit } from '../shared/useCalculatorStateCommit';
 import { useEditableDraft } from '../shared/useEditableDraft';
+import {
+  currentStoreFrom,
+  normalizeProductList as normalizeCalculatorProductList
+} from '../../data/calculatorState';
 import {
   chooseProductMergePrimary,
   compareProductNumber,
@@ -70,17 +76,25 @@ class ProductTableBoundary extends React.Component<ProductTableBoundaryProps, { 
 }
 
 type ProductsPageProps = {
+  calculatorState: CalculatorState;
+  setCalculatorState: React.Dispatch<React.SetStateAction<CalculatorState>>;
+  store: Store;
   storeId: string;
   products: Product[];
-  onSaveProducts: (products: Product[]) => Promise<boolean>;
 };
 
 export function ProductsPage(pageProps: Partial<ProductsPageProps> = {}) {
   const {
-  storeId,
-  products,
-  onSaveProducts
-  } = pageProps as ProductsPageProps;
+    calculatorState,
+    setCalculatorState,
+    store,
+    storeId,
+    products: pageProducts
+  } = useCalculatorPageProps(pageProps);
+  const products = React.useMemo(
+    () => pageProducts ?? normalizeCalculatorProductList(store.products),
+    [pageProducts, store.products]
+  );
   const productCategories = PRODUCT_CATEGORIES;
   const platformProductImportRules = PLATFORM_PRODUCT_IMPORT_RULES;
   const { message, modal } = AntApp.useApp();
@@ -131,9 +145,15 @@ export function ProductsPage(pageProps: Partial<ProductsPageProps> = {}) {
     selectedRowKeys: selectedProductRowKeys,
     onChange: (keys: React.Key[]) => setSelectedProductRowKeys(keys)
   } : undefined;
+  const commitCalculatorState = useCalculatorStateCommit(calculatorState, setCalculatorState);
+  const saveProducts = React.useCallback(async (nextProducts: Product[]) => (
+    commitCalculatorState(draft => {
+      currentStoreFrom(draft).products = normalizeCalculatorProductList(nextProducts);
+    }, '商品信息已保存到浏览器数据库。')
+  ), [commitCalculatorState]);
 
   const saveEdit = async () => {
-    await productEditor.saveEdit(onSaveProducts);
+    await productEditor.saveEdit(saveProducts);
   };
   const updateProductDraft = (productId: string, patch: Partial<Product>) => {
     updateProductsDraft(draft => {

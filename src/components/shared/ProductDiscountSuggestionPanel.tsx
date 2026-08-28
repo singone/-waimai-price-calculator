@@ -3,7 +3,6 @@
 import { Button, Card, Space, Table, Tag, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import type {
-  ProductDiscountSuggestionAction,
   ProductDiscountSuggestionRiskLevel,
   ProductDiscountSuggestionRole,
   ProductDiscountSuggestionViewRow

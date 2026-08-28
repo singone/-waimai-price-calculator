@@ -17,6 +17,8 @@ import {
   recommendationPriorityText
 } from '../../utils/format';
 import { uploadProps } from '../../utils/upload';
+import { useCalculatorPageProps } from '../shared/CalculatorContext';
+import { normalizeProductList } from '../../data/calculatorState';
 import {
   importOrderAnalysisFileToState,
   loadOrderAnalysisState,
@@ -51,13 +53,10 @@ import type {
   OrderAnalysisPlatformFilter,
   OrderCrossAggregateRow,
   OrderImportBatch,
-  OrderInsightItem,
   OrderOperationRecommendation,
-  OrderProductAggregateRow,
-  OrderProfitSummary,
-  OrderSummary
+  OrderProductAggregateRow
 } from '../../domain/orderAnalysis';
-import type { Product } from '../../domain/types';
+import type { Product, Store } from '../../domain/types';
 
 const AntvColumn = dynamic(() => import('@ant-design/charts').then(mod => mod.Column), { ssr: false });
 const AntvDualAxes = dynamic(() => import('@ant-design/charts').then(mod => mod.DualAxes), { ssr: false });
@@ -67,6 +66,7 @@ const { Text } = Typography;
 type OrderAnalysisDateBounds = { start: string; end: string };
 
 type OrderAnalysisPageProps = {
+  store: Store;
   storeId: string;
   storeName: string;
   products: Product[];
@@ -103,10 +103,15 @@ function importedAtText(value: string) {
 export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {}) {
   const { message } = AntApp.useApp();
   const {
-  storeId,
-  storeName,
-  products
-  } = pageProps as OrderAnalysisPageProps;
+    store,
+    storeId,
+    storeName,
+    products: pageProducts
+  } = useCalculatorPageProps(pageProps);
+  const products = React.useMemo(
+    () => pageProducts ?? normalizeProductList(store.products),
+    [pageProducts, store.products]
+  );
   const [orderAnalysisState, setOrderAnalysisState] = React.useState<OrderAnalysisState>({ records: [], imports: [] });
   const [orderAnalysisPlatform, setOrderAnalysisPlatform] = React.useState<OrderAnalysisPlatformFilter>('all');
   const [orderAnalysisDateStart, setOrderAnalysisDateStart] = React.useState('');
@@ -231,28 +236,35 @@ export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {
     { title: '名称', dataIndex: 'label', width: 120, fixed: 'left' },
     { title: '订单数', dataIndex: 'orderCount', width: 90, sorter: (a, b) => a.orderCount - b.orderCount },
     { title: '单均实付', width: 105, render: (_, row) => `¥${money(row.avgPay)}`, sorter: (a, b) => a.avgPay - b.avgPay },
-    { title: '单均原价', width: 105, render: (_, row) => `¥${money(row.avgOriginal)}`, sorter: (a, b) => a.avgOriginal - b.avgOriginal },
+    { title: '商品原价', width: 105, render: (_, row) => `¥${money(row.avgOriginal)}`, sorter: (a, b) => a.avgOriginal - b.avgOriginal },
+    { title: '订单原价', width: 105, render: (_, row) => `¥${money(row.avgOrderOriginal)}`, sorter: (a, b) => a.avgOrderOriginal - b.avgOrderOriginal },
     { title: '单均补贴', width: 105, render: (_, row) => `¥${money(row.avgDiscount)}`, sorter: (a, b) => a.avgDiscount - b.avgDiscount },
-    { title: '让利率', width: 100, render: (_, row) => row.discountRate === null ? '-' : rateText(row.discountRate), sorter: (a, b) => (a.discountRate || 0) - (b.discountRate || 0) },
+    { title: '商品让利率', width: 115, render: (_, row) => row.discountRate === null ? '-' : rateText(row.discountRate), sorter: (a, b) => (a.discountRate || 0) - (b.discountRate || 0) },
+    { title: '订单让利率', width: 115, render: (_, row) => row.orderDiscountRate === null ? '-' : rateText(row.orderDiscountRate), sorter: (a, b) => (a.orderDiscountRate || 0) - (b.orderDiscountRate || 0) },
     { title: '商家单均补贴', width: 125, render: (_, row) => `¥${money(row.merchantSubsidyPerOrder)}`, sorter: (a, b) => a.merchantSubsidyPerOrder - b.merchantSubsidyPerOrder },
-    { title: '平台单均补贴', width: 125, render: (_, row) => `¥${money(row.platformSubsidyPerOrder)}`, sorter: (a, b) => a.platformSubsidyPerOrder - b.platformSubsidyPerOrder }
+    { title: '平台单均补贴', width: 125, render: (_, row) => `¥${money(row.platformSubsidyPerOrder)}`, sorter: (a, b) => a.platformSubsidyPerOrder - b.platformSubsidyPerOrder },
+    { title: '其他单均补贴', width: 125, render: (_, row) => `¥${money(row.otherSubsidyPerOrder)}`, sorter: (a, b) => a.otherSubsidyPerOrder - b.otherSubsidyPerOrder }
   ];
   const activityColumns: TableColumnsType<OrderActivityAggregateRow> = [
     { title: '活动类型', dataIndex: 'activityName', width: 140, fixed: 'left' },
     { title: '订单数', dataIndex: 'orderCount', width: 90, sorter: (a, b) => a.orderCount - b.orderCount },
     { title: '单均实付', width: 105, render: (_, row) => `¥${money(row.avgPay)}`, sorter: (a, b) => a.avgPay - b.avgPay },
-    { title: '单均原价', width: 105, render: (_, row) => `¥${money(row.avgOriginal)}`, sorter: (a, b) => a.avgOriginal - b.avgOriginal },
+    { title: '商品原价', width: 105, render: (_, row) => `¥${money(row.avgOriginal)}`, sorter: (a, b) => a.avgOriginal - b.avgOriginal },
+    { title: '订单原价', width: 105, render: (_, row) => `¥${money(row.avgOrderOriginal)}`, sorter: (a, b) => a.avgOrderOriginal - b.avgOrderOriginal },
     { title: '单均补贴', width: 105, render: (_, row) => `¥${money(row.avgDiscount)}`, sorter: (a, b) => a.avgDiscount - b.avgDiscount },
-    { title: '让利率', width: 100, render: (_, row) => row.discountRate === null ? '-' : rateText(row.discountRate), sorter: (a, b) => (a.discountRate || 0) - (b.discountRate || 0) },
+    { title: '商品让利率', width: 115, render: (_, row) => row.discountRate === null ? '-' : rateText(row.discountRate), sorter: (a, b) => (a.discountRate || 0) - (b.discountRate || 0) },
+    { title: '订单让利率', width: 115, render: (_, row) => row.orderDiscountRate === null ? '-' : rateText(row.orderDiscountRate), sorter: (a, b) => (a.orderDiscountRate || 0) - (b.orderDiscountRate || 0) },
     { title: '商家单均补贴', width: 125, render: (_, row) => `¥${money(row.merchantSubsidyPerOrder)}`, sorter: (a, b) => a.merchantSubsidyPerOrder - b.merchantSubsidyPerOrder },
-    { title: '平台单均补贴', width: 125, render: (_, row) => `¥${money(row.platformSubsidyPerOrder)}`, sorter: (a, b) => a.platformSubsidyPerOrder - b.platformSubsidyPerOrder }
+    { title: '平台单均补贴', width: 125, render: (_, row) => `¥${money(row.platformSubsidyPerOrder)}`, sorter: (a, b) => a.platformSubsidyPerOrder - b.platformSubsidyPerOrder },
+    { title: '其他单均补贴', width: 125, render: (_, row) => `¥${money(row.otherSubsidyPerOrder)}`, sorter: (a, b) => a.otherSubsidyPerOrder - b.otherSubsidyPerOrder }
   ];
   const comboColumns: TableColumnsType<OrderActivityComboRow> = [
     { title: '活动组合', dataIndex: 'label', width: 280, fixed: 'left' },
     { title: '订单数', dataIndex: 'orderCount', width: 90, sorter: (a, b) => a.orderCount - b.orderCount },
     { title: '单均实付', width: 105, render: (_, row) => `¥${money(row.avgPay)}`, sorter: (a, b) => a.avgPay - b.avgPay },
     { title: '商家单均补贴', width: 125, render: (_, row) => `¥${money(row.merchantSubsidyPerOrder)}`, sorter: (a, b) => a.merchantSubsidyPerOrder - b.merchantSubsidyPerOrder },
-    { title: '让利率', width: 100, render: (_, row) => row.discountRate === null ? '-' : rateText(row.discountRate), sorter: (a, b) => (a.discountRate || 0) - (b.discountRate || 0) },
+    { title: '商品让利率', width: 115, render: (_, row) => row.discountRate === null ? '-' : rateText(row.discountRate), sorter: (a, b) => (a.discountRate || 0) - (b.discountRate || 0) },
+    { title: '订单让利率', width: 115, render: (_, row) => row.orderDiscountRate === null ? '-' : rateText(row.orderDiscountRate), sorter: (a, b) => (a.orderDiscountRate || 0) - (b.orderDiscountRate || 0) },
     { title: '估算单均毛利', width: 125, render: (_, row) => row.avgEstimatedProfit === null ? '-' : `¥${money(row.avgEstimatedProfit)}`, sorter: (a, b) => (a.avgEstimatedProfit || 0) - (b.avgEstimatedProfit || 0) },
     { title: '估算毛利率', width: 110, render: (_, row) => row.estimatedProfitRate === null ? '-' : rateText(row.estimatedProfitRate), sorter: (a, b) => (a.estimatedProfitRate || 0) - (b.estimatedProfitRate || 0) },
     { title: '亏损单', dataIndex: 'lossOrderCount', width: 90, sorter: (a, b) => a.lossOrderCount - b.lossOrderCount }
@@ -263,7 +275,8 @@ export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {
     { title: '订单数', dataIndex: 'orderCount', width: 90, sorter: (a, b) => a.orderCount - b.orderCount },
     { title: '单均实付', width: 105, render: (_, row) => `¥${money(row.avgPay)}`, sorter: (a, b) => a.avgPay - b.avgPay },
     { title: '商家单均补贴', width: 125, render: (_, row) => `¥${money(row.merchantSubsidyPerOrder)}`, sorter: (a, b) => a.merchantSubsidyPerOrder - b.merchantSubsidyPerOrder },
-    { title: '让利率', width: 100, render: (_, row) => row.discountRate === null ? '-' : rateText(row.discountRate), sorter: (a, b) => (a.discountRate || 0) - (b.discountRate || 0) },
+    { title: '商品让利率', width: 115, render: (_, row) => row.discountRate === null ? '-' : rateText(row.discountRate), sorter: (a, b) => (a.discountRate || 0) - (b.discountRate || 0) },
+    { title: '订单让利率', width: 115, render: (_, row) => row.orderDiscountRate === null ? '-' : rateText(row.orderDiscountRate), sorter: (a, b) => (a.orderDiscountRate || 0) - (b.orderDiscountRate || 0) },
     { title: '估算单均毛利', width: 125, render: (_, row) => row.avgEstimatedProfit === null ? '-' : `¥${money(row.avgEstimatedProfit)}`, sorter: (a, b) => (a.avgEstimatedProfit || 0) - (b.avgEstimatedProfit || 0) },
     { title: '亏损单', dataIndex: 'lossOrderCount', width: 90, sorter: (a, b) => a.lossOrderCount - b.lossOrderCount }
   ];
@@ -290,8 +303,10 @@ export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {
     { title: '订单号', dataIndex: 'orderId', width: 180, ellipsis: true },
     { title: '餐段', dataIndex: 'mealPeriod', width: 80 },
     { title: '实付', width: 90, render: (_, row) => `¥${money(row.customerPay)}`, sorter: (a, b) => a.customerPay - b.customerPay },
-    { title: '原价', width: 90, render: (_, row) => `¥${money(row.grossOriginal)}`, sorter: (a, b) => a.grossOriginal - b.grossOriginal },
+    { title: '商品原价', width: 100, render: (_, row) => `¥${money(row.grossOriginal)}`, sorter: (a, b) => a.grossOriginal - b.grossOriginal },
+    { title: '订单原价', width: 100, render: (_, row) => `¥${money(row.orderOriginal)}`, sorter: (a, b) => a.orderOriginal - b.orderOriginal },
     { title: '补贴', width: 90, render: (_, row) => `¥${money(row.totalSubsidy)}`, sorter: (a, b) => a.totalSubsidy - b.totalSubsidy },
+    { title: '其他补贴', width: 100, render: (_, row) => `¥${money(row.otherSubsidy)}`, sorter: (a, b) => a.otherSubsidy - b.otherSubsidy },
     { title: '估算毛利', width: 105, render: (_, row) => row.estimatedProfit === null ? '-' : `¥${money(row.estimatedProfit)}`, sorter: (a, b) => (a.estimatedProfit || 0) - (b.estimatedProfit || 0) },
     { title: '配送', dataIndex: 'deliveryType', width: 110 },
     { title: '用户', width: 80, render: (_, row) => ({ new: '新客', old: '老客', unknown: '-' }[row.customerType]) },
@@ -372,10 +387,13 @@ export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {
         <Row gutter={[12, 12]}>
           <Col xs={12} md={6}>{renderOrderMetric('订单数', orderSummary.orderCount, `${orderSummary.platformCount} 个平台`)}</Col>
           <Col xs={12} md={6}>{renderOrderMetric('单均实付', `¥${money(orderSummary.avgPay)}`, `总实付 ¥${money(orderSummary.customerPay)}`)}</Col>
-          <Col xs={12} md={6}>{renderOrderMetric('单均原价', `¥${money(orderSummary.avgOriginal)}`, `总原价 ¥${money(orderSummary.grossOriginal)}`)}</Col>
-          <Col xs={12} md={6}>{renderOrderMetric('平均让利率', orderSummary.discountRate === null ? '-' : rateText(orderSummary.discountRate), `单均补贴 ¥${money(orderSummary.avgDiscount)}`)}</Col>
+          <Col xs={12} md={6}>{renderOrderMetric('商品口径原价', `¥${money(orderSummary.avgOriginal)}`, `合计 ¥${money(orderSummary.grossOriginal)}`)}</Col>
+          <Col xs={12} md={6}>{renderOrderMetric('订单口径原价', `¥${money(orderSummary.avgOrderOriginal)}`, `含配送 ¥${money(orderSummary.orderOriginal)}`)}</Col>
+          <Col xs={12} md={6}>{renderOrderMetric('商品口径让利率', orderSummary.discountRate === null ? '-' : rateText(orderSummary.discountRate), `单均补贴 ¥${money(orderSummary.avgDiscount)}`)}</Col>
+          <Col xs={12} md={6}>{renderOrderMetric('订单口径让利率', orderSummary.orderDiscountRate === null ? '-' : rateText(orderSummary.orderDiscountRate), '用于核对订单原价')}</Col>
           <Col xs={12} md={6}>{renderOrderMetric('商家单均补贴', `¥${money(orderSummary.merchantSubsidyPerOrder)}`, `商家合计 ¥${money(orderSummary.merchantSubsidy)}`)}</Col>
           <Col xs={12} md={6}>{renderOrderMetric('平台单均补贴', `¥${money(orderSummary.platformSubsidyPerOrder)}`, `平台合计 ¥${money(orderSummary.platformSubsidy)}`)}</Col>
+          <Col xs={12} md={6}>{renderOrderMetric('其他单均补贴', `¥${money(orderSummary.otherSubsidyPerOrder)}`, `其他合计 ¥${money(orderSummary.otherSubsidy)}`)}</Col>
           <Col xs={12} md={6}>{renderOrderMetric('估算单均毛利', orderProfitSummary.avgEstimatedProfit === null ? '-' : `¥${money(orderProfitSummary.avgEstimatedProfit)}`, `覆盖 ${orderProfitSummary.costCoverageRate === null ? '-' : rateText(orderProfitSummary.costCoverageRate)}`)}</Col>
           <Col xs={12} md={6}>{renderOrderMetric('疑似亏损单', orderProfitSummary.lossOrderCount, orderProfitSummary.lossOrderRate === null ? '成本未完整匹配' : rateText(orderProfitSummary.lossOrderRate))}</Col>
         </Row>

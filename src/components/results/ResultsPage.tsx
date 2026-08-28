@@ -12,6 +12,7 @@ import { comboStapleServingCount, PLATFORM_NAMES, PLATFORMS, summarizePriceBands
 import { roundMoney } from '../../domain/money';
 import { PayBandAnalysisPanel } from '../shared/PayBandAnalysisPanel';
 import { ProductDiscountSuggestionSection } from '../shared/ProductDiscountSuggestionSection';
+import { useCalculatorPageProps } from '../shared/CalculatorContext';
 import { useCalculatorStateCommit } from '../shared/useCalculatorStateCommit';
 import { useStoreActivityDesignSettings } from '../shared/useStoreActivityDesignSettings';
 import { downloadCsv } from '../../utils/csv';
@@ -27,20 +28,15 @@ import {
 import type {
   ComboEvaluationRow,
   ComboItem,
-  Coupon,
-  FullReduction,
   MeasurementSettings,
   MeasurementResult,
   Platform,
   PriceBandRow,
-  ProfitTarget,
-  RedAddOn,
   Summary,
   Store
 } from '../../domain/types';
 import type {
   LoadedResultBandRows,
-  OptimizationRow,
   ResultPlatformView,
   SelectedResultBand,
   SelectedResultProduct
@@ -74,7 +70,7 @@ function clampNumber(value: number, min: number, max: number) {
 }
 
 export function ResultsPage(pageProps: ResultsPageProps = {}) {
-    const props = pageProps;
+    const props = useCalculatorPageProps(pageProps);
     const { message } = AntApp.useApp();
     const {
     calculatorState,
@@ -86,16 +82,13 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
   const {
     activeResultWarnings,
     isMeasurementCacheLoading,
-    isOptimizationLoading,
     isResultsLoading,
-    lastOptimizations,
     measurementPayBandSize,
     measurementPersistenceMeta,
     onApplyProductDiscountSuggestion,
     resultPayBands: rawResultPayBands,
     resultRows: rawResultRows,
     resultSummary: rawResultSummary,
-    runOptimization,
     runResults,
     summary
   } = useResultsCalculationState({
@@ -148,7 +141,6 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
     );
     const resultPayBandRows = activeResultPayBands as PriceBandRow[] || [];
     const resultRows = filteredResultRows as ComboEvaluationRow[] || [];
-    const resultOptimizations = lastOptimizations as OptimizationRow[] || [];
     const resultPlatformViews = React.useMemo(() => {
       return PLATFORMS.reduce((views, platform) => {
         const payBands = resultPayBandRows.filter(row => row.platform === platform);
@@ -463,17 +455,6 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
       { title: '利润空间', dataIndex: 'profitSpace', width: 95, render: value => <Text type={Number(value) < 0 ? 'danger' : 'success'}>¥{money(value)}</Text> },
       { title: '触发原因', dataIndex: 'risk', render: risk => (risk?.reasons || []).join('，') }
     ];
-    const optimizationColumns: TableColumnsType<OptimizationRow> = [
-      { title: '平台', dataIndex: 'platformName', width: 80 },
-      { title: '覆盖组合', dataIndex: 'coverage', width: 100, sorter: (a, b) => a.coverage - b.coverage },
-      { title: '目标阶梯', dataIndex: 'target', width: 180, render: target => `实付${money((target as ProfitTarget).payMin)}-${money((target as ProfitTarget).payMax)} / ${money((target as ProfitTarget).rateMin)}%-${money((target as ProfitTarget).rateMax)}%` },
-      { title: '建议满减', dataIndex: 'full', render: full => `满${money((full as FullReduction).threshold)}减${money((full as FullReduction).amount)}` },
-      { title: '建议优惠券', dataIndex: 'coupon', render: coupon => `满${money((coupon as Coupon).threshold)}减${money((coupon as Coupon).amount)}` },
-      { title: '建议加码', dataIndex: 'redAddOn', render: red => `门槛${money((red as RedAddOn).threshold)} / 加码${money((red as RedAddOn).amount)}` },
-      { title: '平均实付', dataIndex: 'finalPay', width: 100, render: value => `¥${money(value)}`, sorter: (a, b) => a.finalPay - b.finalPay },
-      { title: '平均利润率', dataIndex: 'profitRate', width: 110, render: value => rateText(value as number | null), sorter: (a, b) => (a.profitRate || 0) - (b.profitRate || 0) },
-      { title: '示例组合', dataIndex: 'example', render: example => itemsText((example as OptimizationRow['example']).items) }
-    ];
     const priceBandColumns: TableColumnsType<PriceBandRow> = [
       { title: '平台', dataIndex: 'platformName', width: 80, sorter: (a, b) => a.platformName.localeCompare(b.platformName, 'zh-CN') },
       { title: '场景', dataIndex: 'scenarioName', width: 80, render: value => <Tag color="blue">{String(value || '-')}</Tag> },
@@ -491,7 +472,6 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
       { title: '建议', dataIndex: 'suggestion', width: 220, render: value => <Text className="table-text-wrap">{String(value || '')}</Text> }
     ];
     const renderResultPlatformPanel = (view: ResultPlatformView) => {
-      const platformOptimizations = resultOptimizations.filter(row => row.platform === view.platform);
       const platformRowCount = view.platformRows.length || view.payBands.reduce((sum, row) => sum + row.comboCount, 0);
       const platformRiskCount = view.platformRows.length
         ? view.platformRows.filter(row => row.risk?.hasRisk).length
@@ -525,9 +505,6 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
             money={money}
             onApply={onApplyProductDiscountSuggestion}
           />
-          <Card title="旧版最优活动建议">
-            <Table loading={isOptimizationLoading} rowKey="key" size="small" columns={optimizationColumns} dataSource={platformOptimizations} pagination={tablePagination(20)} scroll={{ x: 1280 }} />
-          </Card>
         </div>
       );
     };
@@ -538,7 +515,6 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
             <Space wrap>
               <Button type="primary" loading={isResultsLoading} onClick={() => runResults(measurementSettings)}>生成组合结果</Button>
               <Checkbox checked={riskOnly} onChange={e => setRiskOnly(e.target.checked)}>只看预警组合</Checkbox>
-              <Button loading={isOptimizationLoading} onClick={runOptimization}>测算最优活动</Button>
               <Button icon={<DownloadOutlined />} onClick={exportResults}>导出结果CSV</Button>
             </Space>
           }>

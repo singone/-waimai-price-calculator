@@ -27,8 +27,7 @@ type PayBandAnalysisPanelProps = {
 
 function PriceBandVolumeProfitChart({
   rows,
-  title,
-  money
+  title
 }: {
   rows: PriceBandRow[];
   title: string;

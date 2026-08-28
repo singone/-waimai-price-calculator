@@ -2,6 +2,12 @@
   --bg: #f5f2ed;
 }
 
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -27,12 +33,63 @@ body {
 
 .app-header {
   display: flex;
+  height: auto;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  line-height: normal;
   padding: 16px 20px;
   background: #fff;
   border-bottom: 1px solid #eadfd2;
+}
+
+.app-header-main {
+  min-width: 0;
+}
+
+.app-header-actions {
+  max-width: 100%;
+  justify-content: flex-end;
+}
+
+.app-header-actions .ant-space-item {
+  min-width: 0;
+}
+
+.store-select {
+  width: 220px;
+}
+
+.mobile-header-controls {
+  display: none;
+}
+
+.mobile-page-select {
+  width: 100%;
+}
+
+.mobile-store-select {
+  width: 100%;
+}
+
+.mobile-actions-popover {
+  display: grid;
+  width: 168px;
+  gap: 6px;
+}
+
+.mobile-actions-popover .ant-upload,
+.mobile-actions-popover .ant-upload-wrapper,
+.mobile-actions-popover .ant-btn {
+  width: 100%;
+}
+
+.app-main-layout {
+  min-width: 0;
+}
+
+.desktop-sider {
+  border-inline-end: 1px solid #eadfd2;
 }
 
 .app-title {
@@ -65,6 +122,9 @@ body {
 }
 
 .section-stack > .ant-card,
+.section-stack .ant-card-head,
+.section-stack .ant-card-head-wrapper,
+.section-stack .ant-card-extra,
 .section-stack .ant-card-body,
 .section-stack .ant-table-wrapper {
   min-width: 0;
@@ -73,6 +133,17 @@ body {
 
 .section-stack .ant-table-wrapper {
   overflow: hidden;
+}
+
+.section-stack .ant-row,
+.section-stack .ant-col,
+.section-stack .ant-space,
+.section-stack .ant-space-item,
+.section-stack .ant-tabs,
+.section-stack .ant-tabs-content,
+.section-stack .ant-tabs-tabpane {
+  min-width: 0;
+  max-width: 100%;
 }
 
 .field {
@@ -277,18 +348,252 @@ body {
   color: #746b60;
 }
 
-@media (max-width: 900px) {
+@media (max-width: 1080px) {
   .app-header {
-    align-items: flex-start;
-    flex-direction: column;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    padding: 8px 10px;
+    position: sticky;
+    top: 0;
+    z-index: 20;
+  }
+
+  .app-header-main {
+    flex: 0 1 auto;
+  }
+
+  .desktop-header-actions {
+    display: none !important;
+  }
+
+  .mobile-header-controls {
+    display: grid;
+    flex: 1 1 520px;
+    grid-template-columns: minmax(0, 1.15fr) minmax(0, 1fr) 34px 34px;
+    gap: 6px;
+    min-width: 420px;
+    align-items: center;
+  }
+
+  .mobile-header-controls .ant-select {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .mobile-header-controls .ant-select-selector,
+  .mobile-header-controls .ant-btn {
+    min-height: 32px;
+  }
+
+  .mobile-icon-button.ant-btn {
+    width: 34px;
+    min-width: 34px;
+    padding: 0;
+  }
+
+  .desktop-sider {
+    display: none;
+  }
+
+  .app-title {
+    font-size: 18px;
+  }
+
+  .app-subtitle {
+    display: none;
   }
 
   .app-content {
+    padding: 10px;
+  }
+
+  .section-stack [class*="ant-col-lg-"],
+  .section-stack [class*="ant-col-xl-"] {
+    flex: 0 0 100% !important;
+    max-width: 100% !important;
+  }
+
+  .section-stack {
+    gap: 10px;
+  }
+
+  .section-stack > .ant-card {
+    border-radius: 8px;
+  }
+
+  .section-stack .ant-card-head {
+    min-height: auto;
+    padding: 10px 12px;
+  }
+
+  .section-stack .ant-card-head-wrapper {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .section-stack .ant-card-head-title {
+    width: 100%;
+    padding: 0;
+    white-space: normal;
+  }
+
+  .section-stack .ant-card-extra {
+    width: 100%;
+    margin-inline-start: 0;
+    padding: 0;
+  }
+
+  .section-stack .ant-card-body {
     padding: 12px;
+  }
+
+  .section-stack .ant-space,
+  .section-stack .ant-space-item,
+  .toolbar,
+  .table-actions {
+    max-width: 100%;
+  }
+
+  .section-stack .ant-btn,
+  .table-actions .ant-btn {
+    max-width: 100%;
+    height: auto;
+    min-height: 32px;
+    white-space: normal;
+  }
+
+  .section-stack .ant-select,
+  .section-stack .ant-picker,
+  .section-stack .ant-input-number {
+    max-width: 100%;
   }
 
   .field {
     align-items: flex-start;
     flex-direction: column;
+    gap: 2px;
+  }
+
+  .field > .ant-typography {
+    white-space: normal;
+  }
+
+  .field-value {
+    min-height: 26px;
+    align-items: flex-start;
+  }
+
+  .section-stack .ant-table-wrapper {
+    overflow-x: auto;
+  }
+
+  .section-stack .ant-table-content,
+  .section-stack .ant-table-body {
+    overflow-x: auto !important;
+  }
+
+  .section-stack .ant-steps {
+    max-width: 100%;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .section-stack .ant-steps-item {
+    min-width: 120px;
+  }
+
+  .section-stack .ant-table {
+    font-size: 12px;
+  }
+
+  .section-stack .ant-table-cell {
+    padding: 8px 6px !important;
+  }
+
+  .table-actions {
+    justify-content: flex-start;
+  }
+
+  .table-metric-stack {
+    white-space: normal;
+  }
+
+  .result-platform-tabs {
+    padding: 8px;
+  }
+
+  .result-platform-tabs .ant-tabs-nav-wrap {
+    overflow: auto;
+  }
+
+  .chart-frame {
+    min-height: 240px;
+    padding: 6px;
+  }
+
+  .business-anomaly-trend {
+    min-height: 260px;
+  }
+
+  .business-anomaly-delta,
+  .chart-empty {
+    min-height: 180px;
+  }
+
+  .cost-analysis-modal {
+    max-width: calc(100vw - 12px);
+  }
+
+  .cost-analysis-modal .ant-modal-body,
+  .cost-analysis-modal-fullscreen .ant-modal-body {
+    max-height: calc(100vh - 96px);
+    padding: 12px;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .app-header-main,
+  .mobile-header-controls {
+    width: 100%;
+  }
+
+  .mobile-header-controls {
+    flex: 0 0 auto;
+    min-width: 0;
+  }
+}
+
+@media (max-width: 600px) {
+  .section-stack .ant-card-body {
+    padding: 10px;
+  }
+
+  .section-stack .ant-select,
+  .section-stack .ant-picker,
+  .section-stack .ant-input-number,
+  .section-stack .ant-input,
+  .section-stack .ant-input-affix-wrapper {
+    width: 100% !important;
+  }
+
+  .section-stack .ant-pagination {
+    justify-content: center;
+  }
+
+  .chart-frame {
+    min-height: 220px;
+  }
+}
+
+@media (max-width: 430px) {
+  .mobile-header-controls {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 34px 34px;
   }
 }

@@ -11,6 +11,7 @@ import { PLATFORMS, PLATFORM_NAMES } from '../../domain/core';
 import { downloadCsv } from '../../utils/csv';
 import { uploadProps } from '../../utils/upload';
 import { BusinessNoteEditorModal } from '../modals/BusinessNoteEditorModal';
+import { useCalculatorPageProps } from '../shared/CalculatorContext';
 import type { Platform } from '../../domain/types';
 import {
   aggregateBusinessRecordsByDate,
@@ -97,7 +98,7 @@ export type DataAnalysisPageProps = AnyRecord;
 
 export function DataAnalysisPage(pageProps: DataAnalysisPageProps = {}) {
   const { message, modal } = AntApp.useApp();
-  const props = pageProps;
+  const props = useCalculatorPageProps(pageProps);
   const {
     storeId,
     storeName
@@ -397,7 +398,7 @@ export function DataAnalysisPage(pageProps: DataAnalysisPageProps = {}) {
     };
     const moneyTrendRows = platformDailyRows.flatMap(row => [
       { key: `${row.date}-${row.platform}-actualReceipt`, date: row.date, platform: row.platform, platformName: row.platformName, metric: `${row.platformName}实收`, value: roundMoney(row.actualReceipt) },
-      { key: `${row.date}-${row.platform}-grossSales`, date: row.date, platform: row.platform, platformName: row.platformName, metric: `${row.platformName}营业额`, value: roundMoney(row.grossSales) },
+      { key: `${row.date}-${row.platform}-grossSales`, date: row.date, platform: row.platform, platformName: row.platformName, metric: `${row.platformName}优惠前总额`, value: roundMoney(row.grossSales) },
       { key: `${row.date}-${row.platform}-merchantActivityCost`, date: row.date, platform: row.platform, platformName: row.platformName, metric: `${row.platformName}活动成本`, value: roundMoney(row.merchantActivityCost) }
     ]).filter(row => Number.isFinite(row.value));
     const visitRateTrendRows = platformDailyRows.map(row => ({
@@ -633,7 +634,7 @@ export function DataAnalysisPage(pageProps: DataAnalysisPageProps = {}) {
       if (/下单数|下单人数/.test(name)) return '优先拆成入店人数和下单率，排查价格、券、满减、缺货和主推商品结构。';
       if (/下单率|转化率/.test(name)) return '入店后的成交转化变化，优先排查活动力度、券配置、商品价格、套餐结构和缺货。';
       if (/复购/.test(name)) return '优先排查老客返券、会员触达、产品稳定性、履约体验和近期差评。';
-      if (/实收|营业额|金额/.test(name)) return '先按曝光、入店率、下单率、客单价拆解，再判断是流量、转化还是商品结构问题。';
+      if (/实收|营业额|优惠前总额|金额/.test(name)) return '先按曝光、入店率、下单率、客单价拆解，再判断是流量、转化还是商品结构问题。';
       if (/活动成本/.test(name)) return '活动成本异常时，排查满减、券、平台活动报名和低价商品成交占比。';
       return severity === 'drop'
         ? '优先查看同日漏斗、商品结构和备忘事件，确认是否存在活动、缺货或配送变化。'
@@ -900,14 +901,15 @@ export function DataAnalysisPage(pageProps: DataAnalysisPageProps = {}) {
       { title: '日期范围', width: 210, render: (_, row) => businessDateRangeText(row.dateStart, row.dateEnd) },
       { title: '天数', dataIndex: 'dayCount', width: 80 },
       { title: '实收', dataIndex: 'actualReceipt', width: 110, render: value => `¥${money(value)}`, sorter: (a, b) => a.actualReceipt - b.actualReceipt },
-      { title: '营业额', dataIndex: 'grossSales', width: 110, render: value => `¥${money(value)}` },
+      { title: '优惠前总额', dataIndex: 'grossSales', width: 120, render: value => `¥${money(value)}` },
       { title: '有效订单', dataIndex: 'validOrders', width: 100, sorter: (a, b) => a.validOrders - b.validOrders },
       { title: '单均实付', dataIndex: 'averageReceipt', width: 100, render: value => `¥${money(value)}` },
       { title: '曝光人数', dataIndex: 'exposureUsers', width: 100 },
       { title: '入店率', dataIndex: 'visitRate', width: 100, render: value => value === null ? '-' : rateText(value) },
       { title: '下单率', dataIndex: 'orderRate', width: 100, render: value => value === null ? '-' : rateText(value) },
       { title: '商家活动成本', dataIndex: 'merchantActivityCost', width: 130, render: value => `¥${money(value)}` },
-      { title: '活动成本率', dataIndex: 'activityCostRate', width: 110, render: value => value === null ? '-' : rateText(value) },
+      { title: '成本率/优惠前', dataIndex: 'activityCostRateByGrossSales', width: 125, render: value => value === null ? '-' : rateText(value) },
+      { title: '成本率/收入', dataIndex: 'activityCostRateByIncome', width: 115, render: value => value === null ? '-' : rateText(value) },
       { title: '平台补贴', dataIndex: 'platformSubsidy', width: 110, render: value => `¥${money(value)}` },
       { title: '动销率', dataIndex: 'tradedProductRate', width: 100, render: value => value === null ? '-' : rateText(value) }
     ];
@@ -955,7 +957,7 @@ export function DataAnalysisPage(pageProps: DataAnalysisPageProps = {}) {
       { title: '日期', dataIndex: 'date', width: 120, fixed: 'left' },
       { title: '备注', width: 180, render: (_, row) => renderBusinessNoteTags(businessMemoNotesForDate(row.date)) },
       { title: '实收', dataIndex: 'actualReceipt', width: 110, render: value => `¥${money(value)}`, sorter: (a, b) => a.actualReceipt - b.actualReceipt },
-      { title: '营业额', dataIndex: 'grossSales', width: 110, render: value => `¥${money(value)}` },
+      { title: '优惠前总额', dataIndex: 'grossSales', width: 120, render: value => `¥${money(value)}` },
       { title: '有效订单', dataIndex: 'validOrders', width: 100, sorter: (a, b) => a.validOrders - b.validOrders },
       { title: '单均实付', dataIndex: 'averageReceipt', width: 100, render: value => `¥${money(value)}` },
       { title: '曝光人数', dataIndex: 'exposureUsers', width: 100 },
@@ -965,14 +967,15 @@ export function DataAnalysisPage(pageProps: DataAnalysisPageProps = {}) {
       { title: '下单率', dataIndex: 'orderRate', width: 100, render: value => value === null ? '-' : rateText(value) },
       { title: '商家活动成本', dataIndex: 'merchantActivityCost', width: 130, render: value => `¥${money(value)}` },
       { title: '平台补贴', dataIndex: 'platformSubsidy', width: 110, render: value => `¥${money(value)}` },
-      { title: '成本率', dataIndex: 'activityCostRate', width: 100, render: value => value === null ? '-' : rateText(value) }
+      { title: '成本率/优惠前', dataIndex: 'activityCostRateByGrossSales', width: 125, render: value => value === null ? '-' : rateText(value) },
+      { title: '成本率/收入', dataIndex: 'activityCostRateByIncome', width: 115, render: value => value === null ? '-' : rateText(value) }
     ];
     const detailColumns: TableColumnsType<BusinessDailyRecord> = [
       { title: '日期', dataIndex: 'date', width: 120, fixed: 'left' },
       { title: '平台', dataIndex: 'platformName', width: 90, render: value => <Tag>{value}</Tag> },
       { title: '备注', width: 180, render: (_, row) => renderBusinessNoteTags(businessMemoNotesForRecord(row)) },
       { title: '实收', dataIndex: 'actualReceipt', width: 110, render: value => `¥${money(value)}`, sorter: (a, b) => a.actualReceipt - b.actualReceipt },
-      { title: '营业额', dataIndex: 'grossSales', width: 110, render: value => `¥${money(value)}` },
+      { title: '优惠前总额', dataIndex: 'grossSales', width: 120, render: value => `¥${money(value)}` },
       { title: '有效订单', dataIndex: 'validOrders', width: 100 },
       { title: '无效订单', dataIndex: 'invalidOrders', width: 100 },
       { title: '单均实付', dataIndex: 'averageReceipt', width: 100, render: value => `¥${money(value)}` },
@@ -983,6 +986,7 @@ export function DataAnalysisPage(pageProps: DataAnalysisPageProps = {}) {
       { title: '下单率', dataIndex: 'orderRate', width: 100, render: value => value === null ? '-' : rateText(value) },
       { title: '商家活动成本', dataIndex: 'merchantActivityCost', width: 130, render: value => `¥${money(value)}` },
       { title: '平台补贴', dataIndex: 'platformSubsidy', width: 110, render: value => `¥${money(value)}` },
+      { title: '其它支出', dataIndex: 'otherExpense', width: 100, render: value => `¥${money(value)}` },
       {
         title: '商品结构',
         width: 180,
@@ -1539,8 +1543,9 @@ export function DataAnalysisPage(pageProps: DataAnalysisPageProps = {}) {
               <Col xs={12} md={6}>{renderBusinessMetric('下单率', businessSummary.orderRate === null ? '-' : rateText(businessSummary.orderRate), `${businessSummary.visitUsers} 入店`)}</Col>
               <Col xs={12} md={6}>{renderBusinessMetric('单均实付', `¥${money(businessSummary.averageReceipt)}`, `${businessSummary.dayCount} 天`)}</Col>
               <Col xs={12} md={6}>{renderBusinessMetric('商家活动成本', `¥${money(businessSummary.merchantActivityCost)}`, businessSummary.merchantCostPerOrder === null ? undefined : `单均 ¥${money(businessSummary.merchantCostPerOrder)}`)}</Col>
-              <Col xs={12} md={6}>{renderBusinessMetric('活动成本率', businessSummary.activityCostRate === null ? '-' : rateText(businessSummary.activityCostRate), '按营业额计算')}</Col>
-              <Col xs={12} md={6}>{renderBusinessMetric('平台补贴', `¥${money(businessSummary.platformSubsidy)}`, '不计入成本')}</Col>
+              <Col xs={12} md={6}>{renderBusinessMetric('成本率/优惠前', businessSummary.activityCostRateByGrossSales === null ? '-' : rateText(businessSummary.activityCostRateByGrossSales), '商家活动成本/优惠前总额')}</Col>
+              <Col xs={12} md={6}>{renderBusinessMetric('成本率/收入', businessSummary.activityCostRateByIncome === null ? '-' : rateText(businessSummary.activityCostRateByIncome), '商家活动成本/营业收入')}</Col>
+              <Col xs={12} md={6}>{renderBusinessMetric('平台补贴', `¥${money(businessSummary.platformSubsidy)}`, businessSummary.platformSubsidy < 0 ? '含负数调整' : '不计入商家成本')}</Col>
               <Col xs={12} md={6}>{renderBusinessMetric('动销率', businessSummary.tradedProductRate === null ? '-' : rateText(businessSummary.tradedProductRate), '按日报字段')}</Col>
             </Row>
           </Space>

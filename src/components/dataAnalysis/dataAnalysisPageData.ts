@@ -2,6 +2,10 @@
 
 import dayjs, { type Dayjs } from 'dayjs';
 import * as XLSX from 'xlsx';
+import {
+  merchantActivityCostRate,
+  merchantIncomeByBusinessFormula
+} from '../../domain/businessFormula';
 import { PLATFORM_NAMES, PLATFORMS } from '../../domain/core';
 import { average, roundMoney } from '../../domain/money';
 import type { Platform, Severity } from '../../domain/types';
@@ -122,14 +126,20 @@ export type BusinessDailyRecord = {
   exposureTimes: number;
   visitTimes: number;
   orderTimes: number;
+  subsidyAndExpense: number;
   merchantActivityCost: number;
   merchantActivityCostWithoutFull: number;
   platformSubsidy: number;
   totalActivitySubsidy: number;
+  otherExpense: number;
   commission: number;
   deliveryServiceFee: number;
   packageFee: number;
   customerDeliveryFee: number;
+  customerPayWithoutCoupon: number;
+  averagePayWithoutCoupon: number;
+  merchantIncomeFormula: number;
+  merchantIncomeFormulaGap: number;
   activityOrders: number;
   activityOrderRate: number | null;
   cancelOrders: number;
@@ -231,15 +241,23 @@ export type BusinessDataSummary = {
   repeatRate30d: number | null;
   platformRepeatRate: number | null;
   averageReceipt: number;
+  customerPayWithoutCoupon: number;
+  averagePayWithoutCoupon: number;
+  subsidyAndExpense: number;
   merchantActivityCost: number;
   merchantActivityCostWithoutFull: number;
   platformSubsidy: number;
   totalActivitySubsidy: number;
+  otherExpense: number;
   commission: number;
   deliveryServiceFee: number;
   packageFee: number;
   activityCostRate: number | null;
+  activityCostRateByGrossSales: number | null;
+  activityCostRateByIncome: number | null;
   merchantCostPerOrder: number | null;
+  merchantIncomeFormula: number;
+  merchantIncomeFormulaGap: number;
   tradedProductRate: number | null;
 };
 
@@ -323,7 +341,9 @@ export function normalizeBusinessDailyRecord(row: Partial<BusinessDailyRecord> |
   const platform = row?.platform === 'eleme' ? 'eleme' : row?.platform === 'meituan' ? 'meituan' : null;
   const date = normalizeBusinessDate(row?.date);
   if (!platform || !date) return null;
+  const grossSales = Math.max(0, toMoneyNumber(row?.grossSales, 0));
   const actualReceipt = Math.max(0, toMoneyNumber(row?.actualReceipt, 0));
+  const merchantIncome = Math.max(0, toMoneyNumber(row?.merchantIncome, 0));
   const validOrders = Math.max(0, Math.floor(toNumber(row?.validOrders, 0)));
   const exposureUsers = Math.max(0, Math.floor(toNumber(row?.exposureUsers, 0)));
   const visitUsers = Math.max(0, Math.floor(toNumber(row?.visitUsers, 0)));
@@ -392,9 +412,9 @@ export function normalizeBusinessDailyRecord(row: Partial<BusinessDailyRecord> |
     importedAt: String(row?.importedAt || ''),
     externalStoreId: String(row?.externalStoreId || ''),
     externalStoreName: String(row?.externalStoreName || ''),
-    grossSales: Math.max(0, toMoneyNumber(row?.grossSales, 0)),
+    grossSales,
     actualReceipt,
-    merchantIncome: Math.max(0, toMoneyNumber(row?.merchantIncome, 0)),
+    merchantIncome,
     validOrders,
     invalidOrders: Math.max(0, Math.floor(toNumber(row?.invalidOrders, 0))),
     averageReceipt: Math.max(0, toMoneyNumber(row?.averageReceipt, validOrders > 0 ? actualReceipt / validOrders : 0)),
@@ -424,14 +444,32 @@ export function normalizeBusinessDailyRecord(row: Partial<BusinessDailyRecord> |
     exposureTimes: Math.max(0, Math.floor(toNumber(row?.exposureTimes, 0))),
     visitTimes: Math.max(0, Math.floor(toNumber(row?.visitTimes, 0))),
     orderTimes: Math.max(0, Math.floor(toNumber(row?.orderTimes, 0))),
-    merchantActivityCost: Math.max(0, toMoneyNumber(row?.merchantActivityCost, 0)),
-    merchantActivityCostWithoutFull: Math.max(0, toMoneyNumber(row?.merchantActivityCostWithoutFull, row?.merchantActivityCost || 0)),
-    platformSubsidy: Math.max(0, toMoneyNumber(row?.platformSubsidy, 0)),
-    totalActivitySubsidy: Math.max(0, toMoneyNumber(row?.totalActivitySubsidy, 0)),
+    subsidyAndExpense: toMoneyNumber(row?.subsidyAndExpense, 0),
+    merchantActivityCost: toMoneyNumber(row?.merchantActivityCost, 0),
+    merchantActivityCostWithoutFull: toMoneyNumber(row?.merchantActivityCostWithoutFull, row?.merchantActivityCost || 0),
+    platformSubsidy: toMoneyNumber(row?.platformSubsidy, 0),
+    totalActivitySubsidy: toMoneyNumber(row?.totalActivitySubsidy, 0),
+    otherExpense: toMoneyNumber(row?.otherExpense, 0),
     commission: Math.max(0, toMoneyNumber(row?.commission, 0)),
     deliveryServiceFee: Math.max(0, toMoneyNumber(row?.deliveryServiceFee, 0)),
     packageFee: Math.max(0, toMoneyNumber(row?.packageFee, 0)),
     customerDeliveryFee: Math.max(0, toMoneyNumber(row?.customerDeliveryFee, 0)),
+    customerPayWithoutCoupon: Math.max(0, toMoneyNumber(row?.customerPayWithoutCoupon, row?.actualReceipt || 0)),
+    averagePayWithoutCoupon: Math.max(0, toMoneyNumber(row?.averagePayWithoutCoupon, validOrders > 0 ? toMoneyNumber(row?.customerPayWithoutCoupon, row?.actualReceipt || 0) / validOrders : 0)),
+    merchantIncomeFormula: toMoneyNumber(row?.merchantIncomeFormula, merchantIncomeByBusinessFormula({
+      grossSales,
+      merchantActivityCost: toMoneyNumber(row?.merchantActivityCost, 0),
+      commission: toMoneyNumber(row?.commission, 0),
+      deliveryServiceFee: toMoneyNumber(row?.deliveryServiceFee, 0),
+      otherExpense: toMoneyNumber(row?.otherExpense, 0)
+    })),
+    merchantIncomeFormulaGap: toMoneyNumber(row?.merchantIncomeFormulaGap, merchantIncome - merchantIncomeByBusinessFormula({
+      grossSales,
+      merchantActivityCost: toMoneyNumber(row?.merchantActivityCost, 0),
+      commission: toMoneyNumber(row?.commission, 0),
+      deliveryServiceFee: toMoneyNumber(row?.deliveryServiceFee, 0),
+      otherExpense: toMoneyNumber(row?.otherExpense, 0)
+    })),
     activityOrders: Math.max(0, Math.floor(toNumber(row?.activityOrders, 0))),
     activityOrderRate: normalizeBusinessRate(row?.activityOrderRate),
     cancelOrders: Math.max(0, Math.floor(toNumber(row?.cancelOrders, 0))),
@@ -572,11 +610,24 @@ function parseMeituanBusinessRecord(row: unknown[], header: unknown[], warnings:
   const platformRepeatRate = businessRate(row, platformRepeatRateIndex);
   const grossSales = businessNumber(row, businessColumn(header, ['优惠前总额', '商品原价']));
   const actualReceipt = businessNumber(row, businessColumn(header, ['顾客实付']));
+  const merchantIncome = businessNumber(row, businessColumn(header, ['营业收入']));
   const merchantActivityCost = businessNumber(row, businessColumn(header, ['商家活动支出']));
   const platformSubsidy = businessNumber(row, businessColumn(header, ['平台活动补贴']));
+  const otherExpense = businessNumber(row, businessColumn(header, ['其它支出']));
+  const commission = businessNumber(row, businessColumn(header, ['佣金']));
+  const deliveryServiceFee = businessNumber(row, businessColumn(header, ['配送服务费']));
+  const merchantIncomeFormula = merchantIncomeByBusinessFormula({
+    grossSales,
+    merchantActivityCost,
+    commission,
+    deliveryServiceFee,
+    otherExpense
+  });
+  const merchantIncomeFormulaGap = roundMoney(merchantIncome - merchantIncomeFormula);
   const platformName = PLATFORM_NAMES.meituan;
   const recordWarnings = [
-    ...(businessColumn(header, ['有交易商品数']) < 0 ? ['美团日报缺少商品交易结构字段，商品结构诊断仅做平台总览。'] : [])
+    ...(businessColumn(header, ['有交易商品数']) < 0 ? ['美团日报缺少商品交易结构字段，商品结构诊断仅做平台总览。'] : []),
+    ...(Math.abs(merchantIncomeFormulaGap) > 0.05 ? [`营业收入与公式复算差异 ¥${money(merchantIncomeFormulaGap)}，请核对其它支出或服务费口径。`] : [])
   ];
   if (!validOrders && actualReceipt > 0) warnings.push(`${date} 美团有实收但有效订单为0，请复核原始报表。`);
   return {
@@ -587,7 +638,7 @@ function parseMeituanBusinessRecord(row: unknown[], header: unknown[], warnings:
     externalStoreName: businessText(row, businessColumn(header, ['门店名称'])),
     grossSales,
     actualReceipt,
-    merchantIncome: businessNumber(row, businessColumn(header, ['营业收入'])),
+    merchantIncome,
     validOrders,
     invalidOrders: businessInteger(row, businessColumn(header, ['取消订单'])),
     averageReceipt: businessNumber(row, businessColumn(header, ['实付单均价']), validOrders > 0 ? actualReceipt / validOrders : 0),
@@ -617,14 +668,20 @@ function parseMeituanBusinessRecord(row: unknown[], header: unknown[], warnings:
     exposureTimes: businessInteger(row, businessColumn(header, ['曝光次数'])),
     visitTimes: businessInteger(row, businessColumn(header, ['入店次数'])),
     orderTimes: validOrders,
+    subsidyAndExpense: businessNumber(row, businessColumn(header, ['补贴及支出'])),
     merchantActivityCost,
     merchantActivityCostWithoutFull: merchantActivityCost,
     platformSubsidy,
     totalActivitySubsidy: businessNumber(row, businessColumn(header, ['活动补贴'])),
-    commission: businessNumber(row, businessColumn(header, ['佣金'])),
-    deliveryServiceFee: businessNumber(row, businessColumn(header, ['配送服务费'])),
+    otherExpense,
+    commission,
+    deliveryServiceFee,
     packageFee: businessNumber(row, businessColumn(header, ['包装费'])),
     customerDeliveryFee: businessNumber(row, businessColumn(header, ['顾客配送费（跑腿/自配送）', '顾客配送费'])),
+    customerPayWithoutCoupon: businessNumber(row, businessColumn(header, ['顾客实付（不含券）']), actualReceipt),
+    averagePayWithoutCoupon: businessNumber(row, businessColumn(header, ['实付单均价（不含券）']), validOrders > 0 ? actualReceipt / validOrders : 0),
+    merchantIncomeFormula,
+    merchantIncomeFormulaGap,
     activityOrders: 0,
     activityOrderRate: null,
     cancelOrders: businessInteger(row, businessColumn(header, ['取消订单'])),
@@ -684,6 +741,19 @@ function parseElemeBusinessRecord(row: unknown[], header: unknown[], warnings: s
   const merchantActivityCostWithoutFull = businessNumber(row, businessColumn(header, ['商家活动成本（不含满减活动）']), merchantActivityCost);
   const elemeSubsidy = businessNumber(row, businessColumn(header, ['饿了么补贴']));
   const agentSubsidy = businessNumber(row, businessColumn(header, ['代理商补贴']));
+  const grossSales = businessNumber(row, businessColumn(header, ['营业额']));
+  const merchantIncome = businessNumber(row, businessColumn(header, ['收入']));
+  const commission = businessNumber(row, businessColumn(header, ['平台技术服务费'])) + businessNumber(row, businessColumn(header, ['履约技术服务费']));
+  const deliveryServiceFee = businessNumber(row, businessColumn(header, ['配送费补贴']));
+  const otherExpense = businessNumber(row, businessColumn(header, ['其它支出', '其他支出']));
+  const merchantIncomeFormula = merchantIncomeByBusinessFormula({
+    grossSales,
+    merchantActivityCost,
+    commission,
+    deliveryServiceFee,
+    otherExpense
+  });
+  const merchantIncomeFormulaGap = roundMoney(merchantIncome - merchantIncomeFormula);
   if (!validOrders && actualReceipt > 0) warnings.push(`${date} 饿了么有实收但有效订单为0，请复核原始报表。`);
   return {
     platform: 'eleme',
@@ -691,9 +761,9 @@ function parseElemeBusinessRecord(row: unknown[], header: unknown[], warnings: s
     date,
     externalStoreId: businessText(row, businessColumn(header, ['门店编号'])),
     externalStoreName: businessText(row, businessColumn(header, ['门店名称'])),
-    grossSales: businessNumber(row, businessColumn(header, ['营业额'])),
+    grossSales,
     actualReceipt,
-    merchantIncome: businessNumber(row, businessColumn(header, ['收入'])),
+    merchantIncome,
     validOrders,
     invalidOrders: businessInteger(row, businessColumn(header, ['无效订单'])),
     averageReceipt: businessNumber(row, businessColumn(header, ['单均实付']), validOrders > 0 ? actualReceipt / validOrders : 0),
@@ -723,14 +793,20 @@ function parseElemeBusinessRecord(row: unknown[], header: unknown[], warnings: s
     exposureTimes: businessInteger(row, businessColumn(header, ['曝光次数'])),
     visitTimes: businessInteger(row, businessColumn(header, ['进店次数', '入店次数'])),
     orderTimes: businessInteger(row, businessColumn(header, ['下单次数']), validOrders),
+    subsidyAndExpense: businessNumber(row, businessColumn(header, ['补贴及支出'])),
     merchantActivityCost,
     merchantActivityCostWithoutFull,
     platformSubsidy: elemeSubsidy + agentSubsidy,
     totalActivitySubsidy: businessNumber(row, businessColumn(header, ['活动总补贴'])),
-    commission: businessNumber(row, businessColumn(header, ['平台技术服务费'])) + businessNumber(row, businessColumn(header, ['履约技术服务费'])),
-    deliveryServiceFee: businessNumber(row, businessColumn(header, ['配送费补贴'])),
+    otherExpense,
+    commission,
+    deliveryServiceFee,
     packageFee: businessNumber(row, businessColumn(header, ['打包费'])),
     customerDeliveryFee: 0,
+    customerPayWithoutCoupon: businessNumber(row, businessColumn(header, ['顾客实付（不含券）', '顾客实付不含券']), actualReceipt),
+    averagePayWithoutCoupon: businessNumber(row, businessColumn(header, ['实付单均价（不含券）', '单均实付（不含券）']), validOrders > 0 ? actualReceipt / validOrders : 0),
+    merchantIncomeFormula,
+    merchantIncomeFormulaGap,
     activityOrders: businessInteger(row, businessColumn(header, ['活动订单数'])),
     activityOrderRate: businessRate(row, businessColumn(header, ['活动订单占比'])),
     cancelOrders: businessInteger(row, businessColumn(header, ['商责取消数'])),
@@ -740,7 +816,7 @@ function parseElemeBusinessRecord(row: unknown[], header: unknown[], warnings: s
     outOfStockProducts: businessInteger(row, businessColumn(header, ['库存不足商品数'])),
     activityProducts: businessInteger(row, businessColumn(header, ['活动商品数'])),
     businessHoursText: businessText(row, businessColumn(header, ['设置营业时间段'])),
-    warnings: []
+    warnings: Math.abs(merchantIncomeFormulaGap) > 0.05 ? [`营业收入与公式复算差异 ¥${money(merchantIncomeFormulaGap)}，请核对其它支出或服务费口径。`] : []
   };
 }
 
@@ -944,15 +1020,23 @@ export function businessSummaryEmpty(): BusinessDataSummary {
     repeatRate30d: null,
     platformRepeatRate: null,
     averageReceipt: 0,
+    customerPayWithoutCoupon: 0,
+    averagePayWithoutCoupon: 0,
+    subsidyAndExpense: 0,
     merchantActivityCost: 0,
     merchantActivityCostWithoutFull: 0,
     platformSubsidy: 0,
     totalActivitySubsidy: 0,
+    otherExpense: 0,
     commission: 0,
     deliveryServiceFee: 0,
     packageFee: 0,
     activityCostRate: null,
+    activityCostRateByGrossSales: null,
+    activityCostRateByIncome: null,
     merchantCostPerOrder: null,
+    merchantIncomeFormula: 0,
+    merchantIncomeFormulaGap: 0,
     tradedProductRate: null
   };
 }
@@ -1005,10 +1089,25 @@ export function summarizeBusinessRecords(records: BusinessDailyRecord[]): Busine
   const repeatRows = records.filter(row => row.repeatDataProvided);
   const repeatUsers7d = Math.round(sumBusinessNumber(repeatRows, 'repeatUsers7d'));
   const repeatUsers30d = Math.round(sumBusinessNumber(repeatRows, 'repeatUsers30d'));
+  const customerPayWithoutCoupon = sumBusinessNumber(records, 'customerPayWithoutCoupon');
+  const subsidyAndExpense = sumBusinessNumber(records, 'subsidyAndExpense');
   const merchantActivityCost = sumBusinessNumber(records, 'merchantActivityCost');
   const merchantActivityCostWithoutFull = sumBusinessNumber(records, 'merchantActivityCostWithoutFull');
   const platformSubsidy = sumBusinessNumber(records, 'platformSubsidy');
   const totalActivitySubsidy = sumBusinessNumber(records, 'totalActivitySubsidy');
+  const otherExpense = sumBusinessNumber(records, 'otherExpense');
+  const commission = sumBusinessNumber(records, 'commission');
+  const deliveryServiceFee = sumBusinessNumber(records, 'deliveryServiceFee');
+  const merchantIncomeFormula = merchantIncomeByBusinessFormula({
+    grossSales,
+    merchantActivityCost,
+    commission,
+    deliveryServiceFee,
+    otherExpense
+  });
+  const merchantIncomeFormulaGap = roundMoney(merchantIncome - merchantIncomeFormula);
+  const activityCostRateByGrossSales = merchantActivityCostRate(merchantActivityCost, grossSales);
+  const activityCostRateByIncome = merchantActivityCostRate(merchantActivityCost, merchantIncome);
   const listedProducts = Math.round(sumBusinessNumber(records, 'listedProducts'));
   const tradedProducts = Math.round(sumBusinessNumber(records, 'tradedProducts'));
   return {
@@ -1046,15 +1145,23 @@ export function summarizeBusinessRecords(records: BusinessDailyRecord[]): Busine
     repeatRate30d: businessRollingRepeatRate(repeatRows, 'repeatUsers30d', 'repeatRate30d'),
     platformRepeatRate: averageBusinessRecordRate(repeatRows, 'platformRepeatRate'),
     averageReceipt: validOrders > 0 ? actualReceipt / validOrders : 0,
+    customerPayWithoutCoupon,
+    averagePayWithoutCoupon: validOrders > 0 ? customerPayWithoutCoupon / validOrders : 0,
+    subsidyAndExpense,
     merchantActivityCost,
     merchantActivityCostWithoutFull,
     platformSubsidy,
     totalActivitySubsidy,
-    commission: sumBusinessNumber(records, 'commission'),
-    deliveryServiceFee: sumBusinessNumber(records, 'deliveryServiceFee'),
+    otherExpense,
+    commission,
+    deliveryServiceFee,
     packageFee: sumBusinessNumber(records, 'packageFee'),
-    activityCostRate: grossSales > 0 ? merchantActivityCost / grossSales : null,
+    activityCostRate: activityCostRateByGrossSales,
+    activityCostRateByGrossSales,
+    activityCostRateByIncome,
     merchantCostPerOrder: validOrders > 0 ? merchantActivityCost / validOrders : null,
+    merchantIncomeFormula,
+    merchantIncomeFormulaGap,
     tradedProductRate: listedProducts > 0 ? tradedProducts / listedProducts : null
   };
 }
@@ -1413,7 +1520,7 @@ export function diagnoseBusinessRecords(records: BusinessDailyRecord[]): Busines
       key: 'activity-cost-rate',
       severity: summary.activityCostRate >= 0.45 ? 'high' : 'medium',
       title: '商家活动成本偏高',
-      description: `当前范围商家活动成本占营业额 ${rateText(summary.activityCostRate)}，平台补贴已单独展示，不计入成本异常判断。`,
+      description: `当前范围商家活动成本占优惠前总额 ${rateText(summary.activityCostRateByGrossSales)}，占营业收入 ${rateText(summary.activityCostRateByIncome)}，平台补贴已单独展示。`,
       suggestion: '结合活动设计页核对满减、券和加码是否叠加过深，优先收紧低利润支付价区间。',
       currentText: rateText(summary.activityCostRate),
       baselineText: '建议低于35%'
@@ -1509,11 +1616,13 @@ export function businessReportExportRows(records: BusinessDailyRecord[], notes: 
         门店: row.storeName,
         平台门店: row.externalStoreName,
         实收: money(row.actualReceipt),
-        营业额: money(row.grossSales),
-        商家收入: money(row.merchantIncome),
+        优惠前总额: money(row.grossSales),
+        营业收入: money(row.merchantIncome),
         有效订单: row.validOrders,
         无效订单: row.invalidOrders,
         单均实付: money(row.averageReceipt),
+        顾客实付不含券: money(row.customerPayWithoutCoupon),
+        单均实付不含券: money(row.averagePayWithoutCoupon),
         曝光人数: row.exposureUsers,
         入店人数: row.visitUsers,
         下单人数: row.orderUsers,
@@ -1542,9 +1651,16 @@ export function businessReportExportRows(records: BusinessDailyRecord[], notes: 
         全链路订单转化率: funnel.exposureValidRate === null ? '' : rateText(funnel.exposureValidRate),
         漏斗主要断点: funnel.bottleneck,
         商家活动成本: money(row.merchantActivityCost),
-        平台补贴不计成本: money(row.platformSubsidy),
+        活动成本率_优惠前总额: row.grossSales > 0 ? rateText(row.merchantActivityCost / row.grossSales) : '',
+        活动成本率_营业收入: row.merchantIncome > 0 ? rateText(row.merchantActivityCost / row.merchantIncome) : '',
+        补贴及支出: money(row.subsidyAndExpense),
+        活动补贴合计: money(row.totalActivitySubsidy),
+        平台补贴: money(row.platformSubsidy),
+        其它支出: money(row.otherExpense),
         佣金及技术服务费: money(row.commission),
         配送服务费: money(row.deliveryServiceFee),
+        营业收入公式复算: money(row.merchantIncomeFormula),
+        营业收入公式差异: money(row.merchantIncomeFormulaGap),
         上架商品数: row.listedProducts || '',
         有交易商品数: row.tradedProducts || '',
         库存不足商品数: row.outOfStockProducts || '',

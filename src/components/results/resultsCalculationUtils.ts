@@ -39,8 +39,8 @@ export const DEFAULT_MEASUREMENT_SETTINGS: MeasurementSettings = {
   ignoreOutOfPayRange: true
 };
 
-const MEASUREMENT_MODEL_VERSION = 'unified-pay-band-v1';
-const ACTIVITY_PRICE_SCAN_MODEL_VERSION = 'activity-price-scan-v10';
+const MEASUREMENT_MODEL_VERSION = 'unified-pay-band-v2';
+const ACTIVITY_PRICE_SCAN_MODEL_VERSION = 'activity-price-scan-v11';
 
 export function waitForLoadingPaint() {
   return new Promise<void>(resolve => setTimeout(resolve, 30));
@@ -273,15 +273,12 @@ export const resultsDataRepository = createBrowserDataRepository<CalculatorState
 export type ResultsCalculationState = {
   activeResultWarnings: string[];
   isMeasurementCacheLoading: boolean;
-  isOptimizationLoading: boolean;
   isResultsLoading: boolean;
-  lastOptimizations: unknown[];
   measurementPayBandSize: number;
   measurementPersistenceMeta: MeasurementPersistenceMeta | null;
   resultPayBands: PriceBandRow[];
   resultRows: ComboEvaluationRow[];
   resultSummary: MeasurementResult['summary'];
-  runOptimization: () => Promise<void>;
   runResults: (settings?: MeasurementSettings) => Promise<void>;
   summary: Summary;
 };

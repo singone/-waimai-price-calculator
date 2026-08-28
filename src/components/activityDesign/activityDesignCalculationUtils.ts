@@ -16,6 +16,7 @@ import {
   PLATFORM_NAMES,
   pricingScenarioForStapleCount
 } from '../../domain/core';
+import { activityAmountByBusinessFormula } from '../../domain/businessFormula';
 import { roundMoney } from '../../domain/money';
 import type {
   ActivityBaseComboRow,
@@ -44,7 +45,7 @@ import {
 } from '../results/resultsCalculationUtils';
 import { normalizeActivityScanComboPools } from './activityDesignPageUtils';
 
-const ACTIVITY_PRICE_SCAN_MODEL_VERSION = 'activity-price-scan-v10';
+const ACTIVITY_PRICE_SCAN_MODEL_VERSION = 'activity-price-scan-v11';
 
 export function activityPriceScanRecordKey(storeId: string) {
   return `${storeId}::${ACTIVITY_PRICE_SCAN_MODEL_VERSION}`;
@@ -375,6 +376,12 @@ function buildActivityOriginalScanDetailRow(
   const finalPay = Math.max(0, roundMoney(afterBaseRed - redAddAmount));
   const fee = buildFeeSummary(state, store, finalPay);
   const netPay = Math.max(0, roundMoney(finalPay - fee.commission - fee.serviceFee - fee.freightSubsidy));
+  const activityAmount = activityAmountByBusinessFormula({
+    fullReduction: platformFull.amount,
+    baseRedAmount: baseRed.amount,
+    redAddOnAmount: redAddAmount,
+    freightSubsidy: fee.freightSubsidy
+  });
   const scenario = pricingScenarioForStapleCount(mainCombo.stapleCount);
   const profit = roundMoney(netPay - totals.costTotal);
   const profitRate = finalPay > 0 ? profit / finalPay : profit < 0 ? -1 : null;
@@ -396,7 +403,7 @@ function buildActivityOriginalScanDetailRow(
     finalPay,
     netPay,
     cost: totals.costTotal,
-    activityAmount: roundMoney(Math.max(0, originalTotal - finalPay)),
+    activityAmount,
     commission: fee.commission,
     serviceFee: fee.serviceFee,
     freightSubsidy: fee.freightSubsidy,
@@ -440,7 +447,7 @@ function buildActivityOriginalScanDetailRow(
     activityTargetDiscountRate: bucket.avgActivityTargetDiscountRate ?? bucket.weightedAvgActivityTargetDiscountRate ?? undefined,
     activityTargetPay: bucket.avgActivityTargetPay ?? bucket.weightedAvgActivityTargetPay ?? undefined,
     activityTargetDiscountAmount: bucket.avgActivityTargetDiscountAmount ?? bucket.weightedAvgActivityTargetDiscountAmount ?? undefined,
-    activityAlreadyDiscountAmount: bucket.avgActivityAlreadyDiscountAmount ?? bucket.weightedAvgActivityAlreadyDiscountAmount ?? roundMoney(Math.max(0, originalTotal - finalPay)),
+    activityAlreadyDiscountAmount: bucket.avgActivityAlreadyDiscountAmount ?? bucket.weightedAvgActivityAlreadyDiscountAmount ?? activityAmount,
     activityDesignSpace: bucket.avgActivityDesignSpace ?? bucket.weightedAvgActivityDesignSpace ?? undefined,
     activityNetPayBoundarySpace: bucket.avgActivityNetPayBoundarySpace ?? bucket.weightedAvgActivityNetPayBoundarySpace ?? undefined,
     activitySafeDiscountSpace: bucket.avgActivitySafeDiscountSpace ?? bucket.weightedAvgActivitySafeDiscountSpace ?? undefined,

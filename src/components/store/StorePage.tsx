@@ -31,7 +31,6 @@ import {
   uid as calculatorUid
 } from '../../data/calculatorState';
 import type {
-  ActivityCouponRecommendationMode,
   ActivityDesignObjective,
   ActivityDesignSettings,
   ActivityObjectiveStrategy,

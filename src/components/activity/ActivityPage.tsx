@@ -6,17 +6,22 @@ import type { TableColumnsType } from 'antd';
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import { deepClone, PLATFORM_NAMES } from '../../domain/core';
 import { money as formatMoney } from '../../utils/format';
-import type { Activities, Coupon, DiscountActivity, FullReduction, Platform, RedAddOn } from '../../domain/types';
+import { useCalculatorPageProps } from '../shared/CalculatorContext';
+import { useCalculatorStateCommit } from '../shared/useCalculatorStateCommit';
+import { currentStoreFrom } from '../../data/calculatorState';
+import type { Activities, CalculatorState, Coupon, DiscountActivity, FullReduction, Platform, RedAddOn, Store } from '../../domain/types';
 
 const { Text } = Typography;
 
 type ActivityPageProps = {
+  calculatorState: CalculatorState;
+  setCalculatorState: React.Dispatch<React.SetStateAction<CalculatorState>>;
+  store: Store;
   platform: Platform;
   storeName: string;
   activities: Activities;
   money: (value: unknown) => string;
   deepClone: <T>(value: T) => T;
-  onSaveActivities: (platform: Platform, activities: Activities) => Promise<unknown> | unknown;
 };
 
 function SimpleActivityTable<T extends FullReduction | RedAddOn>({
@@ -181,11 +186,15 @@ function DiscountActivityTable({
 }
 
 export function ActivityPage(props: Pick<ActivityPageProps, 'platform'> & Partial<Omit<ActivityPageProps, 'platform'>>) {
-  const { platform } = props;
-  const storeName = props.storeName as string;
-  const activities = (props.activities as unknown as Record<Platform, Activities>)?.[platform] || props.activities as Activities;
-  const money = props.money || formatMoney;
-  const onSaveActivities = props.onSaveActivities as (platform: Platform, activities: Activities) => Promise<unknown> | unknown;
+  const contextProps = useCalculatorPageProps(props);
+  const { platform } = contextProps;
+  const storeName = contextProps.storeName as string;
+  const activities = contextProps.activities || contextProps.store.activities[platform];
+  const money = contextProps.money || formatMoney;
+  const commitCalculatorState = useCalculatorStateCommit(contextProps.calculatorState, contextProps.setCalculatorState);
+  const saveActivities = (nextPlatform: Platform, nextActivities: Activities) => commitCalculatorState(draft => {
+    currentStoreFrom(draft).activities[nextPlatform] = deepClone(nextActivities);
+  }, `${PLATFORM_NAMES[nextPlatform]}活动已保存到浏览器数据库。`);
   const platformName = PLATFORM_NAMES[platform];
   const [draft, setDraft] = useState<Activities | null>(null);
   const [isSaving, setIsSaving] = useState(false);
@@ -216,7 +225,7 @@ export function ActivityPage(props: Pick<ActivityPageProps, 'platform'> & Partia
     if (!draft) return;
     setIsSaving(true);
     try {
-      await onSaveActivities(platform, deepClone(draft));
+      await saveActivities(platform, deepClone(draft));
       setDraft(null);
     } finally {
       setIsSaving(false);

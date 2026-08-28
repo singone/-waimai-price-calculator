@@ -7,9 +7,10 @@ import React from 'react';
 import { Button, Card, Col, Input, InputNumber, Modal, Row, Space, Steps, Table, Tabs, Tag, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
-import { pathForPage } from '../../pageRoutes';
+import { pathForPage } from '../../app/routes';
 import { PayBandAnalysisPanel } from '../shared/PayBandAnalysisPanel';
 import { ProductDiscountSuggestionSection } from '../shared/ProductDiscountSuggestionSection';
+import { useCalculatorPageProps } from '../shared/CalculatorContext';
 import { useCalculatorStateCommit } from '../shared/useCalculatorStateCommit';
 import { useStoreActivityDesignSettings } from '../shared/useStoreActivityDesignSettings';
 import { PLATFORM_NAMES, PLATFORMS } from '../../domain/core';
@@ -56,118 +57,54 @@ import {
   type ActivityFullReductionLogSegment,
   type ActivityFullReductionLogSegmentType
 } from './activityDesignPageUtils';
+import {
+  activityObjectiveOptionsFromSettings,
+  normalizeActivityObjectiveStrategies
+} from '../../data/calculatorState';
 import { useActivityDesignCalculationState } from './useActivityDesignCalculationState';
 import { useActivityDesignPageState } from './useActivityDesignPageState';
 
-const AntvDualAxes = dynamic(() => import('@ant-design/charts').then(mod => mod.DualAxes), { ssr: false });
+const AntvColumn = dynamic(() => import('@ant-design/charts').then(mod => mod.Column), { ssr: false });
 const { Text, Title } = Typography;
 
 export type ActivityDesignPageProps = Record<string, any>;
 
-function PriceBucketProfitChart({ rows, money }: { rows: ActivityPriceBucketRow[]; money: (value: unknown) => string }) {
+/**
+ * 渲染原价整数桶的组合数分布，保持单一纵轴避免数量和金额指标混轴。
+ */
+function PriceBucketComboCountChart({ rows }: { rows: ActivityPriceBucketRow[] }) {
   const data = rows.slice(0, 80).map(row => ({
     key: row.key,
     label: String(row.priceBucket),
     comboCount: row.comboCount,
-    avgFinalPay: row.avgFinalPay ?? row.weightedAvgFinalPay ?? 0,
-    avgNetPay: row.avgNetPay ?? row.weightedAvgNetPay ?? 0,
-    avgActivitySafeDiscountSpace: row.avgActivitySafeDiscountSpace ?? row.weightedAvgActivitySafeDiscountSpace ?? 0,
     riskCount: row.riskCount,
     platformName: row.platformName
   }));
   if (!data.length) return <div className="chart-empty">暂无原价整数扫描数据</div>;
   return (
     <div className="chart-frame">
-      <AntvDualAxes
+      <AntvColumn
         data={data}
         height={280}
         autoFit
         xField="label"
+        yField="comboCount"
         axis={{
           x: { title: '原价整数', labelAutoRotate: false },
           y: { title: '组合数', labelFormatter: (value: number | string) => `${Math.round(Number(value))}` }
         }}
         scale={{
-          y: { independent: true, nice: true },
-          color: { range: ['#5b7c99', '#b85f32'] }
+          y: { nice: true }
         }}
-        children={[
-          {
-            type: 'interval',
-            yField: 'comboCount',
-            style: {
-              fill: '#5b7c99',
-              radiusTopLeft: 4,
-              radiusTopRight: 4
-            }
-          },
-          {
-            type: 'line',
-            yField: 'avgFinalPay',
-            shapeField: 'smooth',
-            axis: {
-              y: {
-                position: 'right',
-                title: '平均支付价 / 到手价 / 活动空间',
-                labelFormatter: (value: number | string) => `¥${money(value)}`
-              }
-            },
-            style: {
-              stroke: '#496f5d',
-              lineWidth: 2.4
-            },
-            point: {
-              sizeField: 4,
-              style: {
-                fill: (datum: { riskCount?: number }) => (datum.riskCount || 0) > 0 ? '#d4380d' : '#496f5d',
-                stroke: '#fff',
-                lineWidth: 1
-              }
-            }
-          },
-          {
-            type: 'line',
-            yField: 'avgNetPay',
-            shapeField: 'smooth',
-            style: {
-              stroke: '#b85f32',
-              lineDash: [5, 4],
-              lineWidth: 2.2
-            },
-            point: {
-              sizeField: 3,
-              style: {
-                fill: '#b85f32',
-                stroke: '#fff',
-                lineWidth: 1
-              }
-            }
-          },
-          {
-            type: 'line',
-            yField: 'avgActivitySafeDiscountSpace',
-            shapeField: 'smooth',
-            style: {
-              stroke: '#6d6aa8',
-              lineWidth: 2.2
-            },
-            point: {
-              sizeField: 3,
-              style: {
-                fill: '#6d6aa8',
-                stroke: '#fff',
-                lineWidth: 1
-              }
-            }
-          }
-        ]}
+        style={{
+          fill: '#5b7c99',
+          radiusTopLeft: 4,
+          radiusTopRight: 4
+        }}
         tooltip={{
           title: (datum: { platformName?: string; label?: string }) => `${datum.platformName || ''} 原价 ${datum.label || ''}`.trim(),
           items: [
             { field: 'comboCount', name: '组合数' },
-            { field: 'avgFinalPay', name: '平均支付价', valueFormatter: (value: number) => Number.isFinite(Number(value)) ? `¥${money(value)}` : '-' },
-            { field: 'avgNetPay', name: '平均到手价', valueFormatter: (value: number) => Number.isFinite(Number(value)) ? `¥${money(value)}` : '-' },
-            { field: 'avgActivitySafeDiscountSpace', name: '安全活动空间', valueFormatter: (value: number) => Number.isFinite(Number(value)) ? `¥${money(value)}` : '-' },
             { field: 'riskCount', name: '到手边界风险数' }
           ]
         }}
@@ -178,12 +115,10 @@ function PriceBucketProfitChart({ rows, money }: { rows: ActivityPriceBucketRow[
 
 export function ActivityDesignPage(pageProps: ActivityDesignPageProps = {}) {
   const router = useRouter();
-  const props = pageProps;
+  const props = useCalculatorPageProps(pageProps);
   const {
-    activityObjectiveOptionsFromSettings,
     calculatorState,
     setCalculatorState,
-    normalizeActivityObjectiveStrategies,
     store
   } = props;
   const commitCalculatorState = useCalculatorStateCommit(calculatorState, setCalculatorState);
@@ -1060,7 +995,7 @@ export function ActivityDesignPage(pageProps: ActivityDesignPageProps = {}) {
                 <Tag color="cyan">凑单小吃组合 {platformAddOnComboCount}</Tag>
                 <Tag>原价桶 {platformOriginalBucketCount}</Tag>
               </Space>
-              <PriceBucketProfitChart rows={originalPriceBuckets} money={money} />
+              <PriceBucketComboCountChart rows={originalPriceBuckets} />
               <Table loading={isActivityDesignLoading} rowKey="key" size="small" columns={activityPriceBucketColumns} dataSource={originalPriceBuckets} pagination={tablePagination(20)} scroll={{ x: 1720 }} tableLayout="fixed" />
             </Space>
           </Card>
@@ -1159,7 +1094,7 @@ export function ActivityDesignPage(pageProps: ActivityDesignPageProps = {}) {
                 { title: '支付价核验' }
               ]}
             />
-            <Text type="secondary">第一步只做原价整数扫描；确认扫描后再生成活动路线。路线按全路线基准让利率和目标阶梯覆盖反推满减、优惠券和加码空间，只用用户实付和商家到手价判断活动边界。</Text>
+            <Text type="secondary">第一步只做原价整数扫描；确认扫描后再生成活动路线。路线按全路线基准让利率和目标阶梯覆盖反推满减、优惠券和加码空间，并用用户实付、商家活动金额和商家到手价判断活动边界。</Text>
             <Space wrap size={[6, 6]}>
               <Text type="secondary">门店活动设计配置</Text>
               <Tag>原价≥起送 ¥{money(store.startPrice)}</Tag>

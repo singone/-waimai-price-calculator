@@ -1,8 +1,9 @@
 'use client';
 
-import { Button, Layout, Menu, Select, Space, Upload } from 'antd';
-import { DownloadOutlined, PlusOutlined, ReloadOutlined, SaveOutlined, UploadOutlined } from '@ant-design/icons';
-import { isPageKey, type PageKey } from '../../pageRoutes';
+import { useState } from 'react';
+import { Button, Layout, Menu, Popover, Select, Space, Upload } from 'antd';
+import { DownloadOutlined, MoreOutlined, PlusOutlined, ReloadOutlined, SaveOutlined, UploadOutlined } from '@ant-design/icons';
+import { isPageKey, type AppNavigationItem, type PageKey } from '../../app/routes';
 import { uploadProps } from '../../utils/upload';
 
 const { Header, Sider, Content } = Layout;
@@ -14,6 +15,7 @@ type CalculatorShellStoreOption = {
 
 type CalculatorShellProps = {
   activePage: PageKey;
+  navigationItems: AppNavigationItem[];
   selectedStoreId: string;
   stores: CalculatorShellStoreOption[];
   children: React.ReactNode;
@@ -27,22 +29,12 @@ type CalculatorShellProps = {
   onResetState: () => void;
 };
 
-const MENU_ITEMS: Array<{ key: PageKey; label: string }> = [
-  { key: 'store', label: '门店维护' },
-  { key: 'products', label: '商品维护' },
-  { key: 'system-strategy', label: '系统活动策略' },
-  { key: 'platform', label: '平台通用规则' },
-  { key: 'meituan', label: '美团活动' },
-  { key: 'eleme', label: '饿了么活动' },
-  { key: 'activity-design', label: '活动设计' },
-  { key: 'order-analysis', label: '订单分析' },
-  { key: 'data-analysis', label: '数据分析' },
-  { key: 'pricing', label: '定价评估' },
-  { key: 'results', label: '测算结果' }
-];
-
+/**
+ * 渲染计算器的全局头部、门店操作区、侧边导航和页面内容区域。
+ */
 export function CalculatorShell({
   activePage,
+  navigationItems,
   selectedStoreId,
   stores,
   children,
@@ -55,19 +47,46 @@ export function CalculatorShell({
   onImportConfig,
   onResetState
 }: CalculatorShellProps) {
+  const [mobileActionsOpen, setMobileActionsOpen] = useState(false);
+  const navigationOptions = navigationItems.map(item => ({ value: item.key, label: item.label }));
+  const storeOptions = stores.map(item => ({ value: item.id, label: item.name }));
+
+  const runMobileAction = (handler: () => void) => {
+    setMobileActionsOpen(false);
+    handler();
+  };
+
+  const mobileActions = (
+    <div className="mobile-actions-popover">
+      <Button block icon={<SaveOutlined />} onClick={() => runMobileAction(onSaveState)}>保存设置</Button>
+      <Button block onClick={() => runMobileAction(onLoadState)}>读取保存</Button>
+      <Button block icon={<DownloadOutlined />} onClick={() => runMobileAction(onExportConfig)}>导出配置</Button>
+      <Upload
+        className="mobile-actions-upload"
+        {...uploadProps(file => {
+          setMobileActionsOpen(false);
+          onImportConfig(file);
+        })}
+      >
+        <Button block icon={<UploadOutlined />}>导入配置</Button>
+      </Upload>
+      <Button block danger icon={<ReloadOutlined />} onClick={() => runMobileAction(onResetState)}>恢复示例</Button>
+    </div>
+  );
+
   return (
     <Layout className="app-shell">
       <Header className="app-header">
-        <div>
+        <div className="app-header-main">
           <h1 className="app-title">外卖门店活动测算工具</h1>
           <p className="app-subtitle">按门店维护商品、平台活动和利润率阶梯，测算组合利润并导出结果。</p>
         </div>
-        <Space wrap>
+        <Space className="app-header-actions desktop-header-actions" wrap>
           <Select
-            style={{ width: 220 }}
+            className="store-select"
             value={selectedStoreId}
             onChange={onSelectStore}
-            options={stores.map(item => ({ value: item.id, label: item.name }))}
+            options={storeOptions}
           />
           <Button icon={<PlusOutlined />} onClick={onAddStore}>新增门店</Button>
           <Button icon={<SaveOutlined />} onClick={onSaveState}>保存设置</Button>
@@ -76,16 +95,48 @@ export function CalculatorShell({
           <Upload {...uploadProps(onImportConfig)}><Button icon={<UploadOutlined />}>导入配置</Button></Upload>
           <Button danger icon={<ReloadOutlined />} onClick={onResetState}>恢复示例</Button>
         </Space>
+        <div className="mobile-header-controls">
+          <Select
+            className="mobile-store-select"
+            value={selectedStoreId}
+            onChange={onSelectStore}
+            options={storeOptions}
+          />
+          <Select
+            className="mobile-page-select"
+            value={activePage}
+            onChange={value => {
+              if (isPageKey(value)) onNavigate(value);
+            }}
+            options={navigationOptions}
+          />
+          <Button
+            className="mobile-icon-button"
+            icon={<PlusOutlined />}
+            onClick={onAddStore}
+            title="新增门店"
+            aria-label="新增门店"
+          />
+          <Popover
+            content={mobileActions}
+            open={mobileActionsOpen}
+            onOpenChange={setMobileActionsOpen}
+            placement="bottomRight"
+            trigger="click"
+          >
+            <Button className="mobile-icon-button" icon={<MoreOutlined />} title="更多操作" aria-label="更多操作" />
+          </Popover>
+        </div>
       </Header>
-      <Layout>
-        <Sider width={210} theme="light" breakpoint="lg" collapsedWidth={0}>
+      <Layout className="app-main-layout">
+        <Sider className="desktop-sider" width={210} theme="light" breakpoint="lg" collapsedWidth={0}>
           <Menu
             className="side-menu"
             selectedKeys={[activePage]}
             onClick={item => {
               if (isPageKey(item.key)) onNavigate(item.key);
             }}
-            items={MENU_ITEMS}
+            items={navigationItems}
           />
         </Sider>
         <Content className="app-content">{children}</Content>

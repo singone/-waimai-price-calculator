@@ -6,8 +6,10 @@ import { SaveOutlined } from '@ant-design/icons';
 import { STAPLE_SCENARIOS } from '../../config/calculation';
 import { deepClone, stapleScenarioName } from '../../domain/core';
 import { money as formatMoney } from '../../utils/format';
+import { useCalculatorPageProps } from '../shared/CalculatorContext';
+import { useCalculatorStateCommit } from '../shared/useCalculatorStateCommit';
 import { PricingStrategyCard, ProfitTargetsCard, RedTierCard } from '../shared/FeeRuleCards';
-import type { FeeRule, StapleScenario } from '../../domain/types';
+import type { CalculatorState, FeeRule, StapleScenario } from '../../domain/types';
 
 const { Text } = Typography;
 
@@ -23,11 +25,12 @@ type PlatformFeeField =
   | 'freightAbove5';
 
 type PlatformPageProps = {
+  calculatorState: CalculatorState;
+  setCalculatorState: React.Dispatch<React.SetStateAction<CalculatorState>>;
   fee: FeeRule;
   money: (value: unknown) => string;
   stapleScenarioName: (scenario: StapleScenario) => string;
   deepClone: <T>(value: T) => T;
-  onSaveFee: (fee: FeeRule) => Promise<unknown> | unknown;
 };
 
 const PLATFORM_FEE_FIELDS: Array<[PlatformFeeField, string]> = [
@@ -43,9 +46,13 @@ const PLATFORM_FEE_FIELDS: Array<[PlatformFeeField, string]> = [
 ];
 
 export function PlatformPage(props: Partial<PlatformPageProps> = {}) {
-  const fee = props.fee as FeeRule;
-  const money = props.money || formatMoney;
-  const onSaveFee = props.onSaveFee as (fee: FeeRule) => Promise<unknown> | unknown;
+  const contextProps = useCalculatorPageProps(props);
+  const commitCalculatorState = useCalculatorStateCommit(contextProps.calculatorState, contextProps.setCalculatorState);
+  const fee = contextProps.fee || contextProps.calculatorState.platformRules;
+  const money = contextProps.money || formatMoney;
+  const savePlatformFee = (nextFee: FeeRule) => commitCalculatorState(draft => {
+    draft.platformRules = deepClone(nextFee);
+  }, '平台通用规则已保存到浏览器数据库。');
   const [draft, setDraft] = useState<FeeRule | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const isEditing = draft !== null;
@@ -75,7 +82,7 @@ export function PlatformPage(props: Partial<PlatformPageProps> = {}) {
     if (!draft) return;
     setIsSaving(true);
     try {
-      await onSaveFee(deepClone(draft));
+      await savePlatformFee(deepClone(draft));
       setDraft(null);
     } finally {
       setIsSaving(false);

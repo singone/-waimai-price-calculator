@@ -4,10 +4,18 @@ import React from 'react';
 import { App as AntApp, Button, Card, Col, Input, InputNumber, Modal, Row, Select, Space, Table, Tag, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { EMPTY_SUMMARY, STAPLE_SCENARIOS } from '../../config/calculation';
-import { stapleScenarioName } from '../../domain/core';
+import { deepClone, stapleScenarioName } from '../../domain/core';
+import { PlatformUtils } from '../../domain/platform';
 import { money, rateText, severityColor, severityLabel, severityRank } from '../../utils/format';
 import { tablePagination } from '../../utils/table';
 import { isCalculationAbortError, runCalculationTask } from '../../workers/calculationClient';
+import { useCalculatorPageProps } from '../shared/CalculatorContext';
+import {
+  currentStoreFrom,
+  effectiveFeeRule,
+  normalizePricingStrategy,
+  normalizeState
+} from '../../data/calculatorState';
 import type {
   CalculatorState,
   FeeRule,
@@ -41,9 +49,9 @@ type PricingPlatformFilter = Platform | 'all';
 
 type PricingEvaluationPageProps = {
   calculatorState: CalculatorState;
+  setCalculatorState: React.Dispatch<React.SetStateAction<CalculatorState>>;
   pricingRule: PricingEvaluationRule;
   pricingStrategy: FeeRule['pricingStrategy'];
-  onApplySuggestedPrice: (row: Pick<PricingProductRow, 'suggestedPrice' | 'productId' | 'platform' | 'platformName'>) => void;
 };
 
 const PRICING_EVALUATION_MAX_DURATION_MS = 30000;
@@ -91,11 +99,18 @@ function enabledPricingStrategyCount(strategy: Record<StapleScenario, PricingStr
 export function PricingEvaluationPage(pageProps: Partial<PricingEvaluationPageProps> = {}) {
   const { message } = AntApp.useApp();
   const {
-  calculatorState,
-  pricingRule,
-  pricingStrategy,
-  onApplySuggestedPrice
-  } = pageProps as PricingEvaluationPageProps;
+    calculatorState,
+    setCalculatorState,
+    store,
+    pricingRule: pagePricingRule,
+    pricingStrategy: pagePricingStrategy
+  } = useCalculatorPageProps(pageProps);
+  const effectiveRule = React.useMemo(
+    () => effectiveFeeRule(calculatorState, store),
+    [calculatorState, store]
+  );
+  const pricingRule = pagePricingRule || effectiveRule.pricingEvaluation;
+  const pricingStrategy = pagePricingStrategy || normalizePricingStrategy(effectiveRule.pricingStrategy);
   const activePricingTaskRef = React.useRef<AbortController | null>(null);
   const [pricingEvaluation, setPricingEvaluation] = React.useState<PricingEvaluationResult | null>(null);
   const [isLoading, setIsLoading] = React.useState(false);
@@ -146,7 +161,19 @@ export function PricingEvaluationPage(pageProps: Partial<PricingEvaluationPagePr
     }
   };
   const applySuggestedPrice = (row: Pick<PricingProductRow, 'suggestedPrice' | 'productId' | 'platform' | 'platformName'>) => {
-    onApplySuggestedPrice(row);
+    if (row.suggestedPrice === null) {
+      message.warning('当前商品没有可应用的建议价。');
+      return;
+    }
+    const suggestedPrice = row.suggestedPrice;
+    setCalculatorState(prev => {
+      const draft = deepClone(prev);
+      const product = currentStoreFrom(draft).products.find(item => item.id === row.productId);
+      if (!product) return prev;
+      product[PlatformUtils.priceField(row.platform)] = suggestedPrice === product.price ? '' : suggestedPrice;
+      return normalizeState(draft);
+    });
+    message.success(`已应用到${row.platformName}价，请重新生成定价评估查看结果。`);
     setPricingEvaluation(null);
     setSelectedPricingProductKey('');
   };

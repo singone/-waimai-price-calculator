@@ -1,11 +1,7 @@
 import type {
   ComboEvaluationRow,
-  Coupon,
-  FullReduction,
   Platform,
-  PriceBandRow,
-  ProfitTarget,
-  RedAddOn
+  PriceBandRow
 } from '../../domain/types';
 
 export type SelectedResultProduct = {
@@ -39,24 +35,4 @@ export type ResultPlatformView = {
   productRows: ComboEvaluationRow[];
   riskRows: ComboEvaluationRow[];
   visibleRows: ComboEvaluationRow[];
-};
-
-export type OptimizationRow = {
-  key: string;
-  platform: Platform;
-  platformName: string;
-  full: FullReduction;
-  coupon: Coupon;
-  redAddOn: RedAddOn;
-  target: ProfitTarget;
-  coverage: number;
-  score: number;
-  finalPay: number;
-  profitRate: number | null;
-  example: {
-    items: ComboEvaluationRow['items'];
-    finalPay: number;
-    profitRate: number | null;
-    score: number;
-  };
 };

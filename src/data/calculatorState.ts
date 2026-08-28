@@ -1,4 +1,4 @@
-import { DEFAULT_PAGE_KEY, isPageKey } from '../pageRoutes';
+import { DEFAULT_PAGE_KEY, isPageKey } from '../app/routes';
 import {
   activityPriceScanRecordKey,
   buildPersistedActivityPriceScanRecord
@@ -40,7 +40,6 @@ import {
   DEFAULT_ACTIVITY_DESIGN_SETTINGS,
   DEFAULT_ACTIVITY_OBJECTIVE_TEMPLATES,
   DEFAULT_ACTIVITY_STRATEGY_SETTINGS,
-  activityObjectiveOptionFromTemplate,
   activityObjectiveOptionsFromTemplates,
   defaultActivityCouponRecommendationPolicy,
   defaultActivityObjectivePayTargets,
@@ -174,10 +173,16 @@ export const defaultState: CalculatorState = {
   ]
 };
 
+/**
+ * 复制纯 JSON 状态对象，避免直接修改 React 状态引用。
+ */
 export function deepClone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T;
 }
 
+/**
+ * 生成前端本地使用的临时业务 id。
+ */
 export function uid(prefix: string) {
   return `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`;
 }
@@ -266,10 +271,6 @@ function money(value: unknown) {
   return (Math.round((Number(value) || 0) * 100) / 100).toFixed(2);
 }
 
-function roundMoney(value: unknown) {
-  return Math.round((Number(value) || 0) * 100) / 100;
-}
-
 function createScenarioRecord<T>(factory: () => T): Record<StapleScenario, T> {
   return {
     single: factory(),
@@ -301,6 +302,9 @@ export function activityDesignSettingsFromStore(store: Pick<Store, 'activityDesi
   return normalizeActivityDesignSettings(store.activityDesignSettings);
 }
 
+/**
+ * 合并系统活动策略和门店覆盖项，得到最终参与活动设计的参数。
+ */
 export function effectiveActivityDesignSettingsFromStore(
   store: Pick<Store, 'activityDesignSettings'>,
   strategySettings: ActivityStrategySettings
@@ -373,10 +377,16 @@ function normalizeOptionalInteger(value: unknown, min: number, fallback: number)
   return Math.max(min, Math.floor(toNumber(text, fallback)));
 }
 
+/**
+ * 从全局状态中取得当前选中的门店，异常情况下回退到第一个门店。
+ */
 export function currentStoreFrom(state: CalculatorState) {
   return state.stores.find(store => store.id === state.selectedStoreId) || state.stores[0];
 }
 
+/**
+ * 计算门店实际使用的平台费用规则，支持门店自定义规则覆盖全局规则。
+ */
 export function effectiveFeeRule(state: CalculatorState, store = currentStoreFrom(state)): FeeRule {
   return store.usePlatformFee || !store.customFeeRule
     ? deepClone(state.platformRules)
@@ -405,6 +415,9 @@ function normalizeProduct(product: Partial<Product>): Product {
   };
 }
 
+/**
+ * 将导入或缓存中的商品数组归一化，并保证商品 id 唯一。
+ */
 export function normalizeProductList(value: unknown): Product[] {
   if (!Array.isArray(value)) return [];
   const seenIds = new Set<string>();
@@ -471,6 +484,9 @@ function normalizePricingEvaluationRule(rule: Partial<PricingEvaluationRule> | u
   };
 }
 
+/**
+ * 归一化单个经营目标模板，确保目标区间和展示字段完整。
+ */
 export function normalizeActivityObjectiveTemplate(
   value: Partial<ActivityObjectiveTemplate> | undefined,
   fallback: ActivityObjectiveTemplate
@@ -492,6 +508,9 @@ export function normalizeActivityObjectiveTemplate(
   };
 }
 
+/**
+ * 归一化经营目标模板，并补齐系统默认目标。
+ */
 export function normalizeActivityObjectiveTemplates(value: unknown): ActivityObjectiveTemplate[] {
   const rows = Array.isArray(value) ? value as Partial<ActivityObjectiveTemplate>[] : [];
   const fallbackByKey = new Map(DEFAULT_ACTIVITY_OBJECTIVE_TEMPLATES.map(row => [row.key, row]));
@@ -517,6 +536,9 @@ export function normalizeActivityObjectiveTemplates(value: unknown): ActivityObj
   return normalized;
 }
 
+/**
+ * 根据目标模板和策略配置生成可选经营目标列表。
+ */
 export function activityObjectiveOptionsFromSettings(settings: Pick<ActivityStrategySettings | ActivityDesignSettings, 'objectiveTemplates' | 'objectiveStrategies'> | undefined) {
   const templates = normalizeActivityObjectiveTemplates(settings?.objectiveTemplates);
   const strategyKeys = Object.keys(settings?.objectiveStrategies || {});
@@ -692,6 +714,9 @@ function normalizeActivityOriginalDiscountTiers(value: unknown, fallback: Activi
   return hasExplicitRows ? [] : fallback.map(row => ({ ...row }));
 }
 
+/**
+ * 归一化经营目标策略，兼容旧版 objectivePayTargets 配置。
+ */
 export function normalizeActivityObjectiveStrategies(
   value: Partial<Record<RedesignedActivityDesignObjective, Partial<ActivityObjectiveStrategy>>> | undefined,
   baseTargetProfitRate = DEFAULT_ACTIVITY_DESIGN_SETTINGS.targetProfitRate,
@@ -732,6 +757,9 @@ export function normalizeActivityObjectiveStrategies(
   }, {} as Record<RedesignedActivityDesignObjective, ActivityObjectiveStrategy>);
 }
 
+/**
+ * 归一化系统级活动策略配置。
+ */
 export function normalizeActivityStrategySettings(value: Partial<ActivityStrategySettings> | undefined): ActivityStrategySettings {
   const objectiveTemplates = normalizeActivityObjectiveTemplates(value?.objectiveTemplates);
   const objectiveOptions = activityObjectiveOptionsFromTemplates(objectiveTemplates);
@@ -852,6 +880,9 @@ function normalizePricingStrategyTier(row: Partial<PricingStrategyTier> | undefi
   };
 }
 
+/**
+ * 归一化按主食份数区分的定价策略阶梯。
+ */
 export function normalizePricingStrategy(data: Partial<Record<StapleScenario, Partial<PricingStrategyTier>[]>> | undefined): Record<StapleScenario, PricingStrategyTier[]> {
   const strategy = createScenarioRecord<PricingStrategyTier[]>(() => []);
   STAPLE_SCENARIOS.forEach(scenario => {
@@ -866,6 +897,9 @@ export function normalizePricingStrategy(data: Partial<Record<StapleScenario, Pa
   return strategy;
 }
 
+/**
+ * 将外部输入、缓存或导入配置转换成完整可用的计算器状态。
+ */
 export function normalizeState(data: unknown): CalculatorState {
   if (!data || typeof data !== 'object') return deepClone(defaultState);
   const raw = data as Partial<CalculatorState>;

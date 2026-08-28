@@ -1,4 +1,10 @@
 import * as XLSX from 'xlsx';
+import {
+  goodsOriginalTotal,
+  orderOriginalTotal,
+  otherSubsidyAmount,
+  subsidyRate
+} from './businessFormula';
 import { PLATFORM_NAMES, PLATFORMS } from './core';
 import { average, roundMoney } from './money';
 import type { Platform, Product, Severity } from './types';
@@ -48,6 +54,7 @@ export type OrderDetailRecord = {
   activityText: string;
   activityFlags: OrderActivityFlags;
   grossOriginal: number;
+  orderOriginal: number;
   productOriginal: number;
   packageFee: number;
   deliveryFee: number;
@@ -55,8 +62,10 @@ export type OrderDetailRecord = {
   totalSubsidy: number;
   merchantSubsidy: number;
   platformSubsidy: number;
+  otherSubsidy: number;
   merchantCost: number;
   discountRate: number | null;
+  orderDiscountRate: number | null;
 };
 
 export type OrderImportBatch = {
@@ -95,16 +104,21 @@ export type OrderSummary = {
   platformCount: number;
   customerPay: number;
   grossOriginal: number;
+  orderOriginal: number;
   productOriginal: number;
   totalSubsidy: number;
   merchantSubsidy: number;
   platformSubsidy: number;
+  otherSubsidy: number;
   avgPay: number;
   avgOriginal: number;
+  avgOrderOriginal: number;
   avgDiscount: number;
   discountRate: number | null;
+  orderDiscountRate: number | null;
   merchantSubsidyPerOrder: number;
   platformSubsidyPerOrder: number;
+  otherSubsidyPerOrder: number;
 };
 
 export type OrderAggregateRow = OrderSummary & {
@@ -413,8 +427,13 @@ export function normalizeOrderDetailRecord(row: Partial<OrderDetailRecord> | und
     .filter((item): item is OrderProductItem => Boolean(item));
   const activityFlags: OrderActivityFlags = { ...emptyOrderActivityFlags(), ...(row?.activityFlags || {}) };
   const grossOriginal = Math.max(0, toMoneyNumber(row?.grossOriginal, 0));
+  const deliveryFee = Math.max(0, toMoneyNumber(row?.deliveryFee, 0));
+  const orderOriginal = Math.max(0, toMoneyNumber(row?.orderOriginal, grossOriginal + deliveryFee));
   const customerPay = Math.max(0, toMoneyNumber(row?.customerPay, 0));
-  const totalSubsidy = Math.max(0, toMoneyNumber(row?.totalSubsidy, 0));
+  const totalSubsidy = toMoneyNumber(row?.totalSubsidy, 0);
+  const merchantSubsidy = toMoneyNumber(row?.merchantSubsidy, 0);
+  const platformSubsidy = toMoneyNumber(row?.platformSubsidy, 0);
+  const otherSubsidy = toMoneyNumber(row?.otherSubsidy, otherSubsidyAmount({ totalSubsidy, merchantSubsidy, platformSubsidy }));
   return {
     key: orderId,
     storeId: String(row?.storeId || ''),
@@ -450,15 +469,18 @@ export function normalizeOrderDetailRecord(row: Partial<OrderDetailRecord> | und
     activityText: String(row?.activityText || ''),
     activityFlags,
     grossOriginal,
+    orderOriginal,
     productOriginal: Math.max(0, toMoneyNumber(row?.productOriginal, 0)),
     packageFee: Math.max(0, toMoneyNumber(row?.packageFee, 0)),
-    deliveryFee: Math.max(0, toMoneyNumber(row?.deliveryFee, 0)),
+    deliveryFee,
     customerPay,
     totalSubsidy,
-    merchantSubsidy: Math.max(0, toMoneyNumber(row?.merchantSubsidy, 0)),
-    platformSubsidy: Math.max(0, toMoneyNumber(row?.platformSubsidy, 0)),
-    merchantCost: Math.max(0, toMoneyNumber(row?.merchantCost, 0)),
-    discountRate: grossOriginal > 0 ? totalSubsidy / grossOriginal : null
+    merchantSubsidy,
+    platformSubsidy,
+    otherSubsidy,
+    merchantCost: toMoneyNumber(row?.merchantCost, merchantSubsidy),
+    discountRate: subsidyRate(totalSubsidy, grossOriginal),
+    orderDiscountRate: subsidyRate(totalSubsidy, orderOriginal)
   };
 }
 
@@ -654,10 +676,12 @@ function parseMeituanOrderRecord(row: unknown[], header: unknown[], warnings: st
   const productOriginal = businessNumber(row, orderColumn(header, ['商品原价']));
   const packageFee = businessNumber(row, orderColumn(header, ['包装费']));
   const deliveryType = businessText(row, orderColumn(header, ['配送类型']));
+  const deliveryFee = businessNumber(row, orderColumn(header, ['配送费']));
   const customerPay = businessNumber(row, orderColumn(header, ['订单实付']));
   const totalSubsidy = businessNumber(row, orderColumn(header, ['活动补贴(平台+商家)', '活动补贴']));
   const merchantSubsidy = businessNumber(row, orderColumn(header, ['商家活动支出']));
-  const platformSubsidy = Math.max(0, roundMoney(totalSubsidy - merchantSubsidy));
+  const platformSubsidy = businessNumber(row, orderColumn(header, ['平台补贴']), roundMoney(totalSubsidy - merchantSubsidy));
+  const otherSubsidy = otherSubsidyAmount({ totalSubsidy, merchantSubsidy, platformSubsidy });
   const isPinghaofan = parseOrderYesNo(row[orderColumn(header, ['是否拼好饭订单'])]) || /拼好/.test(deliveryType);
   const isMagicCoupon = parseOrderYesNo(row[orderColumn(header, ['神券订单'])]);
   const isOutsitePromotion = parseOrderYesNo(row[orderColumn(header, ['神券-站外推广订单'])]);
@@ -665,7 +689,8 @@ function parseMeituanOrderRecord(row: unknown[], header: unknown[], warnings: st
     pinghaofan: isPinghaofan,
     magicCoupon: isMagicCoupon
   });
-  const grossOriginal = roundMoney(productOriginal + packageFee);
+  const grossOriginal = goodsOriginalTotal(productOriginal, packageFee);
+  const orderOriginal = businessNumber(row, orderColumn(header, ['订单原价']), orderOriginalTotal(productOriginal, packageFee, deliveryFee));
   return {
     platform: 'meituan',
     platformName: PLATFORM_NAMES.meituan,
@@ -693,15 +718,18 @@ function parseMeituanOrderRecord(row: unknown[], header: unknown[], warnings: st
     activityText: base.activityText,
     activityFlags,
     grossOriginal,
+    orderOriginal,
     productOriginal,
     packageFee,
-    deliveryFee: businessNumber(row, orderColumn(header, ['配送费'])),
+    deliveryFee,
     customerPay,
     totalSubsidy,
     merchantSubsidy,
     platformSubsidy,
+    otherSubsidy,
     merchantCost: merchantSubsidy,
-    discountRate: grossOriginal > 0 ? totalSubsidy / grossOriginal : null
+    discountRate: subsidyRate(totalSubsidy, grossOriginal),
+    orderDiscountRate: subsidyRate(totalSubsidy, orderOriginal)
   };
 }
 
@@ -711,16 +739,19 @@ function parseElemeOrderRecord(row: unknown[], header: unknown[], warnings: stri
   const productItems = parseElemeOrderProducts(row[orderColumn(header, ['商品信息'])]);
   const productOriginal = businessNumber(row, orderColumn(header, ['菜品原价']));
   const packageFee = businessNumber(row, orderColumn(header, ['餐盒费']));
+  const deliveryFee = businessNumber(row, orderColumn(header, ['配送费']));
   const platformSubsidy = businessNumber(row, orderColumn(header, ['平台补贴']));
   const merchantSubsidy = businessNumber(row, orderColumn(header, ['商家成本']));
   const totalSubsidy = businessNumber(row, orderColumn(header, ['活动总补贴']), roundMoney(platformSubsidy + merchantSubsidy));
+  const otherSubsidy = otherSubsidyAmount({ totalSubsidy, merchantSubsidy, platformSubsidy });
   const deliveryType = businessText(row, orderColumn(header, ['配送方式']));
   const isMagicCoupon = /爆单红包|爆红包/.test(base.activityText);
   const activityFlags = parseOrderActivityFlags(base.activityText, {
     magicCoupon: isMagicCoupon,
     platformSubsidy: platformSubsidy > 0 || /平台补贴/.test(base.activityText)
   });
-  const grossOriginal = roundMoney(productOriginal + packageFee);
+  const grossOriginal = goodsOriginalTotal(productOriginal, packageFee);
+  const orderOriginal = businessNumber(row, orderColumn(header, ['订单原价']), orderOriginalTotal(productOriginal, packageFee, deliveryFee));
   return {
     platform: 'eleme',
     platformName: PLATFORM_NAMES.eleme,
@@ -748,15 +779,18 @@ function parseElemeOrderRecord(row: unknown[], header: unknown[], warnings: stri
     activityText: base.activityText,
     activityFlags,
     grossOriginal,
+    orderOriginal,
     productOriginal,
     packageFee,
-    deliveryFee: businessNumber(row, orderColumn(header, ['配送费'])),
+    deliveryFee,
     customerPay: businessNumber(row, orderColumn(header, ['顾客实付'])),
     totalSubsidy,
     merchantSubsidy,
     platformSubsidy,
+    otherSubsidy,
     merchantCost: merchantSubsidy,
-    discountRate: grossOriginal > 0 ? totalSubsidy / grossOriginal : null
+    discountRate: subsidyRate(totalSubsidy, grossOriginal),
+    orderDiscountRate: subsidyRate(totalSubsidy, orderOriginal)
   };
 }
 
@@ -802,10 +836,12 @@ export function summarizeOrderRecords(records: OrderDetailRecord[]): OrderSummar
   const orderCount = records.length;
   const customerPay = roundMoney(records.reduce((sum, row) => sum + row.customerPay, 0));
   const grossOriginal = roundMoney(records.reduce((sum, row) => sum + row.grossOriginal, 0));
+  const orderOriginal = roundMoney(records.reduce((sum, row) => sum + row.orderOriginal, 0));
   const productOriginal = roundMoney(records.reduce((sum, row) => sum + row.productOriginal, 0));
   const totalSubsidy = roundMoney(records.reduce((sum, row) => sum + row.totalSubsidy, 0));
   const merchantSubsidy = roundMoney(records.reduce((sum, row) => sum + row.merchantSubsidy, 0));
   const platformSubsidy = roundMoney(records.reduce((sum, row) => sum + row.platformSubsidy, 0));
+  const otherSubsidy = roundMoney(records.reduce((sum, row) => sum + row.otherSubsidy, 0));
   return {
     dateStart: dates[0] || '',
     dateEnd: dates[dates.length - 1] || '',
@@ -813,16 +849,21 @@ export function summarizeOrderRecords(records: OrderDetailRecord[]): OrderSummar
     platformCount: new Set(records.map(row => row.platform)).size,
     customerPay,
     grossOriginal,
+    orderOriginal,
     productOriginal,
     totalSubsidy,
     merchantSubsidy,
     platformSubsidy,
+    otherSubsidy,
     avgPay: orderCount > 0 ? roundMoney(customerPay / orderCount) : 0,
     avgOriginal: orderCount > 0 ? roundMoney(grossOriginal / orderCount) : 0,
+    avgOrderOriginal: orderCount > 0 ? roundMoney(orderOriginal / orderCount) : 0,
     avgDiscount: orderCount > 0 ? roundMoney(totalSubsidy / orderCount) : 0,
-    discountRate: grossOriginal > 0 ? totalSubsidy / grossOriginal : null,
+    discountRate: subsidyRate(totalSubsidy, grossOriginal),
+    orderDiscountRate: subsidyRate(totalSubsidy, orderOriginal),
     merchantSubsidyPerOrder: orderCount > 0 ? roundMoney(merchantSubsidy / orderCount) : 0,
-    platformSubsidyPerOrder: orderCount > 0 ? roundMoney(platformSubsidy / orderCount) : 0
+    platformSubsidyPerOrder: orderCount > 0 ? roundMoney(platformSubsidy / orderCount) : 0,
+    otherSubsidyPerOrder: orderCount > 0 ? roundMoney(otherSubsidy / orderCount) : 0
   };
 }
 
@@ -1185,7 +1226,7 @@ export function buildOrderOperationRecommendations(
       key: 'low-pay-subsidy',
       priority: 'high',
       title: '低支付价补贴过重',
-      evidence: `${highSubsidyLowBand.label} 元区间 ${highSubsidyLowBand.orderCount} 单，让利率 ${rateText(highSubsidyLowBand.discountRate)}，商家单均补贴 ¥${money(highSubsidyLowBand.merchantSubsidyPerOrder)}。`,
+      evidence: `${highSubsidyLowBand.label} 元区间 ${highSubsidyLowBand.orderCount} 单，商品口径让利率 ${rateText(highSubsidyLowBand.discountRate)}，商家单均补贴 ¥${money(highSubsidyLowBand.merchantSubsidyPerOrder)}。`,
       action: '收紧该区间的商家券/商品折扣叠加，只保留平台强补或拼好饭入口；普通活动不要继续把成交压到该支付价。',
       expectedImpact: '减少低价亏损单，把补贴预算转到 15-25 元主成交区。'
     });
@@ -1313,7 +1354,7 @@ export function buildOrderInsights(summary: OrderSummary, payBands: OrderAggrega
     insights.push({
       key: 'discount-rate',
       title: '让利强度',
-      description: `当前订单平均让利率 ${rateText(summary.discountRate)}，单均总补贴 ¥${money(summary.avgDiscount)}。`,
+      description: `当前商品口径让利率 ${rateText(summary.discountRate)}，订单口径 ${summary.orderDiscountRate === null ? '-' : rateText(summary.orderDiscountRate)}，单均总补贴 ¥${money(summary.avgDiscount)}。`,
       suggestion: summary.discountRate > 0.45
         ? '让利偏重，后续活动方向应重点比较订单量是否真的随低支付价增加。'
         : '让利强度仍有观察空间，可优先把优惠集中到订单集中的支付价和时段。'
@@ -1339,11 +1380,14 @@ export function orderAnalysisExportRows(
     名称: '当前筛选',
     订单数: summary.orderCount,
     单均实付: money(summary.avgPay),
-    单均原价: money(summary.avgOriginal),
+    单均商品原价: money(summary.avgOriginal),
+    单均订单原价: money(summary.avgOrderOriginal),
     单均补贴: money(summary.avgDiscount),
-    平均让利率: summary.discountRate === null ? '' : rateText(summary.discountRate),
+    商品口径让利率: summary.discountRate === null ? '' : rateText(summary.discountRate),
+    订单口径让利率: summary.orderDiscountRate === null ? '' : rateText(summary.orderDiscountRate),
     商家单均补贴: money(summary.merchantSubsidyPerOrder),
     平台单均补贴: money(summary.platformSubsidyPerOrder),
+    其他单均补贴: money(summary.otherSubsidyPerOrder),
     估算单均毛利: profit.avgEstimatedProfit === null ? '' : money(profit.avgEstimatedProfit),
     估算毛利率: profit.estimatedProfitRate === null ? '' : rateText(profit.estimatedProfitRate),
     亏损订单数: profit.lossOrderCount,
@@ -1355,11 +1399,14 @@ export function orderAnalysisExportRows(
     名称: row.label,
     订单数: row.orderCount,
     单均实付: money(row.avgPay),
-    单均原价: money(row.avgOriginal),
+    单均商品原价: money(row.avgOriginal),
+    单均订单原价: money(row.avgOrderOriginal),
     单均补贴: money(row.avgDiscount),
-    平均让利率: row.discountRate === null ? '' : rateText(row.discountRate),
+    商品口径让利率: row.discountRate === null ? '' : rateText(row.discountRate),
+    订单口径让利率: row.orderDiscountRate === null ? '' : rateText(row.orderDiscountRate),
     商家单均补贴: money(row.merchantSubsidyPerOrder),
     平台单均补贴: money(row.platformSubsidyPerOrder),
+    其他单均补贴: money(row.otherSubsidyPerOrder),
     估算单均毛利: 'avgEstimatedProfit' in row && row.avgEstimatedProfit !== null && row.avgEstimatedProfit !== undefined ? money(row.avgEstimatedProfit) : '',
     估算毛利率: 'estimatedProfitRate' in row && row.estimatedProfitRate !== null && row.estimatedProfitRate !== undefined ? rateText(row.estimatedProfitRate) : '',
     亏损订单数: 'lossOrderCount' in row ? row.lossOrderCount : '',
@@ -1371,11 +1418,14 @@ export function orderAnalysisExportRows(
     名称: row.productName,
     订单数: row.orderCount,
     单均实付: money(row.avgPay),
-    单均原价: money(row.avgOriginal),
+    单均商品原价: money(row.avgOriginal),
+    单均订单原价: money(row.avgOrderOriginal),
     单均补贴: money(row.avgDiscount),
-    平均让利率: row.discountRate === null ? '' : rateText(row.discountRate),
+    商品口径让利率: row.discountRate === null ? '' : rateText(row.discountRate),
+    订单口径让利率: row.orderDiscountRate === null ? '' : rateText(row.orderDiscountRate),
     商家单均补贴: money(row.merchantSubsidyPerOrder),
     平台单均补贴: money(row.platformSubsidyPerOrder),
+    其他单均补贴: money(row.otherSubsidyPerOrder),
     估算单均毛利: row.avgEstimatedProfit === null || row.avgEstimatedProfit === undefined ? '' : money(row.avgEstimatedProfit),
     估算毛利率: row.estimatedProfitRate === null || row.estimatedProfitRate === undefined ? '' : rateText(row.estimatedProfitRate),
     亏损订单数: '',
@@ -1387,11 +1437,14 @@ export function orderAnalysisExportRows(
     名称: row.title,
     订单数: '',
     单均实付: '',
-    单均原价: '',
+    单均商品原价: '',
+    单均订单原价: '',
     单均补贴: '',
-    平均让利率: '',
+    商品口径让利率: '',
+    订单口径让利率: '',
     商家单均补贴: '',
     平台单均补贴: '',
+    其他单均补贴: '',
     估算单均毛利: '',
     估算毛利率: '',
     亏损订单数: '',

@@ -2,22 +2,9 @@
 
 import React from 'react';
 import type {
-  Activities,
-  ActivityDesignObjective,
-  ActivityDesignSettings,
-  ActivityObjectiveStrategy,
-  ActivityStrategySettings,
   CalculatorState,
-  FeeRule,
-  Platform,
-  Product,
   Store
 } from '../../domain/types';
-import type {
-  activityObjectiveOptionsFromSettings,
-  normalizeActivityObjectiveStrategies
-} from '../../data/calculatorState';
-import type { ActivityObjectiveOption } from '../../config/activityStrategy';
 
 export type CalculatorContextValue = {
   calculatorState: CalculatorState;
@@ -25,22 +12,6 @@ export type CalculatorContextValue = {
   store: Store;
   storeId: string;
   storeName: string;
-  products: Product[];
-  fee: FeeRule;
-  activities: Record<Platform, Activities>;
-  pricingRule: FeeRule['pricingEvaluation'];
-  pricingStrategy: FeeRule['pricingStrategy'];
-  activityObjectiveOptionsFromSettings: typeof activityObjectiveOptionsFromSettings;
-  normalizeActivityObjectiveStrategies: typeof normalizeActivityObjectiveStrategies;
-  onSaveProducts: (products: Product[]) => Promise<boolean>;
-  onSaveFee: (fee: FeeRule) => Promise<boolean>;
-  onSaveActivities: (platform: Platform, activities: Activities) => Promise<boolean>;
-  onApplySuggestedPrice: (row: {
-    suggestedPrice: number | null;
-    productId: string;
-    platform: Platform;
-    platformName: string;
-  }) => void;
 };
 
 const CalculatorContext = React.createContext<CalculatorContextValue | null>(null);
@@ -71,13 +42,3 @@ export function useCalculatorPageProps<T extends object>(pageProps: T): Calculat
   const context = useCalculatorContext();
   return { ...context, ...pageProps };
 }
-
-export type StoreActivityObjectiveOptionsGetter = (
-  settings: Pick<ActivityStrategySettings | ActivityDesignSettings, 'objectiveTemplates' | 'objectiveStrategies'> | undefined
-) => ActivityObjectiveOption[];
-
-export type StoreActivityObjectiveStrategiesNormalizer = (
-  value: Partial<Record<ActivityDesignObjective, Partial<ActivityObjectiveStrategy>>> | undefined,
-  baseTargetProfitRate: number,
-  objectiveOptions: ActivityObjectiveOption[]
-) => Record<ActivityDesignObjective, ActivityObjectiveStrategy>;

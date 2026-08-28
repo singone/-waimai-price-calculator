@@ -19,6 +19,7 @@ import type {
   Store,
   StrategyTarget
 } from './types';
+import { activityAmountByBusinessFormula } from './businessFormula';
 import { average, normalizeDiscountRate, profitRateByBasis, roundMoney } from './money';
 import { PlatformUtils } from './platform';
 
@@ -592,7 +593,14 @@ export function createComboEvaluationRow(
     finalPay,
     netPay,
     cost: totals.costTotal,
-    activityAmount: roundMoney(totals.productDiscount + discounts.full.amount + discounts.couponAmount + discounts.baseRed.amount + discounts.redAddOn.amount + fee.freightSubsidy),
+    activityAmount: activityAmountByBusinessFormula({
+      productDiscount: totals.productDiscount,
+      fullReduction: discounts.full.amount,
+      couponAmount: discounts.couponAmount,
+      baseRedAmount: discounts.baseRed.amount,
+      redAddOnAmount: discounts.redAddOn.amount,
+      freightSubsidy: fee.freightSubsidy
+    }),
     commission: fee.commission,
     serviceFee: fee.serviceFee,
     freightSubsidy: fee.freightSubsidy,
@@ -651,9 +659,10 @@ export function evaluateComboWithCurrentActivities(
   if (!totals.items.length) return [];
   if (!isInCalculationTotalRange(store, totals.originalTotal)) return [];
   if (totals.afterProductDiscount + 1e-9 < store.startPrice) return [];
-  const full = bestFullReduction(activity.fullReductions, totals.afterProductDiscount);
+  const discountThresholdBasis = totals.originalTotal;
+  const full = bestFullReduction(activity.fullReductions, discountThresholdBasis);
   const afterFull = Math.max(0, roundMoney(totals.afterProductDiscount - full.amount));
-  const couponOption = bestCouponOption(activity.coupons, afterFull, store.maxCoupons);
+  const couponOption = bestCouponOption(activity.coupons, discountThresholdBasis, store.maxCoupons);
   const afterCoupon = Math.max(0, roundMoney(afterFull - couponOption.amount));
   const baseRed = bestBaseRed(state, platform, afterCoupon);
   const addOn = bestRedAddOn(activity.redAddOns, afterCoupon);
