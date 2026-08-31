@@ -46,8 +46,7 @@ import {
   DEFAULT_MEASUREMENT_SETTINGS,
   MEASUREMENT_RESULT_SCENARIO,
   buildMeasurementSummaryFromRows,
-  isMeasurementRowInDisplayFilters,
-  resultsDataRepository
+  isMeasurementRowInDisplayFilters
 } from './resultsCalculationUtils';
 
 const AntvLine = dynamic(() => import('@ant-design/charts').then(mod => mod.Line), { ssr: false });
@@ -74,6 +73,7 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
     const { message } = AntApp.useApp();
     const {
     calculatorState,
+    dataRepository,
     setCalculatorState,
     store
   } = props;
@@ -94,6 +94,7 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
   } = useResultsCalculationState({
     calculatorState,
     commitCalculatorState,
+    dataRepository,
     store,
     storeActivityDesignSettings
   });
@@ -324,9 +325,9 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
       }));
     };
     const loadResultBandRows = React.useCallback(async (platform: Platform, payBandKey: string, payBand: PriceBandRow | null): Promise<LoadedResultBandRows | null> => {
-      const record = await resultsDataRepository.loadMeasurementRecord(store.id, MEASUREMENT_RESULT_SCENARIO);
+      const record = await dataRepository.loadMeasurementRecord(store.id, MEASUREMENT_RESULT_SCENARIO);
       if (!record) return null;
-      const loaded = await resultsDataRepository.loadMeasurementRows(record, {
+      const loaded = await dataRepository.loadMeasurementRows(record, {
         store,
         settings: measurementSettings,
         platform,
@@ -340,7 +341,7 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
         matchedCount: loaded.matchedCount,
         truncated: loaded.truncated
       };
-    }, [measurementSettings, store]);
+    }, [dataRepository, measurementSettings, store]);
     const openResultBandDetail = async (platform: Platform, payBandKey: string) => {
       const payBand = payBandKey === 'all'
         ? null

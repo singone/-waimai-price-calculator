@@ -11,6 +11,7 @@ import {
   normalizeCachedMeasurementRows,
   sortMeasurementRows
 } from '../components/results/resultsCalculationUtils';
+import { createBackendDataRepository } from './backendDataRepository';
 import { createBrowserDataRepository } from './browserDataRepository';
 import type {
   Activities,
@@ -953,6 +954,19 @@ export function normalizeState(data: unknown): CalculatorState {
 }
 
 export const browserDataRepository = createBrowserDataRepository<CalculatorState, Store>({
+  scenarios: STAPLE_SCENARIOS,
+  normalizeState,
+  measurementRecordKey,
+  measurementChunkKey,
+  activityPriceScanRecordKey,
+  buildPersistedMeasurementRecord,
+  buildPersistedActivityPriceScanRecord,
+  normalizeCachedMeasurementRows,
+  isMeasurementRowInDisplayFilters,
+  sortMeasurementRows
+});
+
+export const backendDataRepository = createBackendDataRepository<CalculatorState, Store>({
   scenarios: STAPLE_SCENARIOS,
   normalizeState,
   measurementRecordKey,

@@ -60,6 +60,10 @@ body {
   width: 220px;
 }
 
+.mode-select {
+  width: 112px;
+}
+
 .mobile-header-controls {
   display: none;
 }
@@ -74,8 +78,22 @@ body {
 
 .mobile-actions-popover {
   display: grid;
-  width: 168px;
+  width: 180px;
   gap: 6px;
+}
+
+.mobile-actions-field {
+  display: grid;
+  gap: 4px;
+}
+
+.mobile-actions-label {
+  color: #746b60;
+  font-size: 12px;
+}
+
+.mobile-actions-field .ant-select {
+  width: 100%;
 }
 
 .mobile-actions-popover .ant-upload,
@@ -108,6 +126,21 @@ body {
   max-width: 100%;
   overflow-x: hidden;
   padding: 16px;
+}
+
+.app-shell-locked {
+  background: #f5f2ed;
+}
+
+.app-lock-content {
+  display: grid;
+  min-height: 100vh;
+  padding: 0;
+  overflow-y: auto;
+}
+
+.app-lock-content .backend-login-wrap {
+  min-height: 100vh;
 }
 
 .side-menu {
@@ -348,6 +381,22 @@ body {
   color: #746b60;
 }
 
+.backend-login-wrap {
+  display: grid;
+  min-height: min(520px, calc(100vh - 140px));
+  place-items: center;
+  padding: 24px 12px;
+}
+
+.backend-login-card {
+  width: min(420px, 100%);
+}
+
+.backend-login-loading {
+  color: #746b60;
+  font-size: 14px;
+}
+
 @media (max-width: 1080px) {
   .app-header {
     align-items: center;
@@ -406,6 +455,11 @@ body {
 
   .app-content {
     padding: 10px;
+  }
+
+  .backend-login-wrap {
+    min-height: min(460px, calc(100vh - 100px));
+    padding: 16px 4px;
   }
 
   .section-stack [class*="ant-col-lg-"],

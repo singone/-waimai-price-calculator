@@ -5,10 +5,15 @@ import type {
   CalculatorState,
   Store
 } from '../../domain/types';
+import type { AppDataRepository } from '../../data/browserDataRepository';
+import type { BackendAuthSession, PersistenceMode } from '../../data/backendClient';
 
 export type CalculatorContextValue = {
   calculatorState: CalculatorState;
   setCalculatorState: React.Dispatch<React.SetStateAction<CalculatorState>>;
+  dataRepository: AppDataRepository<CalculatorState, Store>;
+  persistenceMode: PersistenceMode;
+  backendSession: BackendAuthSession;
   store: Store;
   storeId: string;
   storeName: string;

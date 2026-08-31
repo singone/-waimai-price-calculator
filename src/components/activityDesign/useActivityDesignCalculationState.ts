@@ -4,6 +4,7 @@
 import React from 'react';
 import { App as AntApp } from 'antd';
 import { currentStoreFrom } from '../../domain/core';
+import type { AppDataRepository } from '../../data/browserDataRepository';
 import type {
   ActivityDesignResult,
   ActivityDesignSettings,
@@ -18,7 +19,6 @@ import { productDiscountActivityName, type ProductDiscountSuggestion } from '../
 import type { CommitCalculatorState } from '../shared/useCalculatorStateCommit';
 import { buildActivityDesignCalculationSettings } from './activityDesignPageUtils';
 import {
-  activityDesignDataRepository,
   activityPriceScanRecordToResult,
   buildActivityPriceScanSignature,
   buildLegacyActivityPriceScanSignature,
@@ -34,6 +34,7 @@ const ACTIVITY_ROUTE_VALIDATION_WORKER_TIMEOUT_MS = 190000;
 
 type UseActivityDesignCalculationStateParams = {
   calculatorState: CalculatorState;
+  dataRepository: AppDataRepository<CalculatorState, Store>;
   store: Store;
   storeActivityDesignSettings: ActivityDesignSettings;
   commitCalculatorState: CommitCalculatorState;
@@ -50,6 +51,7 @@ function emptySummary(): Summary {
 
 export function useActivityDesignCalculationState({
   calculatorState,
+  dataRepository,
   store,
   storeActivityDesignSettings,
   commitCalculatorState
@@ -117,7 +119,7 @@ export function useActivityDesignCalculationState({
     const expectedSignature = buildActivityPriceScanSignature(calculatorState, targetStore, scanSettings);
     const legacyExpectedSignature = buildLegacyActivityPriceScanSignature(calculatorState, targetStore, scanSettings);
 
-    activityDesignDataRepository.loadActivityPriceScanRecord(targetStore.id)
+    dataRepository.loadActivityPriceScanRecord(targetStore.id)
       .then(record => {
         if (
           ignore
@@ -154,7 +156,7 @@ export function useActivityDesignCalculationState({
     return () => {
       ignore = true;
     };
-  }, [calculatorState, store, storeActivityDesignSettings]);
+  }, [calculatorState, dataRepository, store, storeActivityDesignSettings]);
 
   React.useEffect(() => {
     return () => {
@@ -191,11 +193,11 @@ export function useActivityDesignCalculationState({
       };
       if (result.originalPriceBuckets?.length) {
         try {
-          const record = await activityDesignDataRepository.saveActivityPriceScanRecord(calculatorState, store, scanSettings, result);
+          const record = await dataRepository.saveActivityPriceScanRecord(calculatorState, store, scanSettings, result);
           displayResult = activityPriceScanRecordToResult(record);
           if (isCurrentTask(task)) setActivityPriceScanPersistenceMeta(record.meta);
         } catch {
-          if (isCurrentTask(task)) message.warning('原价扫描已生成，但浏览器缓存写入失败。');
+          if (isCurrentTask(task)) message.warning('原价扫描已生成，但缓存写入失败。');
         }
       }
       if (!isCurrentTask(task)) return;
@@ -208,7 +210,7 @@ export function useActivityDesignCalculationState({
     } finally {
       finishTask(task);
     }
-  }, [beginTask, calculatorState, finishTask, isCurrentTask, message, store, storeActivityDesignSettings]);
+  }, [beginTask, calculatorState, dataRepository, finishTask, isCurrentTask, message, store, storeActivityDesignSettings]);
 
   const executeActivityRouteDesign = React.useCallback(async () => {
     if (activeTaskRef.current) return;

@@ -116,8 +116,9 @@ function PriceBucketComboCountChart({ rows }: { rows: ActivityPriceBucketRow[] }
 export function ActivityDesignPage(pageProps: ActivityDesignPageProps = {}) {
   const router = useRouter();
   const props = useCalculatorPageProps(pageProps);
-  const {
+    const {
     calculatorState,
+    dataRepository,
     setCalculatorState,
     store
   } = props;
@@ -135,6 +136,7 @@ export function ActivityDesignPage(pageProps: ActivityDesignPageProps = {}) {
     summary
   } = useActivityDesignCalculationState({
     calculatorState,
+    dataRepository,
     store,
     storeActivityDesignSettings,
     commitCalculatorState

@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "db:init": "node scripts/init-backend-db.mjs",
+    "server:prepare": "npm run db:init && npm run build",
+    "server:start": "npm run db:init && next start",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"

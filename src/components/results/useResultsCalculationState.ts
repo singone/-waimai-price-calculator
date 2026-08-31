@@ -14,6 +14,7 @@ import { EMPTY_SUMMARY } from '../../config/calculation';
 import { isCalculationAbortError, runCalculationTask } from '../../workers/calculationClient';
 import { productDiscountActivityName, type ProductDiscountSuggestion } from '../shared/productDiscountSuggestionUtils';
 import type { CommitCalculatorState } from '../shared/useCalculatorStateCommit';
+import type { AppDataRepository } from '../../data/browserDataRepository';
 import {
   DEFAULT_MEASUREMENT_SETTINGS,
   MEASUREMENT_RESULT_SCENARIO,
@@ -22,7 +23,6 @@ import {
   measurementChunkKey,
   measurementRecordKey,
   measurementRecordToResult,
-  resultsDataRepository,
   waitForLoadingPaint
 } from './resultsCalculationUtils';
 
@@ -32,6 +32,7 @@ const ASYNC_CALCULATION_WORKER_TIMEOUT_MS = 35000;
 type UseResultsCalculationStateParams = {
   calculatorState: CalculatorState;
   commitCalculatorState: CommitCalculatorState;
+  dataRepository: AppDataRepository<CalculatorState, Store>;
   store: Store;
   storeActivityDesignSettings: {
     stapleMaxCount?: number;
@@ -48,6 +49,7 @@ type AsyncTask = {
 export function useResultsCalculationState({
   calculatorState,
   commitCalculatorState,
+  dataRepository,
   store,
   storeActivityDesignSettings
 }: UseResultsCalculationStateParams) {
@@ -96,7 +98,7 @@ export function useResultsCalculationState({
     let ignore = false;
     const storeId = store.id;
     setIsMeasurementCacheLoading(true);
-    resultsDataRepository.loadMeasurementRecord(storeId, MEASUREMENT_RESULT_SCENARIO)
+    dataRepository.loadMeasurementRecord(storeId, MEASUREMENT_RESULT_SCENARIO)
       .then(record => {
         if (ignore || storeId !== currentStoreFrom(calculatorStateRef.current).id) return;
         if (!record) {
@@ -118,7 +120,7 @@ export function useResultsCalculationState({
     return () => {
       ignore = true;
     };
-  }, [clearResults, measurementPayBandSize, store.id]);
+  }, [clearResults, dataRepository, measurementPayBandSize, store.id]);
 
   React.useEffect(() => {
     return () => {
@@ -136,8 +138,8 @@ export function useResultsCalculationState({
     setIsResultsLoading(true);
     await waitForLoadingPaint();
     try {
-      const previousRecord = await resultsDataRepository.loadMeasurementRecord(store.id, scenario);
-      const chunkWriter = resultsDataRepository.createMeasurementChunkWriter(parentKey);
+      const previousRecord = await dataRepository.loadMeasurementRecord(store.id, scenario);
+      const chunkWriter = dataRepository.createMeasurementChunkWriter(parentKey);
       setResultRows([]);
       setResultPayBands([]);
       setResultWarnings([]);
@@ -157,8 +159,8 @@ export function useResultsCalculationState({
         timeoutMs: ASYNC_CALCULATION_WORKER_TIMEOUT_MS,
         onRowsChunk: rows => chunkWriter.write(rows)
       });
-      const record = await resultsDataRepository.saveChunkedMeasurementRecord(store, scenario, persistenceSettings, result, chunkWriter.keys());
-      await resultsDataRepository.deleteMeasurementRecordChunks(previousRecord);
+      const record = await dataRepository.saveChunkedMeasurementRecord(store, scenario, persistenceSettings, result, chunkWriter.keys());
+      await dataRepository.deleteMeasurementRecordChunks(previousRecord);
       if (!isCurrentMeasurementTask(task)) return;
       const displayResult = measurementRecordToResult(record, measurementPayBandSize);
       setMeasurementPersistenceMeta(record.meta);
@@ -177,7 +179,7 @@ export function useResultsCalculationState({
         activeMeasurementTaskRef.current = null;
       }
     }
-  }, [beginMeasurementTask, calculatorState, isCurrentMeasurementTask, isResultsLoading, measurementPayBandSize, message, store, storeActivityDesignSettings]);
+  }, [beginMeasurementTask, calculatorState, dataRepository, isCurrentMeasurementTask, isResultsLoading, measurementPayBandSize, message, store, storeActivityDesignSettings]);
 
   const onApplyProductDiscountSuggestion = React.useCallback((suggestion: ProductDiscountSuggestion) => {
     if (suggestion.riskLevel === 'blocked') {

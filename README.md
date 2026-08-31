@@ -16,13 +16,54 @@ npm install
 npm run dev
 ```
 
-生产构建和静态导出：
+生产构建：
 
 ```bash
 npm run build
 ```
 
-构建后会生成 `out/` 目录，可用任意静态服务器托管。当前根目录旧版 `index.html`、`js/`、`css/` 保留为迁移前备份，新功能入口以 Next 应用为准。
+生产运行：
+
+```bash
+npm start
+```
+
+当前版本包含后台接口和登录态，需使用 Next 服务端运行，不能再作为纯静态 `out/` 目录托管。当前根目录旧版 `index.html`、`js/`、`css/` 保留为迁移前备份，新功能入口以 Next 应用为准。
+
+服务器一键准备：
+
+```bash
+WAIMAI_BACKEND_DB_PATH=/data/waimai/backend-db.json \
+WAIMAI_ADMIN_USERNAME=admin \
+WAIMAI_ADMIN_PASSWORD=your-strong-password \
+npm run server:prepare
+```
+
+该命令会先初始化后台数据库，再执行生产构建。数据库设计见 `docs/backend-database-design.md`，后续 PostgreSQL 设计稿见 `docs/database-schema.sql`。
+
+## 后台模式
+
+页面右上角可在“本地模式 / 后台模式”之间切换：
+
+- 本地模式：数据保存到当前浏览器 IndexedDB。
+- 后台模式：登录后数据保存到服务端数据库文件 `.data/backend-db.json`。
+
+后台管理员账号默认用户名为 `admin`。密码优先读取环境变量 `WAIMAI_ADMIN_PASSWORD`；未配置时会在首次登录尝试时生成随机密码，并写入 `.data/admin-password.txt`。生产环境建议显式配置：
+
+```bash
+WAIMAI_ADMIN_USERNAME=admin
+WAIMAI_ADMIN_PASSWORD=your-strong-password
+WAIMAI_COOKIE_SECURE=true
+npm start
+```
+
+后台数据库路径可通过 `WAIMAI_BACKEND_DB_PATH` 覆盖；`.data/` 已加入 `.gitignore`，避免本地数据和随机密码进入版本库。
+
+也可以在启动前显式初始化数据库：
+
+```bash
+npm run db:init
+```
 
 ## 页面结构
 
@@ -42,7 +83,7 @@ npm run build
 - 门店满减、订单优惠券、红包加码、商品折扣活动均属于门店。
 - 基础神券 / 爆红包阶梯属于平台通用规则，门店不可覆盖。
 - 门店默认继承平台费用规则和平台利润率阶梯，也可以切换为门店自定义。
-- 浏览器端保存使用 IndexedDB，旧版 localStorage 数据会在读取时自动迁移；后续迁移 PostgreSQL 时可替换存储适配层。
+- 本地模式保存使用 IndexedDB，旧版 localStorage 数据会在读取时自动迁移；后台模式保存使用服务端数据库适配层，后续迁移 PostgreSQL 时可替换存储适配层。
 
 ## 计算顺序
 
@@ -162,4 +203,4 @@ npm run build
 
 测算结果和风险预警均支持导出 CSV，导出范围为当前门店和当前平台筛选下的组合结果。
 
-配置支持保存到浏览器，也支持 JSON 导入 / 导出。
+配置支持保存到当前数据模式，也支持 JSON 导入 / 导出。
