@@ -27,10 +27,13 @@ import type {
   ActivityStrategySettings,
   CalculatorState,
   FeeRule,
+  JingdongSubsidyCoupon,
+  JingdongSubsidyCouponKind,
   Platform,
   PricingEvaluationRule,
   PricingStrategyTier,
   Product,
+  ProductBundleChoiceGroup,
   ProductCategory,
   StapleScenario,
   Store
@@ -54,13 +57,16 @@ const TRUE_VALUES = new Set(['1', 'true', 'yes', 'y', 'on', '是', '有', '启�
 const FALSE_VALUES = new Set(['0', 'false', 'no', 'n', 'off', '否', '无', '不', '停用', '关闭', '下架', '暂停售卖']);
 
 const DEFAULT_PRICING_EVALUATION_RULE: PricingEvaluationRule = {
-  fallbackTargetProfitRate: 25,
-  addOnTargetProfitRate: 45,
-  riceBallTargetProfitRate: 32,
-  setMealTargetProfitRate: 36,
-  singleStapleTargetProfitRate: 32,
-  doubleStapleTargetProfitRate: 36,
-  multiStapleTargetProfitRate: 38
+  fallbackTargetCostShare: 50,
+  stapleTargetCostShare: 50,
+  setMealTargetCostShare: 50,
+  addOnTargetCostShare: 50,
+  addOnStapleRatioShare: 70,
+  addOnMinimumOriginalPrice: 1.9,
+  addOnPromotionRiskShare: 80,
+  setMealDiscountRate: 12,
+  fixedActivityCost: 0,
+  baseRedAmountMode: 'max'
 };
 
 const DEFAULT_PRICING_STRATEGY: Record<StapleScenario, PricingStrategyTier[]> = {
@@ -84,6 +90,63 @@ const DEFAULT_PRICING_STRATEGY: Record<StapleScenario, PricingStrategyTier[]> = 
   ]
 };
 
+function defaultJingdongSubsidyCoupon(
+  name: string,
+  kind: JingdongSubsidyCouponKind,
+  threshold: number,
+  amount: number,
+  merchantAmount: number,
+  stackableWithLarge = false,
+  enabled = true,
+): JingdongSubsidyCoupon {
+  return {
+    enabled,
+    name,
+    kind,
+    threshold,
+    amount,
+    merchantAmount,
+    merchantExtraAmount: 0,
+    platformAmount: Math.max(0, Math.round((amount - merchantAmount) * 100) / 100),
+    stackableWithLarge: kind === 'small' && stackableWithLarge
+  };
+}
+
+export const DEFAULT_JINGDONG_SUBSIDY_COUPONS: JingdongSubsidyCoupon[] = [
+  defaultJingdongSubsidyCoupon('散店9月金秋券70-20', 'large', 70, 20, 18),
+  defaultJingdongSubsidyCoupon('散店9月金秋券60-18', 'large', 60, 18, 16),
+  defaultJingdongSubsidyCoupon('散店9月金秋券50-16', 'large', 50, 16, 14),
+  defaultJingdongSubsidyCoupon('散店9月金秋券40-12', 'large', 60, 12, 10),
+  defaultJingdongSubsidyCoupon('散店9月金秋券35-10', 'large', 35, 10, 8.5),
+  defaultJingdongSubsidyCoupon('散店9月金秋券30-8', 'large', 30, 8, 6.5),
+
+  defaultJingdongSubsidyCoupon('散店8月补贴券15-10', 'large', 15, 10, 7.5),
+  defaultJingdongSubsidyCoupon('散店8月补贴券10-7', 'large', 10, 7, 5.5),
+
+  defaultJingdongSubsidyCoupon('金券招商满59减30', 'large', 59, 30, 23),
+  defaultJingdongSubsidyCoupon('金券招商满49减25', 'large', 49, 25, 19),
+  defaultJingdongSubsidyCoupon('金券招商满29减20', 'large', 29, 20, 15),
+
+  defaultJingdongSubsidyCoupon('主力券满118减32', 'large', 118, 32, 29.5),
+  defaultJingdongSubsidyCoupon('主力券满99减27', 'large', 99, 27, 24.5),
+  defaultJingdongSubsidyCoupon('主力券满80减22', 'large', 80, 22, 19.5),
+  defaultJingdongSubsidyCoupon('主力券满60减20', 'large', 60, 20, 17.5),
+  defaultJingdongSubsidyCoupon('主力券满50减18', 'large', 50, 18, 15.5),
+  defaultJingdongSubsidyCoupon('主力券满40减16', 'large', 40, 16, 13.5),
+  defaultJingdongSubsidyCoupon('主力券满30减12', 'large', 30, 12, 9.5),
+  defaultJingdongSubsidyCoupon('主力券满25减10', 'large', 25, 10, 8),
+  defaultJingdongSubsidyCoupon('主力券满20减8', 'large', 20, 8, 6),
+  defaultJingdongSubsidyCoupon('主力券满10减6', 'large', 10, 6, 4.5),
+  defaultJingdongSubsidyCoupon('冲刺券满0.1减3', 'small', 0.1, 3, 1.5, true),
+  defaultJingdongSubsidyCoupon('冲刺券满0.01减5', 'small', 0.01, 5, 2.5, true),
+  defaultJingdongSubsidyCoupon('冲刺券满3减2', 'small', 3, 2, 1, true),
+  defaultJingdongSubsidyCoupon('冲刺券满5减4', 'small', 5, 4, 2, true)
+];
+
+export function createDefaultJingdongSubsidyCoupons() {
+  return DEFAULT_JINGDONG_SUBSIDY_COUPONS.map(row => ({ ...row }));
+}
+
 function makeDefaultActivities(prefix: string): Activities {
   return {
     fullReductions: [
@@ -96,6 +159,7 @@ function makeDefaultActivities(prefix: string): Activities {
     redAddOns: [
       { enabled: true, threshold: 20, amount: 1 }
     ],
+    jingdongSubsidyCoupons: prefix === '京东' ? createDefaultJingdongSubsidyCoupons() : [],
     discountActivities: [
       { enabled: true, name: `${prefix}饭团折扣`, productNames: '饭团', discountRate: 8.8, itemLimit: '' }
     ]
@@ -133,7 +197,8 @@ export const defaultState: CalculatorState = {
         { enabled: true, threshold: 15, min: 1.5, max: 3.5 },
         { enabled: true, threshold: 20, min: 2, max: 5 },
         { enabled: true, threshold: 30, min: 4, max: 7 }
-      ]
+      ],
+      jingdong: []
     },
     pricingEvaluation: DEFAULT_PRICING_EVALUATION_RULE
   },
@@ -158,16 +223,17 @@ export const defaultState: CalculatorState = {
       usePlatformTargets: true,
       profitTargets: [],
       products: [
-        { id: 'p1', name: '海鸭蛋和风饭团', price: 15, cost: 6, packageFee: 0, meituanPrice: '', elemePrice: '', meituanPackageFee: '', elemePackageFee: '', meituanEnabled: true, elemeEnabled: true, category: 'staple', stapleServingCount: 1, nonStandalone: false },
-        { id: 'p2', name: '照烧鸡排饭团', price: 16, cost: 6.5, packageFee: 0, meituanPrice: '', elemePrice: '', meituanPackageFee: '', elemePackageFee: '', meituanEnabled: true, elemeEnabled: true, category: 'staple', stapleServingCount: 1, nonStandalone: false },
-        { id: 'p3', name: '九州金枪鱼饭团', price: 16, cost: 6.5, packageFee: 0, meituanPrice: '', elemePrice: '', meituanPackageFee: '', elemePackageFee: '', meituanEnabled: true, elemeEnabled: true, category: 'staple', stapleServingCount: 1, nonStandalone: false },
-        { id: 'p4', name: '酥香肉松饭团', price: 8.9, cost: 3.2, packageFee: 0, meituanPrice: '', elemePrice: '', meituanPackageFee: '', elemePackageFee: '', meituanEnabled: true, elemeEnabled: true, category: 'staple', stapleServingCount: 1, nonStandalone: false },
-        { id: 'p5', name: '醇香豆浆', price: 3, cost: 1, packageFee: 0, meituanPrice: '', elemePrice: '', meituanPackageFee: '', elemePackageFee: '', meituanEnabled: true, elemeEnabled: true, category: 'snackDrink', stapleServingCount: 0, nonStandalone: true },
-        { id: 'p6', name: '茶叶蛋', price: 2, cost: 0.8, packageFee: 0, meituanPrice: '', elemePrice: '', meituanPackageFee: '', elemePackageFee: '', meituanEnabled: true, elemeEnabled: true, category: 'snackDrink', stapleServingCount: 0, nonStandalone: true }
+        { id: 'p1', name: '海鸭蛋和风饭团', price: 15, cost: 6, packageFee: 0, meituanPrice: '', elemePrice: '', jingdongPrice: '', meituanPackageFee: '', elemePackageFee: '', jingdongPackageFee: '', meituanEnabled: true, elemeEnabled: true, jingdongEnabled: true, category: 'staple', stapleServingCount: 1, nonStandalone: false },
+        { id: 'p2', name: '照烧鸡排饭团', price: 16, cost: 6.5, packageFee: 0, meituanPrice: '', elemePrice: '', jingdongPrice: '', meituanPackageFee: '', elemePackageFee: '', jingdongPackageFee: '', meituanEnabled: true, elemeEnabled: true, jingdongEnabled: true, category: 'staple', stapleServingCount: 1, nonStandalone: false },
+        { id: 'p3', name: '九州金枪鱼饭团', price: 16, cost: 6.5, packageFee: 0, meituanPrice: '', elemePrice: '', jingdongPrice: '', meituanPackageFee: '', elemePackageFee: '', jingdongPackageFee: '', meituanEnabled: true, elemeEnabled: true, jingdongEnabled: true, category: 'staple', stapleServingCount: 1, nonStandalone: false },
+        { id: 'p4', name: '酥香肉松饭团', price: 8.9, cost: 3.2, packageFee: 0, meituanPrice: '', elemePrice: '', jingdongPrice: '', meituanPackageFee: '', elemePackageFee: '', jingdongPackageFee: '', meituanEnabled: true, elemeEnabled: true, jingdongEnabled: true, category: 'staple', stapleServingCount: 1, nonStandalone: false },
+        { id: 'p5', name: '醇香豆浆', price: 3, cost: 1, packageFee: 0, meituanPrice: '', elemePrice: '', jingdongPrice: '', meituanPackageFee: '', elemePackageFee: '', jingdongPackageFee: '', meituanEnabled: true, elemeEnabled: true, jingdongEnabled: true, category: 'snackDrink', stapleServingCount: 0, nonStandalone: true },
+        { id: 'p6', name: '茶叶蛋', price: 2, cost: 0.8, packageFee: 0, meituanPrice: '', elemePrice: '', jingdongPrice: '', meituanPackageFee: '', elemePackageFee: '', jingdongPackageFee: '', meituanEnabled: true, elemeEnabled: true, jingdongEnabled: true, category: 'snackDrink', stapleServingCount: 0, nonStandalone: true }
       ],
       activities: {
         meituan: makeDefaultActivities('美团'),
-        eleme: makeDefaultActivities('饿了么')
+        eleme: makeDefaultActivities('饿了么'),
+        jingdong: makeDefaultActivities('京东')
       },
       activityDesignSettings: DEFAULT_ACTIVITY_DESIGN_SETTINGS
     }
@@ -266,6 +332,33 @@ function normalizeStapleServingCount(value: unknown, name: string, category: Pro
   const text = String(value ?? '').trim();
   if (text === '') return inferStapleServingCount(name, category);
   return Math.max(0, Math.floor(toNumber(text, inferStapleServingCount(name, category))));
+}
+
+function normalizeProductBundleItems(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(row => {
+      const item = row as { productId?: unknown; qty?: unknown };
+      return {
+        productId: String(item.productId || '').trim(),
+        qty: Math.max(1, Math.floor(toNumber(item.qty, 1)))
+      };
+    })
+    .filter(item => item.productId);
+}
+
+function normalizeProductBundleChoiceGroups(value: unknown): ProductBundleChoiceGroup[] {
+  if (!Array.isArray(value)) return [];
+  return value
+    .map(row => {
+      const group = row as Partial<ProductBundleChoiceGroup>;
+      const id = String(group.id || uid('bundle-group')).trim();
+      const name = String(group.name || '任选组').trim();
+      const selectionQty = Math.max(1, Math.floor(toNumber(group.selectionQty, 1)));
+      const items = normalizeProductBundleItems(group.items);
+      return { id, name, selectionQty, items };
+    })
+    .filter(group => group.items.length);
 }
 
 function money(value: unknown) {
@@ -401,18 +494,26 @@ function normalizeProduct(product: Partial<Product>): Product {
   return {
     id: String(product.id || uid('p')),
     name,
+    merchantProductCode: String(product.merchantProductCode || '').trim().replace(/\s+/g, ''),
+    barcode: String(product.barcode || '').trim().replace(/\s+/g, ''),
+    jingdongSkuCode: String(product.jingdongSkuCode || '').trim().replace(/\s+/g, ''),
     price: Math.max(0, toMoneyNumber(product.price, 0)),
     cost: Math.max(0, toMoneyNumber(product.cost, 0)),
     packageFee: Math.max(0, toMoneyNumber(product.packageFee, 0)),
     meituanPrice: normalizeOptionalPrice(product.meituanPrice),
     elemePrice: normalizeOptionalPrice(product.elemePrice),
+    jingdongPrice: normalizeOptionalPrice(product.jingdongPrice),
     meituanPackageFee: normalizeOptionalMoney(product.meituanPackageFee, 0, 0),
     elemePackageFee: normalizeOptionalMoney(product.elemePackageFee, 0, 0),
+    jingdongPackageFee: normalizeOptionalMoney(product.jingdongPackageFee, 0, 0),
     meituanEnabled: parseBoolean(product.meituanEnabled, true),
     elemeEnabled: parseBoolean(product.elemeEnabled, true),
+    jingdongEnabled: parseBoolean(product.jingdongEnabled, true),
     category,
     stapleServingCount: normalizeStapleServingCount(product.stapleServingCount, name, category),
-    nonStandalone
+    nonStandalone,
+    bundleItems: category === 'setMeal' ? normalizeProductBundleItems(product.bundleItems) : [],
+    bundleChoiceGroups: category === 'setMeal' ? normalizeProductBundleChoiceGroups(product.bundleChoiceGroups) : []
   };
 }
 
@@ -435,6 +536,32 @@ export function normalizeProductList(value: unknown): Product[] {
       seenIds.add(nextId);
       return { ...product, id: nextId };
     });
+}
+
+function normalizeJingdongSubsidyCouponKind(value: unknown): JingdongSubsidyCouponKind {
+  return value === 'small' ? 'small' : 'large';
+}
+
+function normalizeJingdongSubsidyCoupons(value: unknown, fallback: JingdongSubsidyCoupon[] = []) {
+  const rows = Array.isArray(value) ? value as Partial<JingdongSubsidyCoupon>[] : fallback;
+  return rows.map(row => {
+    const amount = Math.max(0, toMoneyNumber(row.amount, 0));
+    const merchantAmount = Math.max(0, toMoneyNumber(row.merchantAmount, 0));
+    const merchantExtraAmount = Math.max(0, toMoneyNumber(row.merchantExtraAmount, 0));
+    const platformAmount = Math.max(0, toMoneyNumber(row.platformAmount, Math.max(0, amount - merchantAmount)));
+    const kind = normalizeJingdongSubsidyCouponKind(row.kind);
+    return {
+      enabled: parseBoolean(row.enabled, true),
+      name: String(row.name || (kind === 'large' ? '京东外卖超级补贴券' : '京东好运小额券')),
+      kind,
+      threshold: Math.max(0, toMoneyNumber(row.threshold, 0)),
+      amount,
+      merchantAmount,
+      merchantExtraAmount: kind === 'large' ? merchantExtraAmount : 0,
+      platformAmount,
+      stackableWithLarge: kind === 'small' && parseBoolean(row.stackableWithLarge, false)
+    };
+  }).filter(row => row.threshold > 0 || row.amount > 0 || row.merchantAmount > 0 || row.merchantExtraAmount > 0 || row.platformAmount > 0);
 }
 
 function normalizeActivities(data: Partial<Activities> | undefined, platformName: string): Activities {
@@ -462,6 +589,7 @@ function normalizeActivities(data: Partial<Activities> | undefined, platformName
       threshold: toMoneyNumber(row.threshold, 0),
       amount: toMoneyNumber(row.amount, 0)
     })) : fallback.redAddOns,
+    jingdongSubsidyCoupons: normalizeJingdongSubsidyCoupons(data?.jingdongSubsidyCoupons, fallback.jingdongSubsidyCoupons),
     discountActivities: Array.isArray(data?.discountActivities) ? data.discountActivities.map(row => ({
       enabled: parseBoolean(row.enabled, true),
       name: String(row.name || '商品折扣'),
@@ -474,14 +602,20 @@ function normalizeActivities(data: Partial<Activities> | undefined, platformName
 
 function normalizePricingEvaluationRule(rule: Partial<PricingEvaluationRule> | undefined): PricingEvaluationRule {
   const fallback = DEFAULT_PRICING_EVALUATION_RULE;
+  const raw = rule || {};
   return {
-    fallbackTargetProfitRate: Math.max(0, toMoneyNumber(rule?.fallbackTargetProfitRate, fallback.fallbackTargetProfitRate)),
-    addOnTargetProfitRate: Math.max(0, toMoneyNumber(rule?.addOnTargetProfitRate, fallback.addOnTargetProfitRate)),
-    riceBallTargetProfitRate: Math.max(0, toMoneyNumber(rule?.riceBallTargetProfitRate, fallback.riceBallTargetProfitRate)),
-    setMealTargetProfitRate: Math.max(0, toMoneyNumber(rule?.setMealTargetProfitRate, fallback.setMealTargetProfitRate)),
-    singleStapleTargetProfitRate: Math.max(0, toMoneyNumber(rule?.singleStapleTargetProfitRate, fallback.singleStapleTargetProfitRate)),
-    doubleStapleTargetProfitRate: Math.max(0, toMoneyNumber(rule?.doubleStapleTargetProfitRate, fallback.doubleStapleTargetProfitRate)),
-    multiStapleTargetProfitRate: Math.max(0, toMoneyNumber(rule?.multiStapleTargetProfitRate, fallback.multiStapleTargetProfitRate))
+    fallbackTargetCostShare: Math.max(1, Math.min(100, toMoneyNumber(raw.fallbackTargetCostShare, fallback.fallbackTargetCostShare))),
+    stapleTargetCostShare: Math.max(1, Math.min(100, toMoneyNumber(raw.stapleTargetCostShare, fallback.stapleTargetCostShare))),
+    setMealTargetCostShare: Math.max(1, Math.min(100, toMoneyNumber(raw.setMealTargetCostShare, fallback.setMealTargetCostShare))),
+    addOnTargetCostShare: Math.max(1, Math.min(100, toMoneyNumber(raw.addOnTargetCostShare, fallback.addOnTargetCostShare))),
+    addOnStapleRatioShare: Math.max(0, Math.min(100, toMoneyNumber(raw.addOnStapleRatioShare, fallback.addOnStapleRatioShare))),
+    addOnMinimumOriginalPrice: Math.max(0, toMoneyNumber(raw.addOnMinimumOriginalPrice, fallback.addOnMinimumOriginalPrice)),
+    addOnPromotionRiskShare: Math.max(0, Math.min(100, toMoneyNumber(raw.addOnPromotionRiskShare, fallback.addOnPromotionRiskShare))),
+    setMealDiscountRate: Math.max(0, Math.min(95, toMoneyNumber(raw.setMealDiscountRate, fallback.setMealDiscountRate))),
+    fixedActivityCost: Math.max(0, toMoneyNumber(raw.fixedActivityCost, fallback.fixedActivityCost)),
+    baseRedAmountMode: raw.baseRedAmountMode === 'min' || raw.baseRedAmountMode === 'average' || raw.baseRedAmountMode === 'max'
+      ? raw.baseRedAmountMode
+      : fallback.baseRedAmountMode
   };
 }
 
@@ -634,7 +768,7 @@ function normalizeActivityCouponSceneTemplate(row: Partial<ActivityCouponSceneTe
     name: String(row?.name || fallback.name),
     priority: Math.floor(toNumber(row?.priority, fallback.priority)),
     platforms: Array.isArray(row?.platforms)
-      ? row.platforms.filter((item): item is Platform => item === 'meituan' || item === 'eleme')
+      ? row.platforms.filter((item): item is Platform => item === 'meituan' || item === 'eleme' || item === 'jingdong')
       : fallback.platforms,
     channel: row?.channel === 'inStore' || row?.channel === 'orderReturn' || row?.channel === 'reviewReturn' || row?.channel === 'pointsReturn' || row?.channel === 'targeted' ? row.channel : fallback.channel,
     targetUser: row?.targetUser === 'all' || row?.targetUser === 'newCustomer' || row?.targetUser === 'highFrequency' || row?.targetUser === 'highAov' || row?.targetUser === 'lostCustomer' || row?.targetUser === 'specified' ? row.targetUser : fallback.targetUser,
@@ -679,7 +813,8 @@ function normalizePlatformCouponSceneKeys(value: Partial<Record<Platform, string
   };
   return {
     meituan: normalizeKeys(value?.meituan),
-    eleme: normalizeKeys(value?.eleme)
+    eleme: normalizeKeys(value?.eleme),
+    jingdong: normalizeKeys(value?.jingdong)
   };
 }
 
@@ -858,7 +993,10 @@ export function normalizeActivityDesignSettings(settings: Partial<ActivityDesign
     platformCouponSceneKeys: normalizePlatformCouponSceneKeys(raw.platformCouponSceneKeys || fallback.platformCouponSceneKeys, normalizeActivityCouponSceneTemplates(raw.couponSceneTemplates || fallback.couponSceneTemplates)),
     minProfitRate: Math.max(0, toMoneyNumber(raw.minProfitRate, fallback.minProfitRate || 0)),
     originalBandSize: Math.max(1, Math.floor(toNumber(raw.originalBandSize, fallback.originalBandSize || 5))),
-    payBandSize: Math.max(1, Math.floor(toNumber(raw.payBandSize, fallback.payBandSize || 5)))
+    payBandSize: Math.max(1, Math.floor(toNumber(raw.payBandSize, fallback.payBandSize || 5))),
+    jingdongCouponExtraSafetyMode: raw.jingdongCouponExtraSafetyMode === 'noLoss' ? 'noLoss' : 'targetProfit',
+    jingdongCouponExtraStep: Math.max(0.1, toMoneyNumber(raw.jingdongCouponExtraStep, fallback.jingdongCouponExtraStep || 0.5)),
+    jingdongCouponExtraFallbackCap: Math.max(0, toMoneyNumber(raw.jingdongCouponExtraFallbackCap, fallback.jingdongCouponExtraFallbackCap || 10))
   };
 }
 
@@ -927,7 +1065,8 @@ export function normalizeState(data: unknown): CalculatorState {
     products: normalizeProductList(store.products),
     activities: {
       meituan: normalizeActivities(store.activities?.meituan, '美团'),
-      eleme: normalizeActivities(store.activities?.eleme, '饿了么')
+      eleme: normalizeActivities(store.activities?.eleme, '饿了么'),
+      jingdong: normalizeActivities(store.activities?.jingdong, '京东')
     },
     activityDesignSettings: normalizeActivityDesignSettings(store.activityDesignSettings)
   }));
@@ -943,7 +1082,8 @@ export function normalizeState(data: unknown): CalculatorState {
       ...(raw.platformRules || {}),
       redTiers: {
         meituan: raw.platformRules?.redTiers?.meituan || base.platformRules.redTiers.meituan,
-        eleme: raw.platformRules?.redTiers?.eleme || base.platformRules.redTiers.eleme
+        eleme: raw.platformRules?.redTiers?.eleme || base.platformRules.redTiers.eleme,
+        jingdong: raw.platformRules?.redTiers?.jingdong || base.platformRules.redTiers.jingdong
       },
       profitTargets: raw.platformRules?.profitTargets || base.platformRules.profitTargets,
       pricingStrategy: normalizePricingStrategy(raw.platformRules?.pricingStrategy),

@@ -1,10 +1,12 @@
 export const APP_ROUTES = [
   { key: 'store', path: '/', label: '门店维护' },
   { key: 'products', path: '/products', label: '商品维护' },
+  { key: 'product-analysis', path: '/product-analysis', label: '商品分析' },
   { key: 'system-strategy', path: '/system-strategy', label: '系统活动策略' },
   { key: 'platform', path: '/platform', label: '平台通用规则' },
   { key: 'meituan', path: '/meituan', label: '美团活动' },
   { key: 'eleme', path: '/eleme', label: '饿了么活动' },
+  { key: 'jingdong', path: '/jingdong', label: '京东券维护' },
   { key: 'activity-design', path: '/activity-design', label: '活动设计' },
   { key: 'order-analysis', path: '/order-analysis', label: '订单分析' },
   { key: 'data-analysis', path: '/data-analysis', label: '数据分析' },

@@ -18,6 +18,7 @@ import {
 } from '../../domain/core';
 import { activityAmountByBusinessFormula } from '../../domain/businessFormula';
 import { roundMoney } from '../../domain/money';
+import { jingdongSubsidyCouponsToActivityRedTiers } from '../../domain/activity/activityDesigner';
 import type {
   ActivityBaseComboRow,
   ActivityDesignResult,
@@ -45,7 +46,7 @@ import {
 } from '../results/resultsCalculationUtils';
 import { normalizeActivityScanComboPools } from './activityDesignPageUtils';
 
-const ACTIVITY_PRICE_SCAN_MODEL_VERSION = 'activity-price-scan-v11';
+const ACTIVITY_PRICE_SCAN_MODEL_VERSION = 'activity-price-scan-v13';
 
 export function activityPriceScanRecordKey(storeId: string) {
   return `${storeId}::${ACTIVITY_PRICE_SCAN_MODEL_VERSION}`;
@@ -82,6 +83,9 @@ function activityPriceScanSettingsSignatureInput(settings: ActivityDesignSetting
     couponProfitDrop: _couponProfitDrop,
     minProfitRate: _minProfitRate,
     objectivePayTargets: _objectivePayTargets,
+    jingdongCouponExtraSafetyMode: _jingdongCouponExtraSafetyMode,
+    jingdongCouponExtraStep: _jingdongCouponExtraStep,
+    jingdongCouponExtraFallbackCap: _jingdongCouponExtraFallbackCap,
     ...scanSettings
   } = settings;
   const objectiveStrategies = Object.fromEntries(Object.entries(scanSettings.objectiveStrategies || {}).map(([key, strategy]) => [key, {
@@ -111,6 +115,7 @@ function activityPriceScanStoreSignatureInput(store: Store) {
   return {
     id: store.id,
     startPrice: store.startPrice,
+    calculationTotalMin: store.calculationTotalMin,
     calculationTotalMax: store.calculationTotalMax,
     stapleCountMin: store.stapleCountMin,
     stapleCountMax: store.stapleCountMax,
@@ -122,9 +127,23 @@ function activityPriceScanStoreSignatureInput(store: Store) {
     usePlatformFee: store.usePlatformFee,
     customFeeRule: store.customFeeRule,
     activityDesignSettings: store.activityDesignSettings,
-    discountActivities: {
-      meituan: store.activities.meituan.discountActivities,
-      eleme: store.activities.eleme.discountActivities
+    activities: {
+      meituan: {
+        fullReductions: store.activities.meituan.fullReductions,
+        redAddOns: store.activities.meituan.redAddOns,
+        discountActivities: store.activities.meituan.discountActivities
+      },
+      eleme: {
+        fullReductions: store.activities.eleme.fullReductions,
+        redAddOns: store.activities.eleme.redAddOns,
+        discountActivities: store.activities.eleme.discountActivities
+      },
+      jingdong: {
+        fullReductions: store.activities.jingdong?.fullReductions || [],
+        redAddOns: store.activities.jingdong?.redAddOns || [],
+        jingdongSubsidyCoupons: store.activities.jingdong?.jingdongSubsidyCoupons || [],
+        discountActivities: store.activities.jingdong?.discountActivities || []
+      }
     },
     products: store.products.map(product => ({
       id: product.id,
@@ -133,10 +152,13 @@ function activityPriceScanStoreSignatureInput(store: Store) {
       packageFee: product.packageFee,
       meituanPrice: product.meituanPrice,
       elemePrice: product.elemePrice,
+      jingdongPrice: product.jingdongPrice,
       meituanPackageFee: product.meituanPackageFee,
       elemePackageFee: product.elemePackageFee,
+      jingdongPackageFee: product.jingdongPackageFee,
       meituanEnabled: product.meituanEnabled,
       elemeEnabled: product.elemeEnabled,
+      jingdongEnabled: product.jingdongEnabled,
       category: product.category,
       stapleServingCount: product.stapleServingCount,
       nonStandalone: product.nonStandalone
@@ -162,6 +184,9 @@ function activityPriceScanLegacySettingsSignatureInput(settings: ActivityDesignS
     scanComboPoolsSnapshot: _scanComboPoolsSnapshot,
     selectedRecommendationKey: _selectedRecommendationKey,
     selectedRecommendationSnapshot: _selectedRecommendationSnapshot,
+    jingdongCouponExtraSafetyMode: _jingdongCouponExtraSafetyMode,
+    jingdongCouponExtraStep: _jingdongCouponExtraStep,
+    jingdongCouponExtraFallbackCap: _jingdongCouponExtraFallbackCap,
     ...scanSettings
   } = settings;
   return scanSettings;
@@ -180,10 +205,13 @@ function activityPriceScanLegacyStoreSignatureInput(store: Store) {
       packageFee: product.packageFee,
       meituanPrice: product.meituanPrice,
       elemePrice: product.elemePrice,
+      jingdongPrice: product.jingdongPrice,
       meituanPackageFee: product.meituanPackageFee,
       elemePackageFee: product.elemePackageFee,
+      jingdongPackageFee: product.jingdongPackageFee,
       meituanEnabled: product.meituanEnabled,
       elemeEnabled: product.elemeEnabled,
+      jingdongEnabled: product.jingdongEnabled,
       category: product.category,
       stapleServingCount: product.stapleServingCount,
       nonStandalone: product.nonStandalone
@@ -349,6 +377,15 @@ function nonNegativeAmount(value: unknown) {
   return Math.max(0, Number(value) || 0);
 }
 
+function bestActivityScanDetailBaseRed(state: CalculatorState, store: Store, platform: Platform, basis: number) {
+  if (platform !== 'jingdong') return bestBaseRed(state, platform, basis);
+  const tier = jingdongSubsidyCouponsToActivityRedTiers(store.activities.jingdong?.jingdongSubsidyCoupons)
+    .filter(row => row.enabled && basis + 1e-9 >= row.threshold)
+    .sort((a, b) => b.max - a.max || b.threshold - a.threshold)[0];
+  if (!tier) return { enabled: true, threshold: 0, min: 0, max: 0, amount: 0 };
+  return { ...tier, amount: roundMoney(nonNegativeAmount(tier.max)) };
+}
+
 function buildActivityOriginalScanDetailRow(
   state: CalculatorState,
   store: Store,
@@ -366,7 +403,7 @@ function buildActivityOriginalScanDetailRow(
   const activity = store.activities[bucket.platform];
   const platformFull = bestFullReduction(activity.fullReductions || [], originalTotal);
   const afterPlatformFull = Math.max(0, roundMoney(originalTotal - platformFull.amount));
-  const baseRed = bestBaseRed(state, bucket.platform, afterPlatformFull);
+  const baseRed = bestActivityScanDetailBaseRed(state, store, bucket.platform, afterPlatformFull);
   const afterBaseRed = Math.max(0, roundMoney(afterPlatformFull - baseRed.amount));
   const plannedRedAddOn = nonNegativeAmount(settings.redAddOnSpace) > 0
     ? [{ enabled: true, threshold: 0, amount: roundMoney(nonNegativeAmount(settings.redAddOnSpace)) } as RedAddOn]
@@ -461,10 +498,12 @@ export function expandActivityOriginalBucketCombos(
   state: CalculatorState,
   store: Store,
   settings: ActivityDesignSettings,
-  options: { onlyKeys?: Set<string> } = {}
+  options: { onlyKeys?: Set<string>; limit?: number } = {}
 ) {
   const scanComboPools = normalizeActivityScanComboPools(result?.scanComboPools);
   if (!scanComboPools.mainCombos.length || !scanComboPools.addOnCombos.length) return [];
+  const limit = options.limit === undefined ? Infinity : Math.max(0, Math.floor(Number(options.limit) || 0));
+  if (limit <= 0) return [];
   const mainComboById = new Map(scanComboPools.mainCombos.map(row => [row.key, row]));
   const addOnComboById = new Map(scanComboPools.addOnCombos.map(row => [row.key, row]));
   const emptyAddOnByPlatform = new Map<Platform, ActivityScanComboPoolRow>();
@@ -488,6 +527,7 @@ export function expandActivityOriginalBucketCombos(
           if (options.onlyKeys && !options.onlyKeys.has(key)) continue;
           const row = buildActivityOriginalScanDetailRow(state, store, settings, bucketRow, mainCombo, addOnCombo, entry.originalTotalCents, key);
           if (row) rows.push(row);
+          if (rows.length >= limit) return rows.sort((a, b) => a.platform.localeCompare(b.platform) || a.originalTotal - b.originalTotal || a.key.localeCompare(b.key));
         }
       }
     }

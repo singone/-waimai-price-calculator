@@ -14,7 +14,8 @@ import type {
 
 const DEFAULT_ACTIVITY_DESIGN_PAY_BAND_KEYS: ActivityDesignPayBandKeyByPlatform = {
   meituan: 'all',
-  eleme: 'all'
+  eleme: 'all',
+  jingdong: 'all'
 };
 
 type UseActivityDesignPageStateParams = {

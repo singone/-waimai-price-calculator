@@ -5,40 +5,38 @@ import React from 'react';
 import { App as AntApp } from 'antd';
 import { currentStoreFrom } from '../../domain/core';
 import type {
+  ActivityDesignSettings,
   CalculatorState,
   MeasurementSettings,
   Store,
   Summary
 } from '../../domain/types';
 import { EMPTY_SUMMARY } from '../../config/calculation';
-import { isCalculationAbortError, runCalculationTask } from '../../workers/calculationClient';
 import { productDiscountActivityName, type ProductDiscountSuggestion } from '../shared/productDiscountSuggestionUtils';
 import type { CommitCalculatorState } from '../shared/useCalculatorStateCommit';
 import type { AppDataRepository } from '../../data/browserDataRepository';
+import { buildActivityDesignCalculationSettings } from '../activityDesign/activityDesignPageUtils';
+import {
+  activityPriceScanRecordToResult,
+  buildActivityPriceScanSignature,
+  buildLegacyActivityPriceScanSignature
+} from '../activityDesign/activityDesignCalculationUtils';
 import {
   DEFAULT_MEASUREMENT_SETTINGS,
   MEASUREMENT_RESULT_SCENARIO,
+  buildMeasurementResultFromActivityScan,
   buildMeasurementPersistenceSettings,
   emptyMeasurementSummary,
-  measurementChunkKey,
-  measurementRecordKey,
   measurementRecordToResult,
   waitForLoadingPaint
 } from './resultsCalculationUtils';
-
-const ASYNC_CALCULATION_MAX_DURATION_MS = 30000;
-const ASYNC_CALCULATION_WORKER_TIMEOUT_MS = 35000;
 
 type UseResultsCalculationStateParams = {
   calculatorState: CalculatorState;
   commitCalculatorState: CommitCalculatorState;
   dataRepository: AppDataRepository<CalculatorState, Store>;
   store: Store;
-  storeActivityDesignSettings: {
-    stapleMaxCount?: number;
-    addOnMaxCount?: number | '';
-    payBandSize?: number;
-  };
+  storeActivityDesignSettings: ActivityDesignSettings;
 };
 
 type AsyncTask = {
@@ -134,32 +132,29 @@ export function useResultsCalculationState({
     const task = beginMeasurementTask();
     const scenario = MEASUREMENT_RESULT_SCENARIO;
     const persistenceSettings = buildMeasurementPersistenceSettings(store, settings, storeActivityDesignSettings);
-    const parentKey = measurementRecordKey(store.id, scenario);
     setIsResultsLoading(true);
     await waitForLoadingPaint();
     try {
       const previousRecord = await dataRepository.loadMeasurementRecord(store.id, scenario);
-      const chunkWriter = dataRepository.createMeasurementChunkWriter(parentKey);
       setResultRows([]);
       setResultPayBands([]);
       setResultWarnings([]);
       setResultSummary(emptyMeasurementSummary());
       setSummary({ ...EMPTY_SUMMARY });
-      const result = await runCalculationTask('measurement', {
-        state: calculatorState,
-        platformFilter: 'all',
-        settings: persistenceSettings
-      }, progress => {
-        if (isCurrentMeasurementTask(task)) {
-          setSummary({ resultCount: progress.resultCount, comboCount: progress.comboCount, validComboCount: progress.validComboCount, elapsedTime: null });
-        }
-      }, {
-        signal: task.controller.signal,
-        maxDurationMs: ASYNC_CALCULATION_MAX_DURATION_MS,
-        timeoutMs: ASYNC_CALCULATION_WORKER_TIMEOUT_MS,
-        onRowsChunk: rows => chunkWriter.write(rows)
-      });
-      const record = await dataRepository.saveChunkedMeasurementRecord(store, scenario, persistenceSettings, result, chunkWriter.keys());
+      const scanSettings = buildActivityDesignCalculationSettings(store, storeActivityDesignSettings, { calculationMode: 'priceScan' });
+      const expectedSignature = buildActivityPriceScanSignature(calculatorState, store, scanSettings);
+      const legacyExpectedSignature = buildLegacyActivityPriceScanSignature(calculatorState, store, scanSettings);
+      const scanRecord = await dataRepository.loadActivityPriceScanRecord(store.id);
+      if (!scanRecord) throw new Error('请先在活动设计页生成一次“原价扫描”，组合测算会直接复用原价桶结果。');
+      if (scanRecord.signature !== expectedSignature && scanRecord.signature !== legacyExpectedSignature) {
+        throw new Error('活动设计原价扫描缓存已过期，请先在活动设计页重新生成原价扫描。');
+      }
+      const scanResult = activityPriceScanRecordToResult(scanRecord);
+      if (!scanResult.originalPriceBuckets?.length) throw new Error('当前原价扫描没有可用原价桶，请在活动设计页重新生成原价扫描。');
+      const result = buildMeasurementResultFromActivityScan(calculatorState, store, scanResult, measurementPayBandSize);
+      if (!result.rows.length) throw new Error('当前原价扫描没有命中可用组合，请检查商品上下架、起送价和原价范围。');
+      if (isCurrentMeasurementTask(task)) setSummary(result.summary);
+      const record = await dataRepository.saveMeasurementRecord(store, scenario, persistenceSettings, result);
       await dataRepository.deleteMeasurementRecordChunks(previousRecord);
       if (!isCurrentMeasurementTask(task)) return;
       const displayResult = measurementRecordToResult(record, measurementPayBandSize);
@@ -170,7 +165,7 @@ export function useResultsCalculationState({
       setResultSummary(displayResult.summary);
       setSummary(displayResult.summary);
     } catch (error) {
-      if (!isCalculationAbortError(error) && isCurrentMeasurementTask(task)) {
+      if (isCurrentMeasurementTask(task)) {
         message.error(error instanceof Error ? error.message : '测算结果生成失败。');
       }
     } finally {

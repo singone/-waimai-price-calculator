@@ -41,7 +41,7 @@ export function buildActivityDesignCalculationSettings(
   return {
     ...activityDesignSettings,
     productNameKeyword: '',
-    originalMin: 0,
+    originalMin: storeRange.min,
     originalMax: Number.isFinite(storeRange.max) ? storeRange.max : '',
     payMin: 0,
     payMax: '',
@@ -300,7 +300,7 @@ export function normalizeActivityScanComboPools(value: unknown): ActivityScanCom
       .filter(row => row && typeof row === 'object')
       .map(row => {
         const sourceRow = row as Partial<ActivityScanComboPoolRow>;
-        const platform: Platform = sourceRow.platform === 'eleme' ? 'eleme' : 'meituan';
+        const platform: Platform = sourceRow.platform === 'jingdong' ? 'jingdong' : sourceRow.platform === 'eleme' ? 'eleme' : 'meituan';
         const originalTotal = roundMoney(sourceRow.originalTotal);
         return {
           key: String(sourceRow.key || ''),

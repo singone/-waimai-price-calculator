@@ -4,7 +4,7 @@
 import dynamic from 'next/dynamic';
 import { useRouter } from 'next/navigation';
 import React from 'react';
-import { Button, Card, Col, Input, InputNumber, Modal, Row, Space, Steps, Table, Tabs, Tag, Typography } from 'antd';
+import { Button, Card, Col, Input, InputNumber, Modal, Row, Select, Space, Steps, Table, Tabs, Tag, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { ReloadOutlined } from '@ant-design/icons';
 import { pathForPage } from '../../app/routes';
@@ -13,8 +13,10 @@ import { ProductDiscountSuggestionSection } from '../shared/ProductDiscountSugge
 import { useCalculatorPageProps } from '../shared/CalculatorContext';
 import { useCalculatorStateCommit } from '../shared/useCalculatorStateCommit';
 import { useStoreActivityDesignSettings } from '../shared/useStoreActivityDesignSettings';
-import { PLATFORM_NAMES, PLATFORMS } from '../../domain/core';
-import { average, finiteRate, roundMoney } from '../../domain/money';
+import { ALL_PLATFORMS, bestCouponOption, bestFullReduction, buildFeeSummary, calculationTotalRange, PLATFORM_NAMES, pricingStrategyTargetForPay } from '../../domain/core';
+import { jingdongSubsidyCouponsToActivityRedTiers } from '../../domain/activity/activityDesigner';
+import { average, finiteRate, profitRateByBasis, roundMoney } from '../../domain/money';
+import { jingdongCouponEffectiveAmount, jingdongCouponEffectiveMerchantAmount } from '../../domain/jingdongSubsidyAnalysis';
 import { tablePagination } from '../../utils/table';
 import { dateTimeText, formatActivityOriginalDiscountTiers, money, rateText } from '../../utils/format';
 import {
@@ -31,10 +33,14 @@ import type {
   ActivityComboSimulationRow,
   ActivityCouponBucketSuggestion,
   ActivityPriceBucketRow,
+  ActivityDesignSettings,
   ActivityRecommendationRow,
+  CalculatorState,
   ComboItem,
+  JingdongSubsidyCoupon,
   Platform,
-  PriceBandRow
+  PriceBandRow,
+  Store
 } from '../../domain/types';
 import {
   activityCostBasisLabel,
@@ -59,6 +65,7 @@ import {
 } from './activityDesignPageUtils';
 import {
   activityObjectiveOptionsFromSettings,
+  normalizeActivityDesignSettings,
   normalizeActivityObjectiveStrategies
 } from '../../data/calculatorState';
 import { useActivityDesignCalculationState } from './useActivityDesignCalculationState';
@@ -111,6 +118,487 @@ function PriceBucketComboCountChart({ rows }: { rows: ActivityPriceBucketRow[] }
       />
     </div>
   );
+}
+
+function activityPlatformRedName(platform: Platform) {
+  if (platform === 'jingdong') return '阶梯红包';
+  return platform === 'meituan' ? '神券' : '爆红包';
+}
+
+type JingdongCouponExtraSafetyMode = 'targetProfit' | 'noLoss';
+
+type JingdongActivityFinancials = {
+  finalPay: number;
+  merchantSettlement: number;
+  commission: number;
+  serviceFee: number;
+  freightSubsidy: number;
+  netPay: number;
+  profit: number;
+  profitSpace: number;
+  profitRate: number | null;
+  netProfitRate: number | null;
+};
+
+type JingdongCouponBucketDiagnostic = {
+  key: string;
+  bucket: ActivityPriceBucketRow;
+  originalTotal: number;
+  couponBasis: number;
+  fullAmount: number;
+  storeCouponAmount: number;
+  comboCount: number;
+  maxCost: number;
+  safeSpace: number;
+  targetPay: number | null;
+  targetGap: number;
+  keepCouponDiscountCap: number;
+  smallCouponName: string;
+  selectionAmount: number;
+  selectionMerchantAmount: number;
+  baseFinancials: JingdongActivityFinancials;
+  baseSafe: boolean;
+};
+
+type JingdongCouponExtraPlanRow = {
+  key: string;
+  couponName: string;
+  threshold: number;
+  amount: number;
+  merchantAmount: number;
+  merchantExtraAmount: number;
+  platformAmount: number;
+  discountRate: number | null;
+  merchantRate: number | null;
+  nextTierLabel: string;
+  nextTierMerchantAmount: number | null;
+  tierExtraCap: number;
+  maxSafeExtra: number;
+  suggestedExtra: number;
+  coveredBucketCount: number;
+  coveredComboCount: number;
+  baseRiskBucketCount: number;
+  baseRiskComboCount: number;
+  worstProfit: number | null;
+  worstProfitSpace: number | null;
+  status: 'canAdd' | 'keep' | 'blocked' | 'noCoverage';
+  reason: string;
+  diagnostics: JingdongCouponBucketDiagnostic[];
+};
+
+type JingdongActivityRuleSuggestionRow = {
+  key: string;
+  kind: 'fullReduction' | 'storeCoupon';
+  action: 'stackWithCoupon' | 'avoidRiskCoupon';
+  couponName: string;
+  couponThreshold: number;
+  threshold: number;
+  amount: number;
+  affectedBucketCount: number;
+  affectedComboCount: number;
+  bucketLabels: string[];
+  worstProfitAfter: number | null;
+  reason: string;
+};
+
+function jingdongExtraSafetyModeLabel(mode: JingdongCouponExtraSafetyMode) {
+  return mode === 'noLoss' ? '不亏损' : '目标利润';
+}
+
+function normalizedJingdongExtraStep(settings: ActivityDesignSettings) {
+  return Math.max(0.1, roundMoney(Number(settings.jingdongCouponExtraStep) || 0.5));
+}
+
+function floorMoneyToStep(value: number, step: number) {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return roundMoney(Math.floor((value + 1e-9) / step) * step);
+}
+
+function ceilMoneyToStep(value: number, step: number) {
+  if (!Number.isFinite(value) || value <= 0) return 0;
+  return roundMoney(Math.ceil((value - 1e-9) / step) * step);
+}
+
+function normalizedJingdongExtraFallbackCap(settings: ActivityDesignSettings) {
+  return Math.max(0, roundMoney(Number(settings.jingdongCouponExtraFallbackCap) || 0));
+}
+
+function jingdongBucketOriginalTotal(bucket: ActivityPriceBucketRow) {
+  const avgOriginal = Number(bucket.avgOriginalTotal);
+  return roundMoney(Number.isFinite(avgOriginal) && avgOriginal > 0 ? avgOriginal : Number(bucket.priceBucket) || 0);
+}
+
+function jingdongBucketAverageCost(bucket: ActivityPriceBucketRow) {
+  const weightedAvgCost = Number(bucket.weightedAvgCost);
+  if (Number.isFinite(weightedAvgCost) && weightedAvgCost >= 0) return roundMoney(weightedAvgCost);
+  const avgCost = Number(bucket.avgCost);
+  return Number.isFinite(avgCost) ? roundMoney(Math.max(0, avgCost)) : 0;
+}
+
+function jingdongBucketMaxCost(bucket: ActivityPriceBucketRow) {
+  const fallback = jingdongBucketAverageCost(bucket);
+  const maxCost = Number(bucket.maxCost);
+  return Number.isFinite(maxCost) ? roundMoney(Math.max(0, maxCost)) : fallback;
+}
+
+function jingdongBucketSafeSpace(bucket: ActivityPriceBucketRow) {
+  const value = bucket.avgActivitySafeDiscountSpace ?? bucket.weightedAvgActivitySafeDiscountSpace ?? 0;
+  return Math.max(0, roundMoney(Number(value) || 0));
+}
+
+function jingdongBucketTargetPay(bucket: ActivityPriceBucketRow) {
+  const value = bucket.avgActivityTargetPay ?? bucket.weightedAvgActivityTargetPay;
+  return Number.isFinite(Number(value)) ? roundMoney(Number(value)) : null;
+}
+
+function jingdongBucketStapleCount(finalPay: number) {
+  if (finalPay <= 25 + 1e-9) return 1;
+  if (finalPay <= 60 + 1e-9) return 2;
+  return 3;
+}
+
+function jingdongCouponDisplayName(coupon: JingdongSubsidyCoupon | null | undefined, fallback: string) {
+  return String(coupon?.name || fallback);
+}
+
+function jingdongCouponBasePlatformAmount(coupon: JingdongSubsidyCoupon) {
+  return Math.max(0, Number(coupon.platformAmount) || 0);
+}
+
+function jingdongCouponBaseExtraAmount(coupon: JingdongSubsidyCoupon) {
+  return coupon.kind === 'large' ? Math.max(0, Number(coupon.merchantExtraAmount) || 0) : 0;
+}
+
+function activeJingdongLargeCoupons(coupons: JingdongSubsidyCoupon[]) {
+  return (coupons || [])
+    .filter(coupon => coupon.enabled && coupon.kind === 'large' && coupon.threshold > 0 && jingdongCouponEffectiveMerchantAmount(coupon) > 0)
+    .sort((a, b) => a.threshold - b.threshold || jingdongCouponEffectiveMerchantAmount(a) - jingdongCouponEffectiveMerchantAmount(b) || jingdongCouponEffectiveAmount(a) - jingdongCouponEffectiveAmount(b) || jingdongCouponDisplayName(a, '').localeCompare(jingdongCouponDisplayName(b, ''), 'zh-CN'));
+}
+
+function bestStackableJingdongSmallCoupon(coupons: JingdongSubsidyCoupon[], couponBasis: number) {
+  return (coupons || [])
+    .filter(coupon => coupon.enabled && coupon.kind === 'small' && coupon.stackableWithLarge && couponBasis + 1e-9 >= coupon.threshold && jingdongCouponEffectiveAmount(coupon) > 0)
+    .sort((a, b) => jingdongCouponEffectiveAmount(b) - jingdongCouponEffectiveAmount(a) || jingdongCouponEffectiveMerchantAmount(b) - jingdongCouponEffectiveMerchantAmount(a) || b.threshold - a.threshold || jingdongCouponDisplayName(a, '').localeCompare(jingdongCouponDisplayName(b, ''), 'zh-CN'))[0] || null;
+}
+
+function bestJingdongSelectionAmountForBasis(coupons: JingdongSubsidyCoupon[], couponBasis: number) {
+  const eligibleLargeCoupons = activeJingdongLargeCoupons(coupons).filter(coupon => couponBasis + 1e-9 >= coupon.threshold);
+  const bestSmallCoupon = bestStackableJingdongSmallCoupon(coupons, couponBasis);
+  const smallAmount = bestSmallCoupon ? jingdongCouponEffectiveAmount(bestSmallCoupon) : 0;
+  const smallMerchantAmount = bestSmallCoupon ? jingdongCouponEffectiveMerchantAmount(bestSmallCoupon) : 0;
+  const candidates = eligibleLargeCoupons.length
+    ? eligibleLargeCoupons.map(coupon => ({
+      amount: roundMoney(jingdongCouponEffectiveAmount(coupon) + smallAmount),
+      merchantAmount: roundMoney(jingdongCouponEffectiveMerchantAmount(coupon) + smallMerchantAmount)
+    }))
+    : bestSmallCoupon
+      ? [{ amount: smallAmount, merchantAmount: smallMerchantAmount }]
+      : [{ amount: 0, merchantAmount: 0 }];
+  return candidates.sort((a, b) => b.amount - a.amount || b.merchantAmount - a.merchantAmount)[0];
+}
+
+function evaluateJingdongActivityFinancials(
+  state: CalculatorState,
+  store: Store,
+  couponBasis: number,
+  selectionAmount: number,
+  selectionMerchantAmount: number,
+  cost: number
+): JingdongActivityFinancials {
+  const finalPay = Math.max(0, roundMoney(couponBasis - selectionAmount));
+  const merchantSettlement = roundMoney(couponBasis - selectionMerchantAmount);
+  const fee = buildFeeSummary(state, store, finalPay);
+  const netPay = roundMoney(merchantSettlement - fee.commission - fee.serviceFee - fee.freightSubsidy);
+  const profit = roundMoney(netPay - cost);
+  const target = pricingStrategyTargetForPay(state, store, finalPay, jingdongBucketStapleCount(finalPay));
+  const profitRate = profitRateByBasis(profit, finalPay);
+  const netProfitRate = profitRateByBasis(profit, netPay);
+  const paySpace = profitRate === null ? -Infinity : roundMoney(profit - finalPay * target.targetPayRate);
+  const netSpace = netProfitRate === null ? -Infinity : roundMoney(profit - netPay * target.targetNetRate);
+  return {
+    finalPay,
+    merchantSettlement,
+    commission: fee.commission,
+    serviceFee: fee.serviceFee,
+    freightSubsidy: fee.freightSubsidy,
+    netPay,
+    profit,
+    profitSpace: Number.isFinite(paySpace) && Number.isFinite(netSpace) ? Math.min(paySpace, netSpace) : roundMoney(profit),
+    profitRate,
+    netProfitRate
+  };
+}
+
+function isJingdongFinancialSafe(financials: JingdongActivityFinancials, mode: JingdongCouponExtraSafetyMode) {
+  if (financials.profit < -1e-9) return false;
+  return mode === 'noLoss' || financials.profitSpace >= -1e-9;
+}
+
+function buildJingdongBucketDiagnosticsForCoupon(
+  state: CalculatorState,
+  store: Store,
+  buckets: ActivityPriceBucketRow[],
+  coupons: JingdongSubsidyCoupon[],
+  coupon: JingdongSubsidyCoupon,
+  mode: JingdongCouponExtraSafetyMode
+) {
+  const activity = store.activities.jingdong;
+  return buckets
+    .map(bucket => {
+      if (bucket.platform !== 'jingdong' || bucket.comboCount <= 0) return null;
+      const originalTotal = jingdongBucketOriginalTotal(bucket);
+      const full = bestFullReduction(activity?.fullReductions || [], originalTotal);
+      const afterFull = Math.max(0, roundMoney(originalTotal - full.amount));
+      const storeCouponOption = bestCouponOption(activity?.coupons || [], originalTotal, store.maxCoupons);
+      const couponBasis = Math.max(0, roundMoney(afterFull - storeCouponOption.amount));
+      if (couponBasis + 1e-9 < coupon.threshold) return null;
+      const smallCoupon = bestStackableJingdongSmallCoupon(coupons, couponBasis);
+      const selectionAmount = roundMoney(jingdongCouponEffectiveAmount(coupon) + (smallCoupon ? jingdongCouponEffectiveAmount(smallCoupon) : 0));
+      const selectionMerchantAmount = roundMoney(jingdongCouponEffectiveMerchantAmount(coupon) + (smallCoupon ? jingdongCouponEffectiveMerchantAmount(smallCoupon) : 0));
+      const maxCost = jingdongBucketMaxCost(bucket);
+      const baseFinancials = evaluateJingdongActivityFinancials(state, store, couponBasis, selectionAmount, selectionMerchantAmount, maxCost);
+      const targetPay = jingdongBucketTargetPay(bucket);
+      return {
+        key: `${coupon.name}:${bucket.key}`,
+        bucket,
+        originalTotal,
+        couponBasis,
+        fullAmount: roundMoney(full.amount || 0),
+        storeCouponAmount: roundMoney(storeCouponOption.amount || 0),
+        comboCount: Math.max(0, Math.floor(Number(bucket.comboCount) || 0)),
+        maxCost,
+        safeSpace: jingdongBucketSafeSpace(bucket),
+        targetPay,
+        targetGap: targetPay === null ? 0 : Math.max(0, roundMoney(baseFinancials.finalPay - targetPay)),
+        keepCouponDiscountCap: Math.max(0, roundMoney(couponBasis - coupon.threshold)),
+        smallCouponName: smallCoupon ? jingdongCouponDisplayName(smallCoupon, '小额叠加券') : '',
+        selectionAmount,
+        selectionMerchantAmount,
+        baseFinancials,
+        baseSafe: isJingdongFinancialSafe(baseFinancials, mode)
+      } as JingdongCouponBucketDiagnostic;
+    })
+    .filter(Boolean) as JingdongCouponBucketDiagnostic[];
+}
+
+function evaluateJingdongDiagnosticWithExtra(state: CalculatorState, store: Store, diagnostic: JingdongCouponBucketDiagnostic, extra: number) {
+  return evaluateJingdongActivityFinancials(
+    state,
+    store,
+    diagnostic.couponBasis,
+    roundMoney(diagnostic.selectionAmount + extra),
+    roundMoney(diagnostic.selectionMerchantAmount + extra),
+    diagnostic.maxCost
+  );
+}
+
+function maxSafeJingdongExtra(
+  state: CalculatorState,
+  store: Store,
+  diagnostics: JingdongCouponBucketDiagnostic[],
+  mode: JingdongCouponExtraSafetyMode,
+  cap: number,
+  step: number
+) {
+  if (!diagnostics.length || cap <= 0) return 0;
+  let safeExtra = 0;
+  for (let extra = 0; extra <= cap + 1e-9; extra = roundMoney(extra + step)) {
+    const allSafe = diagnostics.every(diagnostic => isJingdongFinancialSafe(evaluateJingdongDiagnosticWithExtra(state, store, diagnostic, extra), mode));
+    if (!allSafe) break;
+    safeExtra = extra;
+  }
+  return floorMoneyToStep(safeExtra, step);
+}
+
+function nextJingdongMerchantTier(coupon: JingdongSubsidyCoupon, coupons: JingdongSubsidyCoupon[]) {
+  const currentMerchantAmount = jingdongCouponEffectiveMerchantAmount(coupon);
+  return jingdongSubsidyCouponsToActivityRedTiers(coupons)
+    .filter(tier => tier.threshold > coupon.threshold + 1e-9 && tier.max > currentMerchantAmount + 1e-9)
+    .sort((a, b) => a.threshold - b.threshold || a.max - b.max)[0] || null;
+}
+
+function analyzeJingdongCouponExtraPlans(
+  state: CalculatorState,
+  store: Store,
+  settings: ActivityDesignSettings,
+  buckets: ActivityPriceBucketRow[],
+  coupons: JingdongSubsidyCoupon[]
+) {
+  const mode = (settings.jingdongCouponExtraSafetyMode || 'targetProfit') as JingdongCouponExtraSafetyMode;
+  const step = normalizedJingdongExtraStep(settings);
+  const fallbackCap = normalizedJingdongExtraFallbackCap(settings);
+  const largeCoupons = activeJingdongLargeCoupons(coupons);
+  return largeCoupons.map(coupon => {
+    const merchantAmount = jingdongCouponEffectiveMerchantAmount(coupon);
+    const nextTier = nextJingdongMerchantTier(coupon, coupons);
+    const tierExtraCap = nextTier
+      ? floorMoneyToStep(Math.max(0, nextTier.max - merchantAmount - step), step)
+      : floorMoneyToStep(fallbackCap, step);
+    const diagnostics = buildJingdongBucketDiagnosticsForCoupon(state, store, buckets, coupons, coupon, mode);
+    const maxSafeExtra = maxSafeJingdongExtra(state, store, diagnostics, mode, tierExtraCap, step);
+    const suggestedExtra = maxSafeExtra;
+    const financialsAtSuggestion = diagnostics.map(diagnostic => evaluateJingdongDiagnosticWithExtra(state, store, diagnostic, suggestedExtra));
+    const baseRiskDiagnostics = diagnostics.filter(diagnostic => !diagnostic.baseSafe);
+    const worstProfit = financialsAtSuggestion.length ? Math.min(...financialsAtSuggestion.map(row => row.profit)) : null;
+    const worstProfitSpace = financialsAtSuggestion.length ? Math.min(...financialsAtSuggestion.map(row => row.profitSpace)) : null;
+    const coveredComboCount = diagnostics.reduce((sum, diagnostic) => sum + diagnostic.comboCount, 0);
+    const baseRiskComboCount = baseRiskDiagnostics.reduce((sum, diagnostic) => sum + diagnostic.comboCount, 0);
+    const status: JingdongCouponExtraPlanRow['status'] = diagnostics.length
+      ? baseRiskDiagnostics.length
+        ? 'blocked'
+        : maxSafeExtra >= step
+          ? 'canAdd'
+          : 'keep'
+      : 'noCoverage';
+    const reason = status === 'noCoverage'
+      ? '当前原价桶没有命中这张券'
+      : status === 'blocked'
+        ? `${jingdongExtraSafetyModeLabel(mode)}口径下已有风险桶，先调整价格或门店优惠`
+        : status === 'canAdd'
+          ? `可加码 ¥${money(maxSafeExtra)}，已受${nextTier ? '下一档商家承担' : '默认上限'}约束`
+          : `当前可用空间不足 ¥${money(step)}，建议保持`;
+    return {
+      key: `${coupon.kind}:${coupon.name}:${coupon.threshold}:${coupon.amount}:${coupon.merchantAmount}`,
+      couponName: jingdongCouponDisplayName(coupon, '大额补贴券'),
+      threshold: roundMoney(coupon.threshold),
+      amount: jingdongCouponEffectiveAmount(coupon),
+      merchantAmount,
+      merchantExtraAmount: jingdongCouponBaseExtraAmount(coupon),
+      platformAmount: jingdongCouponBasePlatformAmount(coupon),
+      discountRate: coupon.threshold > 0 ? jingdongCouponEffectiveAmount(coupon) / coupon.threshold : null,
+      merchantRate: coupon.threshold > 0 ? merchantAmount / coupon.threshold : null,
+      nextTierLabel: nextTier ? `满${money(nextTier.threshold)} 商家承担¥${money(nextTier.max)}` : '无下一档',
+      nextTierMerchantAmount: nextTier?.max ?? null,
+      tierExtraCap,
+      maxSafeExtra,
+      suggestedExtra,
+      coveredBucketCount: diagnostics.length,
+      coveredComboCount,
+      baseRiskBucketCount: baseRiskDiagnostics.length,
+      baseRiskComboCount,
+      worstProfit,
+      worstProfitSpace,
+      status,
+      reason,
+      diagnostics
+    } as JingdongCouponExtraPlanRow;
+  }).sort((a, b) => {
+    const statusRank = { blocked: 0, canAdd: 1, keep: 2, noCoverage: 3 };
+    return statusRank[a.status] - statusRank[b.status]
+      || b.merchantRate - a.merchantRate
+      || b.coveredComboCount - a.coveredComboCount
+      || a.threshold - b.threshold;
+  });
+}
+
+function maxSafeJingdongStoreDiscount(
+  state: CalculatorState,
+  store: Store,
+  diagnostic: JingdongCouponBucketDiagnostic,
+  mode: JingdongCouponExtraSafetyMode,
+  cap: number,
+  step: number
+) {
+  if (cap <= 0) return 0;
+  let safeAmount = 0;
+  for (let amount = step; amount <= cap + 1e-9; amount = roundMoney(amount + step)) {
+    const financials = evaluateJingdongDiagnosticWithExtra(state, store, diagnostic, amount);
+    if (!isJingdongFinancialSafe(financials, mode)) break;
+    safeAmount = amount;
+  }
+  return floorMoneyToStep(safeAmount, step);
+}
+
+function mergeJingdongSuggestion(target: Map<string, JingdongActivityRuleSuggestionRow>, row: JingdongActivityRuleSuggestionRow) {
+  const existing = target.get(row.key);
+  if (!existing) {
+    target.set(row.key, row);
+    return;
+  }
+  existing.affectedBucketCount += row.affectedBucketCount;
+  existing.affectedComboCount += row.affectedComboCount;
+  existing.bucketLabels = Array.from(new Set(existing.bucketLabels.concat(row.bucketLabels))).slice(0, 6);
+  existing.worstProfitAfter = existing.worstProfitAfter === null
+    ? row.worstProfitAfter
+    : row.worstProfitAfter === null
+      ? existing.worstProfitAfter
+      : Math.min(existing.worstProfitAfter, row.worstProfitAfter);
+}
+
+function buildJingdongActivityRuleSuggestions(
+  state: CalculatorState,
+  store: Store,
+  settings: ActivityDesignSettings,
+  coupons: JingdongSubsidyCoupon[],
+  plans: JingdongCouponExtraPlanRow[]
+) {
+  const mode = (settings.jingdongCouponExtraSafetyMode || 'targetProfit') as JingdongCouponExtraSafetyMode;
+  const step = normalizedJingdongExtraStep(settings);
+  const maxFullAmount = settings.couponDesignMaxFullAmount === '' ? Infinity : Math.max(0, Number(settings.couponDesignMaxFullAmount) || 0);
+  const maxCouponAmount = settings.couponDesignMaxCouponAmount === '' ? Infinity : Math.max(0, Number(settings.couponDesignMaxCouponAmount) || 0);
+  const rows = new Map<string, JingdongActivityRuleSuggestionRow>();
+
+  for (const plan of plans) {
+    for (const diagnostic of plan.diagnostics) {
+      const ruleThreshold = Math.max(0, Math.floor(diagnostic.originalTotal || diagnostic.bucket.priceBucket || 0));
+      if (!ruleThreshold) continue;
+      const baseLabel = diagnostic.bucket.label || `${money(diagnostic.bucket.priceBucket)}-${money(diagnostic.bucket.priceBucket + 1)}`;
+      const addSuggestion = (kind: JingdongActivityRuleSuggestionRow['kind'], action: JingdongActivityRuleSuggestionRow['action'], amount: number, worstProfitAfter: number | null, reason: string) => {
+        const normalizedAmount = floorMoneyToStep(amount, step);
+        if (normalizedAmount < step - 1e-9) return;
+        const amountCap = kind === 'fullReduction' ? maxFullAmount : maxCouponAmount;
+        if (normalizedAmount > amountCap + 1e-9) return;
+        const key = [kind, action, plan.couponName, ruleThreshold, normalizedAmount].join(':');
+        mergeJingdongSuggestion(rows, {
+          key,
+          kind,
+          action,
+          couponName: plan.couponName,
+          couponThreshold: plan.threshold,
+          threshold: ruleThreshold,
+          amount: normalizedAmount,
+          affectedBucketCount: 1,
+          affectedComboCount: diagnostic.comboCount,
+          bucketLabels: [baseLabel],
+          worstProfitAfter,
+          reason
+        });
+      };
+
+      if (!diagnostic.baseSafe) {
+        const avoidAmount = ceilMoneyToStep(diagnostic.couponBasis - plan.threshold + step, step);
+        const avoidCouponBasis = Math.max(0, roundMoney(diagnostic.couponBasis - avoidAmount));
+        const downgradedSelection = bestJingdongSelectionAmountForBasis(coupons, avoidCouponBasis);
+        const avoidFinancials = evaluateJingdongActivityFinancials(state, store, avoidCouponBasis, downgradedSelection.amount, downgradedSelection.merchantAmount, diagnostic.maxCost);
+        const reason = `避开满${money(plan.threshold)}券门槛，券前价降到 ¥${money(Math.max(0, plan.threshold - step))} 附近，并按降档后可用平台券复核利润；用于风险桶止损，不作为拉低实付的主活动`;
+        addSuggestion('fullReduction', 'avoidRiskCoupon', avoidAmount, avoidFinancials.profit, reason);
+        addSuggestion('storeCoupon', 'avoidRiskCoupon', avoidAmount, avoidFinancials.profit, reason);
+        continue;
+      }
+
+      const objectiveGap = Math.max(0, diagnostic.targetGap);
+      const keepCouponCap = floorMoneyToStep(diagnostic.keepCouponDiscountCap, step);
+      const activitySafeCap = floorMoneyToStep(Math.min(objectiveGap, diagnostic.safeSpace, keepCouponCap), step);
+      const safeStoreDiscount = maxSafeJingdongStoreDiscount(state, store, diagnostic, mode, activitySafeCap, step);
+      if (safeStoreDiscount < step - 1e-9) continue;
+      const financialsAfter = evaluateJingdongDiagnosticWithExtra(state, store, diagnostic, safeStoreDiscount);
+      const reason = `保持满${money(plan.threshold)}券可叠加，并按当前活动目标补足支付价缺口`;
+      addSuggestion('fullReduction', 'stackWithCoupon', safeStoreDiscount, financialsAfter.profit, reason);
+      addSuggestion('storeCoupon', 'stackWithCoupon', safeStoreDiscount, financialsAfter.profit, reason);
+    }
+  }
+
+  return Array.from(rows.values())
+    .sort((a, b) => {
+      const actionRank = { avoidRiskCoupon: 0, stackWithCoupon: 1 };
+      const kindRank = { fullReduction: 0, storeCoupon: 1 };
+      return actionRank[a.action] - actionRank[b.action]
+        || kindRank[a.kind] - kindRank[b.kind]
+        || b.affectedComboCount - a.affectedComboCount
+        || a.threshold - b.threshold
+        || b.amount - a.amount;
+    })
+    .slice(0, 80);
 }
 
 export function ActivityDesignPage(pageProps: ActivityDesignPageProps = {}) {
@@ -197,6 +685,8 @@ export function ActivityDesignPage(pageProps: ActivityDesignPageProps = {}) {
     const activityEffectivePayMax = activityDesignFilters.payMax === ''
       ? activityPayMaxBoundary
       : Math.min(activityPayMaxBoundary, Math.max(0, Number(activityDesignFilters.payMax) || 0));
+    const activityStoreOriginalRange = calculationTotalRange(store);
+    const activityOriginalMinBoundary = Math.max(0, Number(store.startPrice) || 0, activityStoreOriginalRange.min);
     const activityOriginalFilterMin = Math.max(0, Number(activityDesignFilters.originalMin) || 0);
     const activityOriginalFilterMax = activityDesignFilters.originalMax === ''
       ? Infinity
@@ -227,6 +717,15 @@ export function ActivityDesignPage(pageProps: ActivityDesignPageProps = {}) {
     );
     const activityCurrentObjectiveStrategy = routeObjectiveStrategiesFromSettings[storeActivityDesignSettings.objective || 'longTerm'];
     const activityCurrentMinNetPayFloor = activityCurrentObjectiveStrategy?.minNetPayFloor ?? ACTIVITY_MIN_NET_PAY;
+    const updateStoreActivityDesignSettings = React.useCallback((mutator: (settings: ActivityDesignSettings) => void, successMessage = '已更新活动设计设置') => {
+      void commitCalculatorState(draft => {
+        const targetStore = draft.stores.find(item => item.id === store.id);
+        if (!targetStore) return;
+        const nextSettings = normalizeActivityDesignSettings(targetStore.activityDesignSettings);
+        mutator(nextSettings);
+        targetStore.activityDesignSettings = normalizeActivityDesignSettings(nextSettings);
+      }, successMessage);
+    }, [commitCalculatorState, store.id]);
     const activityRouteStrategyOverview = activityDesignStage === 'routeDesign' ? (
       <Space direction="vertical" style={{ width: '100%' }} size={6}>
         <Text type="secondary">经营目标由全路线基准让利率、原价阶梯覆盖、活动占比和门槛策略决定；本页只用于确认当前路线引用的目标并执行核验或应用。</Text>
@@ -504,7 +1003,7 @@ export function ActivityDesignPage(pageProps: ActivityDesignPageProps = {}) {
         render: (_, row) => renderActivityCouponList(row)
       },
       {
-        title: '神券/爆红包加码空间',
+        title: '基准红包加码空间',
         dataIndex: 'addOnCostSpace',
         width: 190,
         render: (_, row) => {
@@ -588,7 +1087,7 @@ export function ActivityDesignPage(pageProps: ActivityDesignPageProps = {}) {
         title: '红包/加码',
         width: 150,
         render: (_, row) => {
-          const redName = row.platform === 'meituan' ? '神券' : '爆红包';
+          const redName = activityPlatformRedName(row.platform);
           return `${redName}¥${money(row.baseRed.amount)} / 加码¥${money(row.redAddOn.amount)}`;
         }
       },
@@ -824,6 +1323,159 @@ export function ActivityDesignPage(pageProps: ActivityDesignPageProps = {}) {
       { title: '已配满减', dataIndex: 'fullDiscountAmount', width: 105, render: value => `¥${money(value)}`, sorter: (a, b) => a.fullDiscountAmount - b.fullDiscountAmount },
       { title: '诊断', dataIndex: 'diagnosis', width: 320, render: value => <Text className="table-text-wrap">{String(value || '-')}</Text> }
     ];
+    const jingdongCouponExtraStatusText = (status: JingdongCouponExtraPlanRow['status']) => ({
+      canAdd: '可加码',
+      keep: '保持',
+      blocked: '先止损',
+      noCoverage: '无覆盖'
+    }[status]);
+    const jingdongCouponExtraStatusColor = (status: JingdongCouponExtraPlanRow['status']) => ({
+      canAdd: 'green',
+      keep: 'blue',
+      blocked: 'red',
+      noCoverage: 'default'
+    }[status]);
+    const jingdongActivitySuggestionKindText = (kind: JingdongActivityRuleSuggestionRow['kind']) => ({
+      fullReduction: '满减',
+      storeCoupon: '门店券'
+    }[kind]);
+    const jingdongActivitySuggestionActionText = (action: JingdongActivityRuleSuggestionRow['action']) => ({
+      stackWithCoupon: '叠券补档',
+      avoidRiskCoupon: '避险止损'
+    }[action]);
+    const jingdongActivitySuggestionActionColor = (action: JingdongActivityRuleSuggestionRow['action']) => ({
+      stackWithCoupon: 'green',
+      avoidRiskCoupon: 'orange'
+    }[action]);
+    const jingdongCouponExtraColumns: TableColumnsType<JingdongCouponExtraPlanRow> = [
+      {
+        title: '大额券',
+        dataIndex: 'couponName',
+        width: 240,
+        fixed: 'left',
+        render: (_, row) => (
+          <Space direction="vertical" size={2}>
+            <Text strong className="table-text-wrap">{row.couponName}</Text>
+            <Space wrap size={[4, 4]}>
+              <Tag color={jingdongCouponExtraStatusColor(row.status)}>{jingdongCouponExtraStatusText(row.status)}</Tag>
+              {row.discountRate !== null && row.discountRate >= 0.5 ? <Tag color="red">高力度</Tag> : null}
+              {row.merchantRate !== null && row.merchantRate >= 0.35 ? <Tag color="orange">高商补</Tag> : null}
+            </Space>
+          </Space>
+        )
+      },
+      {
+        title: '券档',
+        width: 190,
+        render: (_, row) => (
+          <Space direction="vertical" size={2}>
+            <Text>满{money(row.threshold)}减{money(row.amount)}</Text>
+            <Text type="secondary">商家承担 ¥{money(row.merchantAmount)} / 平台 ¥{money(row.platformAmount)}</Text>
+            {row.merchantExtraAmount > 0 ? <Text type="secondary">已加码 ¥{money(row.merchantExtraAmount)}</Text> : null}
+          </Space>
+        ),
+        sorter: (a, b) => a.threshold - b.threshold || a.amount - b.amount
+      },
+      {
+        title: '力度',
+        width: 150,
+        render: (_, row) => (
+          <Space direction="vertical" size={2}>
+            <Text>优惠率 {rateText(row.discountRate)}</Text>
+            <Text type="secondary">商补率 {rateText(row.merchantRate)}</Text>
+          </Space>
+        ),
+        sorter: (a, b) => (a.merchantRate || 0) - (b.merchantRate || 0)
+      },
+      {
+        title: '下一档约束',
+        width: 190,
+        render: (_, row) => (
+          <Space direction="vertical" size={2}>
+            <Text className="table-text-wrap">{row.nextTierLabel}</Text>
+            <Text type="secondary">档位上限 ¥{money(row.tierExtraCap)}</Text>
+          </Space>
+        ),
+        sorter: (a, b) => a.tierExtraCap - b.tierExtraCap
+      },
+      {
+        title: '原价桶覆盖',
+        width: 155,
+        render: (_, row) => (
+          <Space direction="vertical" size={2}>
+            <Text>{row.coveredBucketCount} 桶 / {row.coveredComboCount} 组合</Text>
+            <Text type={row.baseRiskBucketCount ? 'danger' : 'secondary'}>当前风险 {row.baseRiskBucketCount} 桶 / {row.baseRiskComboCount}</Text>
+          </Space>
+        ),
+        sorter: (a, b) => a.coveredComboCount - b.coveredComboCount
+      },
+      {
+        title: '可追加加码',
+        width: 145,
+        render: (_, row) => <Text type={row.suggestedExtra > 0 ? 'success' : row.status === 'blocked' ? 'danger' : 'secondary'}>¥{money(row.suggestedExtra)}</Text>,
+        sorter: (a, b) => a.suggestedExtra - b.suggestedExtra
+      },
+      {
+        title: '加码后最差',
+        width: 160,
+        render: (_, row) => (
+          <Space direction="vertical" size={2}>
+            <Text type={row.worstProfit !== null && row.worstProfit < 0 ? 'danger' : 'secondary'}>利润 ¥{row.worstProfit === null ? '-' : money(row.worstProfit)}</Text>
+            <Text type={row.worstProfitSpace !== null && row.worstProfitSpace < 0 ? 'danger' : 'secondary'}>空间 ¥{row.worstProfitSpace === null ? '-' : money(row.worstProfitSpace)}</Text>
+          </Space>
+        ),
+        sorter: (a, b) => (a.worstProfit ?? 0) - (b.worstProfit ?? 0)
+      },
+      { title: '建议', dataIndex: 'reason', width: 310, render: value => <Text className="table-text-wrap">{String(value || '-')}</Text> }
+    ];
+    const jingdongActivityRuleSuggestionColumns: TableColumnsType<JingdongActivityRuleSuggestionRow> = [
+      {
+        title: '规则类型',
+        width: 110,
+        fixed: 'left',
+        render: (_, row) => (
+          <Space direction="vertical" size={2}>
+            <Tag color="blue">{jingdongActivitySuggestionKindText(row.kind)}</Tag>
+            <Tag color={jingdongActivitySuggestionActionColor(row.action)}>{jingdongActivitySuggestionActionText(row.action)}</Tag>
+          </Space>
+        )
+      },
+      {
+        title: '建议规则',
+        width: 135,
+        render: (_, row) => `满${money(row.threshold)}减${money(row.amount)}`,
+        sorter: (a, b) => a.threshold - b.threshold || a.amount - b.amount
+      },
+      {
+        title: '绑定券档',
+        width: 210,
+        render: (_, row) => (
+          <Space direction="vertical" size={2}>
+            <Text className="table-text-wrap">{row.couponName}</Text>
+            <Text type="secondary">券门槛 ¥{money(row.couponThreshold)}</Text>
+          </Space>
+        )
+      },
+      {
+        title: '影响原价桶',
+        width: 180,
+        render: (_, row) => (
+          <Space direction="vertical" size={2}>
+            <Text>{row.affectedBucketCount} 桶 / {row.affectedComboCount} 组合</Text>
+            <Text type="secondary" className="table-text-wrap">{row.bucketLabels.join('，')}</Text>
+          </Space>
+        ),
+        sorter: (a, b) => a.affectedComboCount - b.affectedComboCount
+      },
+      {
+        title: '保守利润',
+        dataIndex: 'worstProfitAfter',
+        width: 110,
+        render: value => value === null ? '-' : <Text type={Number(value) < 0 ? 'danger' : 'success'}>¥{money(value)}</Text>,
+        sorter: (a, b) => (a.worstProfitAfter ?? 0) - (b.worstProfitAfter ?? 0)
+      },
+      { title: '推荐原因', dataIndex: 'reason', width: 420, render: value => <Text className="table-text-wrap">{String(value || '-')}</Text> }
+    ];
     const activityDesignFilterCard = (
       <Card size="small" title="页面筛选">
         <Row gutter={[12, 12]}>
@@ -890,6 +1542,133 @@ export function ActivityDesignPage(pageProps: ActivityDesignPageProps = {}) {
         ?? scanComboPools.mainCombos.filter(row => row.platform === platform).length;
       const platformAddOnComboCount = scanComboPools.addOnComboCountByPlatform[platform]
         ?? scanComboPools.addOnCombos.filter(row => row.platform === platform).length;
+      const jingdongSubsidyCoupons = store.activities.jingdong?.jingdongSubsidyCoupons || [];
+      const jingdongLargeSubsidyCouponCount = platform === 'jingdong'
+        ? jingdongSubsidyCoupons.filter(row => {
+          const merchantAmount = Math.max(0, Number(row.merchantAmount) || 0) + Math.max(0, Number(row.merchantExtraAmount) || 0);
+          return row.enabled && row.kind === 'large' && row.threshold > 0 && merchantAmount > 0;
+        }).length
+        : 0;
+      const jingdongActivityRedTiers = platform === 'jingdong'
+        ? jingdongSubsidyCouponsToActivityRedTiers(jingdongSubsidyCoupons)
+        : [];
+      const jingdongIgnoredRedTierCount = Math.max(0, jingdongLargeSubsidyCouponCount - jingdongActivityRedTiers.length);
+      const jingdongActivityRedTierCard = platform === 'jingdong' ? (
+        <Card size="small" title="京东阶梯红包参考">
+          <Space direction="vertical" style={{ width: '100%' }} size="small">
+            <Text type="secondary">活动设计仍生成门店满减和店铺券；这里仅把启用的大额补贴券按商家承担换算为京东基准阶梯红包。</Text>
+            <Space wrap size={[6, 6]}>
+              {jingdongActivityRedTiers.length ? jingdongActivityRedTiers.map(tier => (
+                <Tag key={`${tier.threshold}-${tier.max}`} color="purple">满{money(tier.threshold)} 商家承担¥{money(tier.max)}</Tag>
+              )) : <Tag color="orange">未配置有效京东大额补贴券</Tag>}
+              {jingdongIgnoredRedTierCount ? <Tag>已忽略低承担冗余券 {jingdongIgnoredRedTierCount}</Tag> : null}
+            </Space>
+          </Space>
+        </Card>
+      ) : null;
+      const jingdongCouponSafetyMode = (storeActivityDesignSettings.jingdongCouponExtraSafetyMode || 'targetProfit') as JingdongCouponExtraSafetyMode;
+      const jingdongExtraStep = normalizedJingdongExtraStep(storeActivityDesignSettings);
+      const jingdongExtraFallbackCap = normalizedJingdongExtraFallbackCap(storeActivityDesignSettings);
+      const jingdongCouponExtraPlans = platform === 'jingdong'
+        ? analyzeJingdongCouponExtraPlans(calculatorState, store, storeActivityDesignSettings, originalPriceBuckets, jingdongSubsidyCoupons)
+        : [];
+      const jingdongActivityRuleSuggestions = platform === 'jingdong'
+        ? buildJingdongActivityRuleSuggestions(calculatorState, store, storeActivityDesignSettings, jingdongSubsidyCoupons, jingdongCouponExtraPlans)
+        : [];
+      const jingdongCanAddCount = jingdongCouponExtraPlans.filter(row => row.status === 'canAdd').length;
+      const jingdongBlockedCount = jingdongCouponExtraPlans.filter(row => row.status === 'blocked').length;
+      const jingdongCurrentObjectiveLabel = activityRouteObjectiveOptions.find(option => option.value === (storeActivityDesignSettings.objective || 'longTerm'))?.label || (storeActivityDesignSettings.objective || 'longTerm');
+      const jingdongActivityPlanningCard = platform === 'jingdong' ? (
+        <Card size="small" title="京东加码与门店活动建议">
+          <Space direction="vertical" style={{ width: '100%' }} size="middle">
+            <Text type="secondary">基于当前京东原价桶汇总测算，保守成本取桶内最高成本；门店满减和门店券按叠加平台券处理，避免重新枚举全量商品组合。</Text>
+            <Space wrap size={[8, 8]}>
+              <Text type="secondary">安全口径</Text>
+              <Select
+                size="small"
+                style={{ width: 132 }}
+                value={jingdongCouponSafetyMode}
+                options={[
+                  { value: 'targetProfit', label: '满足目标利润' },
+                  { value: 'noLoss', label: '只要不亏损' }
+                ]}
+                onChange={value => updateStoreActivityDesignSettings(settings => {
+                  settings.jingdongCouponExtraSafetyMode = value;
+                }, '已更新京东加码安全口径')}
+              />
+              <Text type="secondary">加码步长</Text>
+              <InputNumber
+                size="small"
+                min={0.1}
+                precision={2}
+                step={0.1}
+                value={jingdongExtraStep}
+                onChange={value => updateStoreActivityDesignSettings(settings => {
+                  settings.jingdongCouponExtraStep = Number(value) || 0.5;
+                }, '已更新京东加码步长')}
+              />
+              <Text type="secondary">无下一档上限</Text>
+              <InputNumber
+                size="small"
+                min={0}
+                precision={2}
+                value={jingdongExtraFallbackCap}
+                onChange={value => updateStoreActivityDesignSettings(settings => {
+                  settings.jingdongCouponExtraFallbackCap = Number(value) || 0;
+                }, '已更新京东加码默认上限')}
+              />
+              <Tag color="blue">当前目标：{jingdongCurrentObjectiveLabel}</Tag>
+              <Tag>大额券 {jingdongCouponExtraPlans.length}</Tag>
+              <Tag color={jingdongCanAddCount ? 'green' : 'default'}>可加码 {jingdongCanAddCount}</Tag>
+              <Tag color={jingdongBlockedCount ? 'red' : 'green'}>先止损 {jingdongBlockedCount}</Tag>
+              <Tag color="purple">规则建议 {jingdongActivityRuleSuggestions.length}</Tag>
+            </Space>
+            {!originalPriceBuckets.length ? (
+              <Text type="secondary">请先在原价扫描阶段生成京东原价桶，系统会基于桶汇总直接测算券加码和门店活动空间。</Text>
+            ) : !jingdongCouponExtraPlans.length ? (
+              <Text type="secondary">当前没有启用的京东大额补贴券，请先在京东补贴券配置中维护券档。</Text>
+            ) : (
+              <Tabs
+                destroyOnHidden
+                items={[
+                  {
+                    key: 'extra',
+                    label: `加码建议 ${jingdongCouponExtraPlans.length}`,
+                    children: (
+                      <Table
+                        rowKey="key"
+                        size="small"
+                        columns={jingdongCouponExtraColumns}
+                        dataSource={jingdongCouponExtraPlans}
+                        pagination={tablePagination(20)}
+                        scroll={{ x: 1540 }}
+                        tableLayout="fixed"
+                      />
+                    )
+                  },
+                  {
+                    key: 'rules',
+                    label: `满减/门店券建议 ${jingdongActivityRuleSuggestions.length}`,
+                    children: jingdongActivityRuleSuggestions.length ? (
+                      <Table
+                        rowKey="key"
+                        size="small"
+                        columns={jingdongActivityRuleSuggestionColumns}
+                        dataSource={jingdongActivityRuleSuggestions}
+                        pagination={tablePagination(20)}
+                        scroll={{ x: 1165 }}
+                        tableLayout="fixed"
+                      />
+                    ) : (
+                      <Text type="secondary">当前桶级结果没有发现可安全补档或需要避险的满减/门店券建议。</Text>
+                    )
+                  }
+                ]}
+              />
+            )}
+          </Space>
+        </Card>
+      ) : null;
       const payBandComboCount = payBands.reduce((sum, row) => sum + row.comboCount, 0);
       const payBandRiskCount = payBands.reduce((sum, row) => sum + row.riskCount, 0);
       const independentRoutes = recommendations.filter(row => row.routeKind !== 'fullReduction' && row.routeKind !== 'coupon');
@@ -991,7 +1770,7 @@ export function ActivityDesignPage(pageProps: ActivityDesignPageProps = {}) {
           {activityDesignFilterCard}
           <Card title="原价整数扫描">
             <Space direction="vertical" style={{ width: '100%' }} size="middle">
-              <Text type="secondary">按 1 元整数桶铺平商品组合，价格 25 表示原价从 25 到 26（不含 26）。基准支付价和基准到手价已包含平台默认神券/爆红包；这一步只确认原价、支付价、到手价和风险分布，活动路线在下一步按经营目标生成。</Text>
+              <Text type="secondary">按 1 元整数桶铺平商品组合，价格 25 表示原价从 25 到 26（不含 26）。基准支付价和基准到手价已包含平台默认神券、爆红包或京东阶梯红包；这一步只确认原价、支付价、到手价和风险分布，活动路线在下一步按经营目标生成。</Text>
               <Space wrap size={[6, 6]}>
                 <Tag color="blue">饭团组合 {platformMainComboCount}</Tag>
                 <Tag color="cyan">凑单小吃组合 {platformAddOnComboCount}</Tag>
@@ -1078,6 +1857,8 @@ export function ActivityDesignPage(pageProps: ActivityDesignPageProps = {}) {
       );
       return (
         <div className="section-stack result-platform-panel">
+          {jingdongActivityRedTierCard}
+          {jingdongActivityPlanningCard}
           {activityDesignStage === 'priceScan' ? originalScanContent : activityDesignStage === 'routeDesign' ? routeDesignContent : payValidationContent}
         </div>
       );
@@ -1099,8 +1880,8 @@ export function ActivityDesignPage(pageProps: ActivityDesignPageProps = {}) {
             <Text type="secondary">第一步只做原价整数扫描；确认扫描后再生成活动路线。路线按全路线基准让利率和目标阶梯覆盖反推满减、优惠券和加码空间，并用用户实付、商家活动金额和商家到手价判断活动边界。</Text>
             <Space wrap size={[6, 6]}>
               <Text type="secondary">门店活动设计配置</Text>
-              <Tag>原价≥起送 ¥{money(store.startPrice)}</Tag>
-              <Tag>原价≤{store.calculationTotalMax === '' ? '不限' : `¥${money(store.calculationTotalMax)}`}</Tag>
+              <Tag>原价≥¥{money(activityOriginalMinBoundary)}</Tag>
+              <Tag>原价≤{activityStoreOriginalRange.max === Infinity ? '不限' : `¥${money(activityStoreOriginalRange.max)}`}</Tag>
               <Tag>饭团≤{storeActivityDesignSettings.stapleMaxCount ?? 2}</Tag>
               <Tag>凑单≤{storeActivityDesignSettings.addOnMaxCount === '' ? '不限' : `${storeActivityDesignSettings.addOnMaxCount}件`}</Tag>
               <Tag>基准让利 {money(storeActivityDesignSettings.baseOriginalDiscountRate ?? 50)}%</Tag>
@@ -1127,7 +1908,7 @@ export function ActivityDesignPage(pageProps: ActivityDesignPageProps = {}) {
           activeKey={activityDesignPlatformTab}
           destroyOnHidden
           onChange={key => setActivityDesignPlatformTab(key as Platform)}
-          items={PLATFORMS.map(platform => ({
+          items={ALL_PLATFORMS.map(platform => ({
             key: platform,
             label: PLATFORM_NAMES[platform],
             children: renderActivityDesignPlatformPanel(platform)

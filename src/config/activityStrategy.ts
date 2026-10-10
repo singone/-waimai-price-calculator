@@ -336,5 +336,8 @@ export const DEFAULT_ACTIVITY_DESIGN_SETTINGS: ActivityDesignSettings = {
   platformCouponSceneKeys: DEFAULT_ACTIVITY_PLATFORM_COUPON_SCENE_KEYS,
   minProfitRate: 0,
   originalBandSize: 5,
-  payBandSize: 5
+  payBandSize: 5,
+  jingdongCouponExtraSafetyMode: 'targetProfit',
+  jingdongCouponExtraStep: 0.5,
+  jingdongCouponExtraFallbackCap: 10
 };

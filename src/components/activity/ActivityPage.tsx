@@ -24,7 +24,7 @@ type ActivityPageProps = {
   deepClone: <T>(value: T) => T;
 };
 
-function SimpleActivityTable<T extends FullReduction | RedAddOn>({
+export function SimpleActivityTable<T extends FullReduction | RedAddOn>({
   title,
   rows,
   change,
@@ -72,7 +72,7 @@ function SimpleActivityTable<T extends FullReduction | RedAddOn>({
   );
 }
 
-function CouponTable({
+export function CouponTable({
   platform,
   rows,
   change,
@@ -125,7 +125,7 @@ function CouponTable({
   );
 }
 
-function DiscountActivityTable({
+export function DiscountActivityTable({
   platform,
   rows,
   change,

@@ -24,6 +24,7 @@ import { average, normalizeDiscountRate, profitRateByBasis, roundMoney } from '.
 import { PlatformUtils } from './platform';
 
 export const PLATFORMS = PlatformUtils.PLATFORMS;
+export const ALL_PLATFORMS = PlatformUtils.ALL_PLATFORMS;
 export const PLATFORM_NAMES = PlatformUtils.NAMES;
 
 export function deepClone<T>(value: T): T {

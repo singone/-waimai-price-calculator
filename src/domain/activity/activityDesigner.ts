@@ -26,6 +26,7 @@ import type {
   ComboEvaluationRow,
   Coupon,
   FullReduction,
+  JingdongSubsidyCoupon,
   Platform,
   PriceBandRow,
   RedAddOn,
@@ -57,7 +58,7 @@ import {
   normalizeCalculationMaxDuration,
   platformOriginalUnitPrice,
   PLATFORM_NAMES,
-  PLATFORMS
+  ALL_PLATFORMS
 } from '../core';
 import {
   buildSeparatedComboPoolsAsync,
@@ -94,6 +95,7 @@ const ACTIVITY_ROUTE_MIN_FULL_AMOUNT = 1;
 const ACTIVITY_ROUTE_MIN_COUPON_AMOUNT = 1;
 const ACTIVITY_MONEY_AMOUNT_UNIT = 0.01;
 const ACTIVITY_COUPON_RECOMMEND_AMOUNT_UNIT = 0.5;
+const JINGDONG_ACTIVITY_RED_TIER_PLATFORM: Platform = 'jingdong';
 const ACTIVITY_BUSINESS_PAY_SEGMENTS = [
   { min: 0, max: 15, label: '0-15', orderShare: 0.54, weight: 1 },
   { min: 15, max: 20, label: '15-20', orderShare: 0.19, weight: 0.88 },
@@ -1355,7 +1357,7 @@ function addActivityOriginalPriceBucketStatsFromScanEntry(
   const activity = store.activities[platform];
   const platformFull = bestFullReduction(activity.fullReductions || [], originalTotal);
   const afterPlatformFull = Math.max(0, roundMoney(originalTotal - platformFull.amount));
-  const baseRed = bestBaseRed(state, platform, afterPlatformFull);
+  const baseRed = bestActivityBaseRed(state, store, platform, afterPlatformFull);
   const afterBaseRed = Math.max(0, roundMoney(afterPlatformFull - baseRed.amount));
   const redAddOn = bestDesignRedAddOn(store, platform, afterPlatformFull, afterBaseRed, 0, configuredRedAddOnSpace(settings));
   const redAddAmount = redAddOn.amount;
@@ -1701,6 +1703,62 @@ function configuredRedAddOnSpace(settings: ActivityDesignSettings) {
   return nonNegativeAmount(settings.redAddOnSpace);
 }
 
+function jingdongCouponMerchantActivityAmount(coupon: JingdongSubsidyCoupon) {
+  return roundMoney(
+    nonNegativeAmount(coupon.merchantAmount)
+    + (coupon.kind === 'large' ? nonNegativeAmount(coupon.merchantExtraAmount) : 0)
+  );
+}
+
+export function jingdongSubsidyCouponsToActivityRedTiers(coupons: JingdongSubsidyCoupon[] | undefined): RedTier[] {
+  const tiersByThreshold = new Map<number, RedTier>();
+  for (const coupon of coupons || []) {
+    if (!coupon.enabled || coupon.kind !== 'large') continue;
+    const threshold = integerThreshold(coupon.threshold);
+    const amount = jingdongCouponMerchantActivityAmount(coupon);
+    if (threshold <= 0 || amount <= 0) continue;
+    const current = tiersByThreshold.get(threshold);
+    if (!current || amount > current.max + 1e-9) {
+      tiersByThreshold.set(threshold, { enabled: true, threshold, min: amount, max: amount });
+    }
+  }
+
+  let highestAmount = 0;
+  return Array.from(tiersByThreshold.values())
+    .sort((a, b) => a.threshold - b.threshold || b.max - a.max)
+    .reduce<RedTier[]>((tiers, tier) => {
+      if (tier.max <= highestAmount + 1e-9) return tiers;
+      tiers.push(tier);
+      highestAmount = tier.max;
+      return tiers;
+    }, []);
+}
+
+function activityBaseRedTiers(
+  state: CalculatorState,
+  store: ReturnType<typeof currentStoreFrom>,
+  platform: Platform
+) {
+  if (platform === JINGDONG_ACTIVITY_RED_TIER_PLATFORM) {
+    return jingdongSubsidyCouponsToActivityRedTiers(store.activities.jingdong?.jingdongSubsidyCoupons);
+  }
+  return state.platformRules.redTiers[platform] || [];
+}
+
+function bestActivityBaseRed(
+  state: CalculatorState,
+  store: ReturnType<typeof currentStoreFrom>,
+  platform: Platform,
+  basis: number
+): RedTier & { amount: number } {
+  if (platform !== JINGDONG_ACTIVITY_RED_TIER_PLATFORM) return bestBaseRed(state, platform, basis);
+  const tier = activityBaseRedTiers(state, store, platform)
+    .filter(row => row.enabled && basis + 1e-9 >= row.threshold)
+    .sort((a, b) => b.max - a.max || b.threshold - a.threshold)[0];
+  if (!tier) return { enabled: true, threshold: 0, min: 0, max: 0, amount: 0 };
+  return { ...tier, amount: roundMoney(nonNegativeAmount(tier.max)) };
+}
+
 function totalRedAddOnSpace(settings: ActivityDesignSettings, routeAddOnCostSpace: unknown) {
   return roundMoney(configuredRedAddOnSpace(settings) + nonNegativeAmount(routeAddOnCostSpace));
 }
@@ -1760,7 +1818,7 @@ function activityDesignSpaceWithPlatformDiscountDowngrade(
   );
   const nextFull = bestFullReduction(store.activities[platform]?.fullReductions || [], originalTotal);
   const nextRedBasis = Math.max(0, roundMoney(originalTotal - baseSpace - nextFull.amount));
-  const nextBaseRed = bestBaseRed(state, platform, nextRedBasis);
+  const nextBaseRed = bestActivityBaseRed(state, store, platform, nextRedBasis);
   const nextAfterBaseRed = Math.max(0, roundMoney(nextRedBasis - nextBaseRed.amount));
   const nextRedAddOn = bestDesignRedAddOn(store, platform, nextRedBasis, nextAfterBaseRed, 0, configuredRedAddOnSpace(settings));
   const nextPlatformDiscountAmount = roundMoney(
@@ -1774,11 +1832,10 @@ function activityDesignSpaceWithPlatformDiscountDowngrade(
 
 function activityOriginalRange(store: ReturnType<typeof currentStoreFrom>, settings: ActivityDesignSettings) {
   const storeRange = calculationTotalRange(store);
-  const filterMin = Math.max(0, Number(store.startPrice) || 0, Number(settings.originalMin) || 0);
-  const rawFilterMax = settings.originalMax === '' ? Infinity : Math.max(filterMin, Number(settings.originalMax) || 0);
+  const filterMin = Math.max(0, Number(store.startPrice) || 0, storeRange.min, Number(settings.originalMin) || 0);
   return {
     min: filterMin,
-    max: Math.min(storeRange.max, rawFilterMax)
+    max: storeRange.max
   };
 }
 
@@ -2006,7 +2063,7 @@ function createBaselineCombo(
   const activity = store.activities[platform];
   const platformFull = bestFullReduction(activity.fullReductions || [], totals.originalTotal);
   const afterPlatformFull = Math.max(0, roundMoney(totals.originalTotal - platformFull.amount));
-  const baseRed = bestBaseRed(state, platform, afterPlatformFull);
+  const baseRed = bestActivityBaseRed(state, store, platform, afterPlatformFull);
   const afterBaseRed = Math.max(0, roundMoney(afterPlatformFull - baseRed.amount));
   const redAddOn = bestDesignRedAddOn(store, platform, afterPlatformFull, afterBaseRed, 0, configuredRedAddOnSpace(settings));
   const redAddAmount = redAddOn.amount;
@@ -2186,7 +2243,7 @@ function simulateRecommendation(
   const productDiscountAmount = Math.min(afterFull, Math.max(0, recommendation.productDiscountAmount));
   const afterProductDiscount = Math.max(0, roundMoney(row.originalTotal - productDiscountAmount));
   const afterRouteDiscounts = Math.max(0, roundMoney(afterCoupon - productDiscountAmount));
-  const baseRed = bestBaseRed(state, row.platform, afterRouteDiscounts);
+  const baseRed = bestActivityBaseRed(state, store, row.platform, afterRouteDiscounts);
   const afterBaseRed = Math.max(0, roundMoney(afterRouteDiscounts - baseRed.amount));
   const redAddOn = bestDesignRedAddOn(
     store,
@@ -2425,7 +2482,7 @@ function activityRouteDiscountState(
   const afterFull = Math.max(0, roundMoney(originalTotal - full.amount - (extraKind === 'full' ? extra : 0)));
   const couponOption = bestCouponOption(normalizedCouponRules, originalTotal, 1);
   const afterCoupon = Math.max(0, roundMoney(afterFull - couponOption.amount - (extraKind === 'coupon' ? extra : 0)));
-  const baseRed = bestBaseRed(state, row.platform, afterCoupon);
+  const baseRed = bestActivityBaseRed(state, store, row.platform, afterCoupon);
   const afterBaseRed = Math.max(0, roundMoney(afterCoupon - baseRed.amount));
   const redAddOn = bestDesignRedAddOn(
     store,
@@ -2905,6 +2962,11 @@ function activityCouponStrategyName(mode: ActivityCouponRecommendationMode) {
   }[mode] || '平稳';
 }
 
+function activityPlatformRedName(platform: Platform) {
+  if (platform === 'jingdong') return '阶梯红包';
+  return platform === 'meituan' ? '神券' : '爆红包';
+}
+
 function normalizeActivityCouponSceneTemplate(row: Partial<ActivityCouponSceneTemplate> | undefined, fallback: ActivityCouponSceneTemplate): ActivityCouponSceneTemplate {
   const thresholdMin = Math.max(0, Number(row?.thresholdMin ?? fallback.thresholdMin) || 0);
   const amountMin = Math.max(0, Number(row?.amountMin ?? fallback.amountMin) || 0);
@@ -2914,7 +2976,7 @@ function normalizeActivityCouponSceneTemplate(row: Partial<ActivityCouponSceneTe
     : [];
   const legacyObjective = (row as { objective?: unknown } | undefined)?.objective;
   const platforms = Array.isArray(row?.platforms)
-    ? row.platforms.filter((item): item is Platform => item === 'meituan' || item === 'eleme')
+    ? row.platforms.filter((item): item is Platform => item === 'meituan' || item === 'eleme' || item === 'jingdong')
     : fallback.platforms;
   return {
     key: String(row?.key || fallback.key),
@@ -3024,7 +3086,7 @@ function activityCouponSceneUsageSuggestion(
     riskReasons: string[];
   }
 ) {
-  const redName = platform === 'meituan' ? '神券' : '爆红包';
+  const redName = activityPlatformRedName(platform);
   const riskText = context.riskReasons.length ? `；风险：${context.riskReasons.join('，')}，应用前需核验` : '；应用前仍需支付价核验';
   if (scene.thresholdMode === 'fullReductionInterleave') {
     return `意义：补齐公开满减档位之间的价格带。${context.fullTierText}${riskText}。`;
@@ -3053,7 +3115,7 @@ function activityCouponUsageScenario(
   redTiers: RedTier[],
   coveredRows: ActivityCouponBucketSuggestion[]
 ): Pick<Coupon, 'sceneName' | 'channel' | 'targetUser' | 'thresholdMode' | 'usageSuggestion'> {
-  const redName = platform === 'meituan' ? '神券' : '爆红包';
+  const redName = activityPlatformRedName(platform);
   const fullRules = normalizeActivityFullRules(fullReductionRules);
   const nextFullRule = fullRules.find(rule => rule.threshold > coupon.threshold + 1e-9);
   const redBasisAfterCoupon = Math.max(0, roundMoney(coupon.threshold - coupon.amount));
@@ -3315,7 +3377,7 @@ function buildCouponRouteRules(
     bucketSuggestions,
     payProfile.couponRecommendationPolicy,
     fullReductionRules,
-    state.platformRules.redTiers[platform] || []
+    activityBaseRedTiers(state, store, platform)
   );
   return {
     couponRules: normalizeActivityCouponRules(selected),
@@ -3583,7 +3645,7 @@ function designActivityRouteRecommendation(
       ? '满减校准+加码'
     : couponRules.length
         ? '推荐券+加码'
-        : '神券/爆红包加码';
+        : `${activityPlatformRedName(platform)}加码`;
   const recommendation = createActivityRouteRecommendation(
     platform,
     rows,
@@ -3997,14 +4059,14 @@ function designActivityRoutesFromRows(
     if (!routeRows.length) continue;
     const routeSourceCount = routeRowCountsByPlatform.get(platform) || routeRows.length;
     if (routeSourceCount > routeRows.length) {
-      warnings.push(`${platform === 'meituan' ? '美团' : '饿了么'}活动路线设计基于 ${routeRows.length}/${routeSourceCount} 个原价桶采样，原价整数桶仍按扫描结果聚合。`);
+      warnings.push(`${PLATFORM_NAMES[platform]}活动路线设计基于 ${routeRows.length}/${routeSourceCount} 个原价桶采样，原价整数桶仍按扫描结果聚合。`);
     }
     for (const objective of activityDesignObjectives(settings)) {
       const objectiveRows = activityRowsForObjective(routeRows, settings, objective);
       if (objectiveRows.length < routeRows.length) {
         const adjustableRows = objectiveRows.filter(row => baseActivityDesignSpace(row, settings, objective) >= ACTIVITY_ROUTE_MIN_DESIGN_SPACE - 1e-9).length;
         if (!adjustableRows) {
-          warnings.push(`${platform === 'meituan' ? '美团' : '饿了么'}${objectiveName(objective, settings)}原价阶梯下没有达到 ¥${roundMoney(ACTIVITY_ROUTE_MIN_DESIGN_SPACE)} 的剩余让利空间，已使用原价桶尝试生成候选路线。`);
+          warnings.push(`${PLATFORM_NAMES[platform]}${objectiveName(objective, settings)}原价阶梯下没有达到 ¥${roundMoney(ACTIVITY_ROUTE_MIN_DESIGN_SPACE)} 的剩余让利空间，已使用原价桶尝试生成候选路线。`);
         }
       }
       const objectiveSampleRows = sampleActivityRows(objectiveRows);
@@ -4183,7 +4245,7 @@ export async function runActivityDesignCalculation(
   const platforms = selectedRecommendationSnapshot
     ? [selectedRecommendationSnapshot.platform]
     : platformFilter === 'all'
-      ? PLATFORMS
+      ? ALL_PLATFORMS
       : [platformFilter];
 
   if (selectedRecommendationSnapshot) {

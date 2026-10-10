@@ -409,7 +409,7 @@ export async function runMeasurementCalculation(
         for (const row of evaluatedRows) appendRow(row);
       },
       progress => onProgress?.({
-        resultCount: rows.filter(row => !row.ignored).length,
+        resultCount: shouldStreamRows ? activeRowCount : rows.filter(row => !row.ignored).length,
         comboCount: checkedBefore + progress.checked,
         validComboCount: validBefore + progress.validCombos
       })

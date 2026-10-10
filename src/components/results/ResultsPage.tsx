@@ -8,10 +8,11 @@ import type { TableColumnsType } from 'antd';
 import { DownloadOutlined } from '@ant-design/icons';
 import { tablePagination } from '../../utils/table';
 import { EMPTY_SUMMARY, MEASUREMENT_DETAIL_ROW_LIMIT } from '../../config/calculation';
-import { comboStapleServingCount, PLATFORM_NAMES, PLATFORMS, summarizePriceBands as summarizeDomainPriceBands } from '../../domain/core';
+import { ALL_PLATFORMS, comboStapleServingCount, PLATFORM_NAMES } from '../../domain/core';
 import { roundMoney } from '../../domain/money';
 import { PayBandAnalysisPanel } from '../shared/PayBandAnalysisPanel';
 import { ProductDiscountSuggestionSection } from '../shared/ProductDiscountSuggestionSection';
+import { JingdongSubsidyResultPanel } from '../jingdong/JingdongSubsidyResultPanel';
 import { useCalculatorPageProps } from '../shared/CalculatorContext';
 import { useCalculatorStateCommit } from '../shared/useCalculatorStateCommit';
 import { useStoreActivityDesignSettings } from '../shared/useStoreActivityDesignSettings';
@@ -28,6 +29,7 @@ import {
 import type {
   ComboEvaluationRow,
   ComboItem,
+  MeasurementBucketCostSample,
   MeasurementSettings,
   MeasurementResult,
   Platform,
@@ -46,7 +48,8 @@ import {
   DEFAULT_MEASUREMENT_SETTINGS,
   MEASUREMENT_RESULT_SCENARIO,
   buildMeasurementSummaryFromRows,
-  isMeasurementRowInDisplayFilters
+  isMeasurementRowInDisplayFilters,
+  summarizeMeasurementPriceBandsFromRows
 } from './resultsCalculationUtils';
 
 const AntvLine = dynamic(() => import('@ant-design/charts').then(mod => mod.Line), { ssr: false });
@@ -57,7 +60,7 @@ type AnyRecord = Record<string, any>;
 export type ResultsPageProps = AnyRecord;
 
 function createPlatformPayBandKeys(): Record<Platform, string> {
-  return { meituan: 'all', eleme: 'all' };
+  return { meituan: 'all', eleme: 'all', jingdong: 'all' };
 }
 
 function sortResultRows(rows: ComboEvaluationRow[]) {
@@ -133,7 +136,7 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
         const payMax = measurementSettings.payMax === '' ? Infinity : Math.max(payMin, Number(measurementSettings.payMax) || 0);
         return storedResultPayBands.filter(row => row.max > payMin + 1e-9 && row.min < payMax - 1e-9);
       }
-      return summarizeDomainPriceBands(filteredResultRows.filter(row => !row.ignored), measurementPayBandSize, 'pay', { groupByScenario: false });
+      return summarizeMeasurementPriceBandsFromRows(filteredResultRows.filter(row => !row.ignored), measurementPayBandSize);
     }, [filteredResultRows, measurementPayBandSize, measurementSettings.payMax, measurementSettings.payMin, storedResultPayBands]);
     const activeResultSummary = isResultsLoading ? summary : (
       !filteredResultRows.length && storedResultPayBands.length
@@ -143,7 +146,7 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
     const resultPayBandRows = activeResultPayBands as PriceBandRow[] || [];
     const resultRows = filteredResultRows as ComboEvaluationRow[] || [];
     const resultPlatformViews = React.useMemo(() => {
-      return PLATFORMS.reduce((views, platform) => {
+      return ALL_PLATFORMS.reduce((views, platform) => {
         const payBands = resultPayBandRows.filter(row => row.platform === platform);
         const selectedPayBandKey = selectedResultPayBandKeys[platform] || 'all';
         const selectedPayBand = payBands.find(row => row.key === selectedPayBandKey) || null;
@@ -198,7 +201,11 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
     const selectedResultBandFilteredRows = React.useMemo(() => {
       const keyword = resultDetailSearchText.trim().toLowerCase();
       if (!keyword) return selectedResultBandRows;
-      return selectedResultBandRows.filter(row => row.items.some(item => item.name.toLowerCase().includes(keyword)));
+      return selectedResultBandRows.filter(row => (
+        row.items.some(item => item.name.toLowerCase().includes(keyword))
+        || String(row.sourceBucketLabel || '').toLowerCase().includes(keyword)
+        || (row.bucketCostSamples || []).some(sample => sample.items.some(item => item.name.toLowerCase().includes(keyword)))
+      ));
     }, [resultDetailSearchText, selectedResultBandRows]);
     const selectedResultBandRiskRows = React.useMemo(() => {
       return selectedResultBandFilteredRows
@@ -367,6 +374,9 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
       }
     };
     const exportResults = () => {
+      const bucketCostSamplesText = (samples?: MeasurementBucketCostSample[]) => (samples || [])
+        .map(sample => `${sample.kindName} 成本¥${money(sample.cost)} 原价¥${money(sample.originalTotal)} ${itemsText(sample.items)}`)
+        .join('|');
       const view = activeResultPlatformView;
       const ok = downloadCsv(`${store.name}_${view.platformName}_组合测算.csv`, view.visibleRows.map(row => ({
         平台: row.platformName,
@@ -383,6 +393,7 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
         外卖服务费: money(row.serviceFee),
         运费补贴: money(row.freightSubsidy),
         利润: money(row.profit),
+        桶内成本样本: bucketCostSamplesText(row.bucketCostSamples),
         支付毛利率: rateText(paymentGrossRate(row)),
         实付利润率: rateText(row.profitRate),
         到手利润率: rateText(row.netProfitRate),
@@ -395,28 +406,45 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
       })));
       if (!ok) message.warning('没有可导出的结果。');
     };
-    const renderComboProductTags = (row: ComboEvaluationRow) => (
-      <Space wrap>
-        {row.items.map(item => (
-          <Tag
-            key={`${item.productId}-${item.qty}`}
-            className="clickable-tag"
-            onClick={event => {
-              event.stopPropagation();
-              setResultProductPayRange(null);
-              setSelectedResultProduct({
-                platform: row.platform,
-                payBandKey: selectedResultBand?.platform === row.platform ? selectedResultBand.payBandKey : 'all',
-                productId: item.productId,
-                productName: item.name
-              });
-            }}
-          >
-            {item.name} x {item.qty}
-          </Tag>
-        ))}
-      </Space>
-    );
+    const renderBucketCostSamples = (samples?: MeasurementBucketCostSample[]) => {
+      if (!samples?.length) return <Text type="secondary">-</Text>;
+      return (
+        <Space direction="vertical" size={2} style={{ width: '100%' }}>
+          {samples.map(sample => (
+            <div key={sample.key} className="table-metric-stack">
+              <Text strong>{sample.kindName} ¥{money(sample.cost)}</Text>
+              <Text type="secondary">原价 ¥{money(sample.originalTotal)} / {itemsText(sample.items) || `${sample.totalQty} 件`}</Text>
+            </div>
+          ))}
+        </Space>
+      );
+    };
+    const renderComboProductTags = (row: ComboEvaluationRow) => {
+      return (
+        <Space wrap>
+          {row.sourceBucketLabel ? <Tag>原价桶 ¥{row.sourceBucketLabel}</Tag> : null}
+          {row.representedComboCount ? <Tag color="blue">约 {row.representedComboCount} 组</Tag> : null}
+          {row.items.map(item => (
+            <Tag
+              key={`${item.productId}-${item.qty}`}
+              className="clickable-tag"
+              onClick={event => {
+                event.stopPropagation();
+                setResultProductPayRange(null);
+                setSelectedResultProduct({
+                  platform: row.platform,
+                  payBandKey: selectedResultBand?.platform === row.platform ? selectedResultBand.payBandKey : 'all',
+                  productId: item.productId,
+                  productName: item.name
+                });
+              }}
+            >
+              {item.name} x {item.qty}
+            </Tag>
+          ))}
+        </Space>
+      );
+    };
     const resultColumns: TableColumnsType<ComboEvaluationRow> = [
       { title: '平台', dataIndex: 'platformName', width: 80, fixed: 'left', sorter: (a, b) => a.platformName.localeCompare(b.platformName, 'zh-CN') },
       { title: '商品组合', dataIndex: 'items', width: 300, fixed: 'left', render: (_, row) => renderComboProductTags(row) },
@@ -426,6 +454,7 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
       { title: '用户实付', dataIndex: 'finalPay', width: 105, sorter: (a, b) => a.finalPay - b.finalPay, render: value => `¥${money(value)}` },
       { title: '商家到手', dataIndex: 'netPay', width: 105, sorter: (a, b) => a.netPay - b.netPay, render: value => `¥${money(value)}` },
       { title: '成本', dataIndex: 'cost', width: 95, sorter: (a, b) => a.cost - b.cost, render: value => `¥${money(value)}` },
+      { title: '桶内成本样本', dataIndex: 'bucketCostSamples', width: 340, render: value => renderBucketCostSamples(value as MeasurementBucketCostSample[] | undefined) },
       { title: '支付毛利率', width: 110, sorter: (a, b) => (paymentGrossRate(a) || 0) - (paymentGrossRate(b) || 0), render: (_, row) => rateText(paymentGrossRate(row)) },
       { title: '活动金额', dataIndex: 'activityAmount', width: 105, sorter: (a, b) => a.activityAmount - b.activityAmount, render: value => `¥${money(value)}` },
       { title: '利润', dataIndex: 'profit', width: 90, sorter: (a, b) => a.profit - b.profit, render: value => <Text type={Number(value) < 0 ? 'danger' : 'success'}>¥{money(value)}</Text> },
@@ -472,7 +501,22 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
       { title: '异常数', dataIndex: 'riskCount', width: 85, sorter: (a, b) => a.riskCount - b.riskCount },
       { title: '建议', dataIndex: 'suggestion', width: 220, render: value => <Text className="table-text-wrap">{String(value || '')}</Text> }
     ];
+    const renderJingdongSubsidyPanel = () => (
+      <JingdongSubsidyResultPanel
+        calculatorState={calculatorState}
+        dataRepository={dataRepository}
+        store={store}
+        storeActivityDesignSettings={storeActivityDesignSettings}
+      />
+    );
     const renderResultPlatformPanel = (view: ResultPlatformView) => {
+      if (view.platform === 'jingdong' && !view.platformRows.length && !view.payBands.length) {
+        return (
+          <div className="section-stack result-platform-panel">
+            {renderJingdongSubsidyPanel()}
+          </div>
+        );
+      }
       const platformRowCount = view.platformRows.length || view.payBands.reduce((sum, row) => sum + row.comboCount, 0);
       const platformRiskCount = view.platformRows.length
         ? view.platformRows.filter(row => row.risk?.hasRisk).length
@@ -496,16 +540,21 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
               void openResultBandDetail(view.platform, key);
             }}
           />
-          <ProductDiscountSuggestionSection
-            rows={view.platformRows}
-            source="measurementResult"
-            title="商品维度合理成本结论"
-            limit={50}
-            includeNeutral
-            description="商品结论按当前平台全部测算组合计算：主商品用活动合理成本和当前成本比较判断降价或涨价空间；凑单品只校验按原价占比分摊的到手价是否覆盖成本。"
-            money={money}
-            onApply={onApplyProductDiscountSuggestion}
-          />
+          {view.platformRows.some(row => !row.sourceBucketKey) ? (
+            <ProductDiscountSuggestionSection
+              rows={view.platformRows}
+              source="measurementResult"
+              title="商品维度合理成本结论"
+              limit={50}
+              includeNeutral
+              description="商品结论按当前平台全部测算组合计算：主商品用活动合理成本和当前成本比较判断降价或涨价空间；凑单品只校验按原价占比分摊的到手价是否覆盖成本。"
+              money={money}
+              onApply={onApplyProductDiscountSuggestion}
+            />
+          ) : null}
+          {view.platform === 'jingdong' ? (
+            renderJingdongSubsidyPanel()
+          ) : null}
         </div>
       );
     };
@@ -575,7 +624,7 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
             activeKey={resultPlatformTab}
             destroyOnHidden
             onChange={key => setResultPlatformTab(key as Platform)}
-            items={PLATFORMS.map(platform => ({
+            items={ALL_PLATFORMS.map(platform => ({
               key: platform,
               label: PLATFORM_NAMES[platform],
               children: renderResultPlatformPanel(resultPlatformViews[platform])
@@ -625,7 +674,7 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
                           columns={resultColumns}
                           dataSource={riskOnly ? selectedResultBandRiskRows : selectedResultBandFilteredRows}
                           pagination={tablePagination(30)}
-                          scroll={{ x: 2010 }}
+                          scroll={{ x: 2350 }}
                           tableLayout="fixed"
                         />
                       )
@@ -745,7 +794,7 @@ export function ResultsPage(pageProps: ResultsPageProps = {}) {
                 columns={resultColumns}
                 dataSource={selectedResultProductTableRows}
                 pagination={tablePagination(20)}
-                scroll={{ x: 2010 }}
+                scroll={{ x: 2350 }}
                 tableLayout="fixed"
               />
             </Space>

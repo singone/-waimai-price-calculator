@@ -1,7 +1,11 @@
-export type Platform = 'meituan' | 'eleme';
+export type Platform = 'meituan' | 'eleme' | 'jingdong';
 export type Severity = 'none' | 'critical' | 'high' | 'medium' | 'config';
 export type ProductCategory = 'staple' | 'snackDrink' | 'addOn' | 'setMeal' | 'other';
 export type StapleScenario = 'single' | 'double' | 'multi';
+export type PricingBaseRedAmountMode = 'min' | 'average' | 'max';
+export type PricingStrategyKind = 'staple' | 'addOn' | 'setMeal' | 'other';
+export type PricingPlanKey = 'traffic' | 'balanced' | 'profit';
+export type JingdongSubsidyCouponKind = 'large' | 'small';
 export type ActivityDesignObjective = string;
 export type ActivityDesignCalculationMode = 'priceScan' | 'routeDesign' | 'payValidation';
 export type ActivityObjectiveGroup = 'stable' | 'marketing';
@@ -16,18 +20,38 @@ export type ActivityCouponRiskLevel = 'safe' | 'watch' | 'risk';
 export type Product = {
   id: string;
   name: string;
+  merchantProductCode?: string;
+  barcode?: string;
+  jingdongSkuCode?: string;
   price: number;
   cost: number;
   packageFee: number;
   meituanPrice: number | '';
   elemePrice: number | '';
+  jingdongPrice: number | '';
   meituanPackageFee: number | '';
   elemePackageFee: number | '';
+  jingdongPackageFee: number | '';
   meituanEnabled: boolean;
   elemeEnabled: boolean;
+  jingdongEnabled: boolean;
   category: ProductCategory;
   stapleServingCount: number;
   nonStandalone: boolean;
+  bundleItems?: ProductBundleItem[];
+  bundleChoiceGroups?: ProductBundleChoiceGroup[];
+};
+
+export type ProductBundleItem = {
+  productId: string;
+  qty: number;
+};
+
+export type ProductBundleChoiceGroup = {
+  id: string;
+  name: string;
+  selectionQty: number;
+  items: ProductBundleItem[];
 };
 
 export type ProfitTarget = {
@@ -80,6 +104,18 @@ export type RedAddOn = {
   amount: number;
 };
 
+export type JingdongSubsidyCoupon = {
+  enabled: boolean;
+  name: string;
+  kind: JingdongSubsidyCouponKind;
+  threshold: number;
+  amount: number;
+  merchantAmount: number;
+  merchantExtraAmount: number;
+  platformAmount: number;
+  stackableWithLarge: boolean;
+};
+
 export type DiscountActivity = {
   enabled: boolean;
   name: string;
@@ -92,17 +128,21 @@ export type Activities = {
   fullReductions: FullReduction[];
   coupons: Coupon[];
   redAddOns: RedAddOn[];
+  jingdongSubsidyCoupons: JingdongSubsidyCoupon[];
   discountActivities: DiscountActivity[];
 };
 
 export type PricingEvaluationRule = {
-  fallbackTargetProfitRate: number;
-  addOnTargetProfitRate: number;
-  riceBallTargetProfitRate: number;
-  setMealTargetProfitRate: number;
-  singleStapleTargetProfitRate: number;
-  doubleStapleTargetProfitRate: number;
-  multiStapleTargetProfitRate: number;
+  fallbackTargetCostShare: number;
+  stapleTargetCostShare: number;
+  setMealTargetCostShare: number;
+  addOnTargetCostShare: number;
+  addOnStapleRatioShare: number;
+  addOnMinimumOriginalPrice: number;
+  addOnPromotionRiskShare: number;
+  setMealDiscountRate: number;
+  fixedActivityCost: number;
+  baseRedAmountMode: PricingBaseRedAmountMode;
 };
 
 export type FeeRule = {
@@ -164,6 +204,19 @@ export type ComboItem = {
   category: ProductCategory;
   stapleServingCount: number;
   nonStandalone: boolean;
+};
+
+export type MeasurementBucketCostSampleKind = 'minCost' | 'avgCost' | 'maxCost';
+
+export type MeasurementBucketCostSample = {
+  key: string;
+  kind: MeasurementBucketCostSampleKind;
+  kindName: string;
+  originalTotal: number;
+  cost: number;
+  totalQty: number;
+  stapleCount: number;
+  items: ComboItem[];
 };
 
 export type Summary = {
@@ -285,10 +338,20 @@ export type ActivityStrategySettings = {
   platformCouponSceneKeys?: Partial<Record<Platform, string[]>>;
 };
 
-export type PricingEvaluationSettings = ComboRangeSettings & {
-  redAddOnSpace: number;
-  lowPayMax: number;
-  fixedCostAllocation?: number;
+export type PricingEvaluationSettings = {
+  productNameKeyword: string;
+  originalMin: number;
+  originalMax: number | '';
+  enabledPlanKeys: PricingPlanKey[];
+  stapleTargetCostShare: number;
+  setMealTargetCostShare: number;
+  addOnTargetCostShare: number;
+  addOnStapleRatioShare: number;
+  addOnMinimumOriginalPrice: number;
+  addOnPromotionRiskShare: number;
+  setMealDiscountRate: number;
+  fixedActivityCost: number;
+  baseRedAmountMode: PricingBaseRedAmountMode;
 };
 
 export type ActivityDesignSettings = ComboRangeSettings & {
@@ -319,6 +382,9 @@ export type ActivityDesignSettings = ComboRangeSettings & {
   minProfitRate?: number;
   originalBandSize?: number;
   payBandSize?: number;
+  jingdongCouponExtraSafetyMode?: 'targetProfit' | 'noLoss';
+  jingdongCouponExtraStep?: number;
+  jingdongCouponExtraFallbackCap?: number;
 };
 
 export type MeasurementSettings = {
@@ -394,6 +460,11 @@ export type ComboEvaluationRow = {
   couponAmount: number;
   baseRed: RedTier & { amount: number };
   redAddOn: RedAddOn;
+  representedComboCount?: number;
+  sourceBucketKey?: string;
+  sourceBucketLabel?: string;
+  sourceBucketRiskCount?: number;
+  bucketCostSamples?: MeasurementBucketCostSample[];
   ignored: boolean;
   ignoreReason: string;
   risk: RiskInfo;
@@ -426,36 +497,78 @@ export type PriceBandRow = {
   suggestion: string;
 };
 
+export type PricingPlanRuleDetail = {
+  planKey: PricingPlanKey;
+  planName: string;
+  planDescription: string;
+  stapleTargetCostShare: number;
+  setMealTargetCostShare: number;
+  addOnTargetCostShare: number;
+  addOnStapleRatioShare: number;
+  addOnMinimumOriginalPrice: number;
+  addOnPromotionRiskShare: number;
+  setMealDiscountRate: number;
+  fixedActivityCost: number;
+  baseRedAmountMode: PricingBaseRedAmountMode;
+};
+
 export type PricingProductRow = {
   key: string;
+  planKey: PricingPlanKey;
+  planName: string;
+  planDescription: string;
   platform: Platform;
   platformName: string;
   productId: string;
   productName: string;
   category: ProductCategory;
   categoryName: string;
+  strategyKind: PricingStrategyKind;
+  strategyName: string;
   scenario: StapleScenario;
   scenarioName: string;
   currentPrice: number;
   packageFee: number;
   currentOriginalPrice: number;
   productCost: number;
-  fixedCostAllocation: number;
-  baseCost: number;
-  targetProfitRate: number;
+  componentOriginalTotal: number | null;
+  componentCostTotal: number | null;
+  discountAmount: number;
+  fixedActivityCost: number;
+  baseRedAmount: number;
+  commission: number;
+  serviceFee: number;
+  freightSubsidy: number;
+  platformExpenseTotal: number;
+  finalPay: number;
+  commissionDeliveryFee: number;
+  netRevenue: number;
+  netTakeRate: number | null;
+  costShare: number | null;
+  targetCostShare: number;
+  costShareSpace: number | null;
+  staplePriceCostRatio: number | null;
+  addOnReferenceOriginalPrice: number | null;
+  addOnCostShareFloor: number | null;
+  addOnStapleRatioFloor: number | null;
+  addOnMinimumOriginalPrice: number | null;
+  addOnPromotionRiskAmount: number | null;
+  addOnPromotionRiskFloor: number | null;
+  addOnPricingFloor: number | null;
+  addOnPricingBasisName: string | null;
+  setMealDiscountRate: number | null;
   currentProfit: number;
-  currentProfitRate: number | null;
   targetOriginalPrice: number;
   suggestedPrice: number;
   suggestedOriginalPrice: number;
   suggestedIncrease: number;
   suggestedIncreaseRate: number | null;
-  profitSpace: number;
   severity: Severity;
   reasons: string[];
 };
 
 export type PricingEvaluationResult = {
+  planRules: PricingPlanRuleDetail[];
   productRows: PricingProductRow[];
   warnings: string[];
   summary: Summary;
