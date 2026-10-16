@@ -1,0 +1,1821 @@
+{
+  "storeId": "24478085",
+  "scope": "用户列表请求：report20/state2/tag3，原筛选不变",
+  "count": 31,
+  "coupons": [
+    {
+      "activityCode": "TB163010755063744014",
+      "name": "【散店9月金秋券】京东外卖超级补贴券满109减27",
+      "series": "外卖超级补贴",
+      "threshold": 109.0,
+      "merchantMax": 25.0,
+      "platformMax": 2.0,
+      "platformRule": "商家实际补贴满25.00元,平台补贴最多2.00元;",
+      "differentialObserved": "全天3；新客1；Plus1",
+      "websiteMatches": [],
+      "comparison": "网站无同门槛同分摊配置",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 10900,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 10900,
+          "maxThreshold": 20000,
+          "platShare": 200,
+          "orgShare": 2500,
+          "totalShare": 2700
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB163010903063686083",
+      "name": "【散店9月金秋券】京东外卖超级补贴券-满90减22",
+      "series": "外卖超级补贴",
+      "threshold": 90.0,
+      "merchantMax": 20.0,
+      "platformMax": 2.0,
+      "platformRule": "商家实际补贴满20.00元,平台补贴最多2.00元;",
+      "differentialObserved": "全天1；新客1；Plus1",
+      "websiteMatches": [],
+      "comparison": "网站无同门槛同分摊配置",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 9000,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 9000,
+          "maxThreshold": 20000,
+          "platShare": 200,
+          "orgShare": 2000,
+          "totalShare": 2200
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB163010621063659091",
+      "name": "【散店9月金秋券】京东外卖超级补贴券满128减32",
+      "series": "外卖超级补贴",
+      "threshold": 128.0,
+      "merchantMax": 30.0,
+      "platformMax": 2.0,
+      "platformRule": "商家实际补贴满30.00元,平台补贴最多2.00元;",
+      "differentialObserved": "全天1；新客1；Plus1",
+      "websiteMatches": [],
+      "comparison": "网站无同门槛同分摊配置",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 12800,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 12800,
+          "maxThreshold": 20000,
+          "platShare": 200,
+          "orgShare": 3000,
+          "totalShare": 3200
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB161610320059996001",
+      "name": "【散店9月金秋券】京东外卖超级补贴券-满40减12",
+      "series": "外卖超级补贴",
+      "threshold": 40.0,
+      "merchantMax": 10.0,
+      "platformMax": 2.0,
+      "platformRule": "商家实际补贴满10.00元,平台补贴最多2.00元;",
+      "differentialObserved": "全天2；新客1；Plus1",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "散店9月金秋券40-12",
+          "threshold": "40",
+          "amount": "12",
+          "merchant": "10",
+          "extra": "0",
+          "platform": "2"
+        }
+      ],
+      "comparison": "基础匹配：散店9月金秋券40-12",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 4000,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 4000,
+          "maxThreshold": 20000,
+          "platShare": 200,
+          "orgShare": 1000,
+          "totalShare": 1200
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB161610319060042008",
+      "name": "【散店9月金秋券】京东外卖超级补贴券-满70减20",
+      "series": "外卖超级补贴",
+      "threshold": 70.0,
+      "merchantMax": 18.0,
+      "platformMax": 2.0,
+      "platformRule": "商家实际补贴满18.00元,平台补贴最多2.00元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "散店9月金秋券70-20",
+          "threshold": "70",
+          "amount": "20",
+          "merchant": "18",
+          "extra": "0",
+          "platform": "2"
+        }
+      ],
+      "comparison": "基础匹配：散店9月金秋券70-20",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 7000,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 7000,
+          "maxThreshold": 20000,
+          "platShare": 200,
+          "orgShare": 1800,
+          "totalShare": 2000
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB161611415159239003",
+      "name": "【散店9月金秋券】京东外卖超级补贴券-满30减8",
+      "series": "外卖超级补贴",
+      "threshold": 30.0,
+      "merchantMax": 6.5,
+      "platformMax": 1.5,
+      "platformRule": "商家实际补贴满6.50元,平台补贴最多1.50元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "散店9月金秋券30-8",
+          "threshold": "30",
+          "amount": "8",
+          "merchant": "6.5",
+          "extra": "0",
+          "platform": "1.5"
+        }
+      ],
+      "comparison": "基础匹配：散店9月金秋券30-8",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 3000,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 3000,
+          "maxThreshold": 20000,
+          "platShare": 150,
+          "orgShare": 650,
+          "totalShare": 800
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB161611060060049003",
+      "name": "【散店9月金秋券】京东外卖超级补贴券-满50减16",
+      "series": "外卖超级补贴",
+      "threshold": 50.0,
+      "merchantMax": 14.0,
+      "platformMax": 2.0,
+      "platformRule": "商家实际补贴满14.00元,平台补贴最多2.00元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "散店9月金秋券50-16",
+          "threshold": "50",
+          "amount": "16",
+          "merchant": "14",
+          "extra": "0",
+          "platform": "2"
+        }
+      ],
+      "comparison": "基础匹配：散店9月金秋券50-16",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 5000,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 5000,
+          "maxThreshold": 20000,
+          "platShare": 200,
+          "orgShare": 1400,
+          "totalShare": 1600
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB161611045060016007",
+      "name": "【散店9月金秋券】京东外卖超级补贴券-满60减18",
+      "series": "外卖超级补贴",
+      "threshold": 60.0,
+      "merchantMax": 16.0,
+      "platformMax": 2.0,
+      "platformRule": "商家实际补贴满16.00元,平台补贴最多2.00元;",
+      "differentialObserved": "全天1；新客1；Plus1",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "散店9月金秋券60-18",
+          "threshold": "60",
+          "amount": "18",
+          "merchant": "16",
+          "extra": "0",
+          "platform": "2"
+        }
+      ],
+      "comparison": "基础匹配：散店9月金秋券60-18",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 6000,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 6000,
+          "maxThreshold": 20000,
+          "platShare": 200,
+          "orgShare": 1600,
+          "totalShare": 1800
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB161610850060025004",
+      "name": "【散店9月金秋券】京东外卖超级补贴券-满35减10",
+      "series": "外卖超级补贴",
+      "threshold": 35.0,
+      "merchantMax": 8.5,
+      "platformMax": 1.5,
+      "platformRule": "商家实际补贴满8.50元,平台补贴最多1.50元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "散店9月金秋券35-10",
+          "threshold": "35",
+          "amount": "10",
+          "merchant": "8.5",
+          "extra": "0",
+          "platform": "1.5"
+        }
+      ],
+      "comparison": "基础匹配：散店9月金秋券35-10",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 3500,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 3500,
+          "maxThreshold": 20000,
+          "platShare": 150,
+          "orgShare": 850,
+          "totalShare": 1000
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TBHK179822664991284",
+      "name": "京东外卖超级补贴券-好运冲刺券-减5元（全国）",
+      "series": "好运冲刺券",
+      "threshold": 0.01,
+      "merchantMax": 2.5,
+      "platformMax": 2.5,
+      "platformRule": "商家实际补贴满2.50元,平台补贴最多2.50元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "小额",
+          "name": "冲刺券满0.01减5",
+          "threshold": "0.01",
+          "amount": "5",
+          "merchant": "2.5",
+          "extra": "不支持",
+          "platform": "2.5"
+        }
+      ],
+      "comparison": "基础匹配：冲刺券满0.01减5",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 1,
+          "platShare": 0,
+          "orgShare": 10,
+          "totalShare": 10
+        },
+        {
+          "id": 2,
+          "minThreshold": 1,
+          "maxThreshold": 20000,
+          "platShare": 250,
+          "orgShare": 250,
+          "totalShare": 500
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": []
+    },
+    {
+      "activityCode": "TB153110745036962019",
+      "name": "【主力券】京东外卖超级补贴券满10减6(品质招商)",
+      "series": "外卖超级补贴",
+      "threshold": 10.0,
+      "merchantMax": 4.5,
+      "platformMax": 1.5,
+      "platformRule": "商家实际补贴满4.50元,平台补贴最多1.50元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "主力券满10减6",
+          "threshold": "10",
+          "amount": "6",
+          "merchant": "4.5",
+          "extra": "0",
+          "platform": "1.5"
+        }
+      ],
+      "comparison": "基础匹配：主力券满10减6",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 1000,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 1000,
+          "maxThreshold": 20000,
+          "platShare": 150,
+          "orgShare": 450,
+          "totalShare": 600
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TBMX633232711255474",
+      "name": "京东外卖超级补贴券-满8减5(1星)",
+      "series": "外卖超级补贴",
+      "threshold": 8.0,
+      "merchantMax": 3.5,
+      "platformMax": 1.5,
+      "platformRule": "商家实际补贴满3.50元,平台补贴最多1.50元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [],
+      "comparison": "网站无同门槛同分摊配置",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 800,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 800,
+          "maxThreshold": 20000,
+          "platShare": 150,
+          "orgShare": 350,
+          "totalShare": 500
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB153111207036976007",
+      "name": "【主力券】京东外卖超级补贴券满118减32 (散店",
+      "series": "外卖超级补贴",
+      "threshold": 118.0,
+      "merchantMax": 29.5,
+      "platformMax": 2.5,
+      "platformRule": "商家实际补贴满29.50元,平台补贴最多2.50元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "主力券满118减32",
+          "threshold": "118",
+          "amount": "32",
+          "merchant": "29.5",
+          "extra": "0",
+          "platform": "2.5"
+        }
+      ],
+      "comparison": "基础匹配：主力券满118减32",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 11800,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 11800,
+          "maxThreshold": 20000,
+          "platShare": 250,
+          "orgShare": 2950,
+          "totalShare": 3200
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB152311332034666035",
+      "name": "京东外卖超级补贴券-全天裂变券-满3减2（全国）",
+      "series": "全天裂变券",
+      "threshold": 3.0,
+      "merchantMax": 1.0,
+      "platformMax": 1.0,
+      "platformRule": "商家实际补贴满1.00元,平台补贴最多1.00元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "小额",
+          "name": "冲刺券满3减2",
+          "threshold": "3",
+          "amount": "2",
+          "merchant": "1",
+          "extra": "不支持",
+          "platform": "1"
+        }
+      ],
+      "comparison": "基础匹配：冲刺券满3减2；网站一个泛化冲刺券，未区分全天/晚餐",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 300,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 300,
+          "maxThreshold": 20000,
+          "platShare": 100,
+          "orgShare": 100,
+          "totalShare": 200
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": []
+    },
+    {
+      "activityCode": "TB153110936036974003",
+      "name": "【主力券】京东外卖超级补贴券满20减8(品质招商)",
+      "series": "外卖超级补贴",
+      "threshold": 20.0,
+      "merchantMax": 6.0,
+      "platformMax": 2.0,
+      "platformRule": "商家实际补贴满6.00元,平台补贴最多2.00元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "主力券满20减8",
+          "threshold": "20",
+          "amount": "8",
+          "merchant": "6",
+          "extra": "0",
+          "platform": "2"
+        }
+      ],
+      "comparison": "基础匹配：主力券满20减8",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 2000,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 2000,
+          "maxThreshold": 20000,
+          "platShare": 200,
+          "orgShare": 600,
+          "totalShare": 800
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB153110301136525001",
+      "name": "【主力券】京东外卖超级补贴券满99减27(散店)",
+      "series": "外卖超级补贴",
+      "threshold": 99.0,
+      "merchantMax": 24.5,
+      "platformMax": 2.5,
+      "platformRule": "商家实际补贴满24.50元,平台补贴最多2.50元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "主力券满99减27",
+          "threshold": "99",
+          "amount": "27",
+          "merchant": "24.5",
+          "extra": "0",
+          "platform": "2.5"
+        }
+      ],
+      "comparison": "基础匹配：主力券满99减27",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 9900,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 9900,
+          "maxThreshold": 20000,
+          "platShare": 250,
+          "orgShare": 2450,
+          "totalShare": 2700
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB153110020136500012",
+      "name": "【主力券】京东外卖超级补贴券-满80减22(品质)",
+      "series": "外卖超级补贴",
+      "threshold": 80.0,
+      "merchantMax": 19.5,
+      "platformMax": 2.5,
+      "platformRule": "商家实际补贴满19.50元,平台补贴最多2.50元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "主力券满80减22",
+          "threshold": "80",
+          "amount": "22",
+          "merchant": "19.5",
+          "extra": "0",
+          "platform": "2.5"
+        }
+      ],
+      "comparison": "基础匹配：主力券满80减22",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 8000,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 8000,
+          "maxThreshold": 20000,
+          "platShare": 250,
+          "orgShare": 1950,
+          "totalShare": 2200
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB154811204041578005",
+      "name": "金券招商满49减25",
+      "series": "外卖金券补贴",
+      "threshold": 49.0,
+      "merchantMax": 19.0,
+      "platformMax": 6.0,
+      "platformRule": "商家实际补贴满19.00元,平台补贴最多6.00元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "金券招商满49减25",
+          "threshold": "49",
+          "amount": "25",
+          "merchant": "19",
+          "extra": "0",
+          "platform": "6"
+        }
+      ],
+      "comparison": "基础匹配：金券招商满49减25",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 4900,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 4900,
+          "maxThreshold": 20000,
+          "platShare": 600,
+          "orgShare": 1900,
+          "totalShare": 2500
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": []
+    },
+    {
+      "activityCode": "TB150510904129626005",
+      "name": "京东外卖超级补贴券-晚餐裂变券-满5减4（全国）",
+      "series": "晚餐裂变券",
+      "threshold": 5.0,
+      "merchantMax": 2.0,
+      "platformMax": 2.0,
+      "platformRule": "商家实际补贴满2.00元,平台补贴最多2.00元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "小额",
+          "name": "冲刺券满5减4",
+          "threshold": "5",
+          "amount": "4",
+          "merchant": "2",
+          "extra": "不支持",
+          "platform": "2"
+        }
+      ],
+      "comparison": "基础匹配：冲刺券满5减4；网站称冲刺券，后台为晚餐裂变券",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 500,
+          "platShare": 0,
+          "orgShare": 10,
+          "totalShare": 10
+        },
+        {
+          "id": 2,
+          "minThreshold": 500,
+          "maxThreshold": 20000,
+          "platShare": 200,
+          "orgShare": 200,
+          "totalShare": 400
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": []
+    },
+    {
+      "activityCode": "TB158210506050728035",
+      "name": "京东外卖超级补贴券-晚餐裂变券-满3减2（全国）",
+      "series": "晚餐裂变券",
+      "threshold": 3.0,
+      "merchantMax": 1.0,
+      "platformMax": 1.0,
+      "platformRule": "商家实际补贴满1.00元,平台补贴最多1.00元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "小额",
+          "name": "冲刺券满3减2",
+          "threshold": "3",
+          "amount": "2",
+          "merchant": "1",
+          "extra": "不支持",
+          "platform": "1"
+        }
+      ],
+      "comparison": "基础匹配：冲刺券满3减2；网站一个泛化冲刺券，未区分全天/晚餐",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 300,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 300,
+          "maxThreshold": 20000,
+          "platShare": 100,
+          "orgShare": 100,
+          "totalShare": 200
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": []
+    },
+    {
+      "activityCode": "TB154810504041599001",
+      "name": "金券招商满59减30",
+      "series": "外卖金券补贴",
+      "threshold": 59.0,
+      "merchantMax": 23.0,
+      "platformMax": 7.0,
+      "platformRule": "商家实际补贴满23.00元,平台补贴最多7.00元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "金券招商满59减30",
+          "threshold": "59",
+          "amount": "30",
+          "merchant": "23",
+          "extra": "0",
+          "platform": "7"
+        }
+      ],
+      "comparison": "基础匹配：金券招商满59减30",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 5900,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 5900,
+          "maxThreshold": 20000,
+          "platShare": 700,
+          "orgShare": 2300,
+          "totalShare": 3000
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": []
+    },
+    {
+      "activityCode": "TB154811360140981011",
+      "name": "金券招商满29减20",
+      "series": "外卖金券补贴",
+      "threshold": 29.0,
+      "merchantMax": 15.0,
+      "platformMax": 5.0,
+      "platformRule": "商家实际补贴满15.00元,平台补贴最多5.00元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "金券招商满29减20",
+          "threshold": "29",
+          "amount": "20",
+          "merchant": "15",
+          "extra": "0",
+          "platform": "5"
+        }
+      ],
+      "comparison": "基础匹配：金券招商满29减20",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 2900,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 2900,
+          "maxThreshold": 20000,
+          "platShare": 500,
+          "orgShare": 1500,
+          "totalShare": 2000
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": []
+    },
+    {
+      "activityCode": "TBRD587012665073865",
+      "name": "京东外卖超级补贴券-好运冲刺券-减3元（全国）",
+      "series": "好运冲刺券",
+      "threshold": 0.01,
+      "merchantMax": 1.5,
+      "platformMax": 1.5,
+      "platformRule": "商家实际补贴满1.50元,平台补贴最多1.50元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [],
+      "comparison": "网站无同门槛同分摊配置；网站冲刺减3门槛0.1，后台0.01",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 1,
+          "platShare": 0,
+          "orgShare": 10,
+          "totalShare": 10
+        },
+        {
+          "id": 2,
+          "minThreshold": 1,
+          "maxThreshold": 20000,
+          "platShare": 150,
+          "orgShare": 150,
+          "totalShare": 300
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": []
+    },
+    {
+      "activityCode": "TB153111333036948005",
+      "name": "【主力券】京东外卖超级补贴券-满60减20(品质)",
+      "series": "外卖超级补贴",
+      "threshold": 60.0,
+      "merchantMax": 17.5,
+      "platformMax": 2.5,
+      "platformRule": "商家实际补贴满17.50元,平台补贴最多2.50元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "主力券满60减20",
+          "threshold": "60",
+          "amount": "20",
+          "merchant": "17.5",
+          "extra": "0",
+          "platform": "2.5"
+        }
+      ],
+      "comparison": "基础匹配：主力券满60减20",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 6000,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 6000,
+          "maxThreshold": 20000,
+          "platShare": 250,
+          "orgShare": 1750,
+          "totalShare": 2000
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB153111027136493019",
+      "name": "【主力券】京东外卖超级补贴券-满50减18(品质)",
+      "series": "外卖超级补贴",
+      "threshold": 50.0,
+      "merchantMax": 15.5,
+      "platformMax": 2.5,
+      "platformRule": "商家实际补贴满15.50元,平台补贴最多2.50元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "主力券满50减18",
+          "threshold": "50",
+          "amount": "18",
+          "merchant": "15.5",
+          "extra": "0",
+          "platform": "2.5"
+        }
+      ],
+      "comparison": "基础匹配：主力券满50减18",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 5000,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 5000,
+          "maxThreshold": 20000,
+          "platShare": 250,
+          "orgShare": 1550,
+          "totalShare": 1800
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB158110136050505034",
+      "name": "京东外卖超级补贴券-满15减10（散店-8月）",
+      "series": "外卖超级补贴",
+      "threshold": 15.0,
+      "merchantMax": 7.5,
+      "platformMax": 2.5,
+      "platformRule": "商家实际补贴满7.50元,平台补贴最多2.50元;",
+      "differentialObserved": "全天1（页面未列其他追加）",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "散店8月补贴券15-10",
+          "threshold": "15",
+          "amount": "10",
+          "merchant": "7.5",
+          "extra": "1",
+          "platform": "2.5"
+        }
+      ],
+      "comparison": "基础匹配：散店8月补贴券15-10",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 1500,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 1500,
+          "maxThreshold": 20000,
+          "platShare": 250,
+          "orgShare": 750,
+          "totalShare": 1000
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TBAH995612904092222",
+      "name": "京东外卖超级补贴券-渠道流量券-减2元（全国）",
+      "series": "外卖超级补贴",
+      "threshold": 0.01,
+      "merchantMax": 2.01,
+      "platformMax": 0.0,
+      "platformRule": "商家实际补贴满2.01元,平台补贴最多0.00元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [],
+      "comparison": "网站无同门槛同分摊配置；后台规则总额2.01与名称减2不一致，需按阶梯/结算确认",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 1,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 1,
+          "maxThreshold": 20000,
+          "platShare": 0,
+          "orgShare": 201,
+          "totalShare": 201
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": []
+    },
+    {
+      "activityCode": "TB158110310149870030",
+      "name": "京东外卖超级补贴券-满10减7（散店-8月）",
+      "series": "外卖超级补贴",
+      "threshold": 10.0,
+      "merchantMax": 5.5,
+      "platformMax": 1.5,
+      "platformRule": "商家实际补贴满5.50元,平台补贴最多1.50元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "散店8月补贴券10-7",
+          "threshold": "10",
+          "amount": "7",
+          "merchant": "5.5",
+          "extra": "0",
+          "platform": "1.5"
+        }
+      ],
+      "comparison": "基础匹配：散店8月补贴券10-7",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 1000,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 1000,
+          "maxThreshold": 20000,
+          "platShare": 150,
+          "orgShare": 550,
+          "totalShare": 700
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB153110918036952022",
+      "name": "【主力券】京东外卖超级补贴券-满30减12(品质)",
+      "series": "外卖超级补贴",
+      "threshold": 30.0,
+      "merchantMax": 9.5,
+      "platformMax": 2.5,
+      "platformRule": "商家实际补贴满9.50元,平台补贴最多2.50元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "主力券满30减12",
+          "threshold": "30",
+          "amount": "12",
+          "merchant": "9.5",
+          "extra": "0",
+          "platform": "2.5"
+        }
+      ],
+      "comparison": "基础匹配：主力券满30减12",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 3000,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 3000,
+          "maxThreshold": 20000,
+          "platShare": 250,
+          "orgShare": 950,
+          "totalShare": 1200
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB153111551136538001",
+      "name": "【主力券】京东外卖超级补贴券满25减10(品质)",
+      "series": "外卖超级补贴",
+      "threshold": 25.0,
+      "merchantMax": 8.0,
+      "platformMax": 2.0,
+      "platformRule": "商家实际补贴满8.00元,平台补贴最多2.00元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "主力券满25减10",
+          "threshold": "25",
+          "amount": "10",
+          "merchant": "8",
+          "extra": "3",
+          "platform": "2"
+        }
+      ],
+      "comparison": "基础匹配：主力券满25减10",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 2500,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 2500,
+          "maxThreshold": 20000,
+          "platShare": 200,
+          "orgShare": 800,
+          "totalShare": 1000
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    },
+    {
+      "activityCode": "TB153111340036954002",
+      "name": "【主力券】京东外卖超级补贴券-满40减16(品质)",
+      "series": "外卖超级补贴",
+      "threshold": 40.0,
+      "merchantMax": 13.5,
+      "platformMax": 2.5,
+      "platformRule": "商家实际补贴满13.50元,平台补贴最多2.50元;",
+      "differentialObserved": "待取得门店实际设置",
+      "websiteMatches": [
+        {
+          "type": "大额",
+          "name": "主力券满40减16",
+          "threshold": "40",
+          "amount": "16",
+          "merchant": "13.5",
+          "extra": "0",
+          "platform": "2.5"
+        }
+      ],
+      "comparison": "基础匹配：主力券满40减16",
+      "subsidyStrategyList": [
+        {
+          "id": 1,
+          "minThreshold": 0,
+          "maxThreshold": 4000,
+          "platShare": 0,
+          "orgShare": 1,
+          "totalShare": 1
+        },
+        {
+          "id": 2,
+          "minThreshold": 4000,
+          "maxThreshold": 20000,
+          "platShare": 250,
+          "orgShare": 1350,
+          "totalShare": 1600
+        }
+      ],
+      "effectiveTime": "00:00-23:59",
+      "differentialRules": [
+        {
+          "configType": 1,
+          "subsidyTitle": "日常（全天）追加补贴金额",
+          "ruleText": null
+        },
+        {
+          "configType": 3,
+          "subsidyTitle": "按时段追加补贴金额",
+          "ruleText": "商家对显示的时段追加商补，该补贴金额需大于全时段追加补贴金额；当处于该补贴对应时段时，全时段补贴不生效，不填写则默认不进行追补。"
+        },
+        {
+          "configType": 2,
+          "subsidyTitle": "门店新客追加补贴金额",
+          "ruleText": "商家对门店新客追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 5,
+          "subsidyTitle": "Plus会员追加补贴金额",
+          "ruleText": "商家对Plus会员追加补贴，与全天/时段同时生效，与其他特殊身份用户不能叠加优惠，不填写则默认不进行追补"
+        },
+        {
+          "configType": 12,
+          "subsidyTitle": "预订追加补贴金额",
+          "ruleText": "商家对预订单追加补贴，仅在用户符合指定下单时间和送达时间时生效，如果同时符合多条规则，则金额择优生效。该追补可与全天/时段同时生效，也可以与身份规则叠加优惠，不填写则默认不进行追补。"
+        }
+      ]
+    }
+  ]
+}
