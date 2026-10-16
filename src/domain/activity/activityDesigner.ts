@@ -51,6 +51,7 @@ import {
   calculationStopWarning,
   createComboEvaluationRow,
   currentStoreFrom,
+  effectiveFeeRule,
   isMealAddOnProduct,
   isMealMainProduct,
   isProductListedOnPlatform,
@@ -1362,7 +1363,7 @@ function addActivityOriginalPriceBucketStatsFromScanEntry(
   const redAddOn = bestDesignRedAddOn(store, platform, afterPlatformFull, afterBaseRed, 0, configuredRedAddOnSpace(settings));
   const redAddAmount = redAddOn.amount;
   const finalPay = Math.max(0, roundMoney(afterBaseRed - redAddAmount));
-  const fee = buildFeeSummary(state, store, finalPay);
+  const fee = buildFeeSummary(state, store, finalPay, platform);
   const netPay = Math.max(0, roundMoney(finalPay - fee.commission - fee.serviceFee - fee.freightSubsidy));
   const targetObjective = settings.objective || 'longTerm';
   const targetDiscountRate = activityOriginalDiscountRate(settings, targetObjective, originalTotal);
@@ -1386,7 +1387,7 @@ function addActivityOriginalPriceBucketStatsFromScanEntry(
     redAddOn,
     settings
   );
-  const activityNetPayBoundarySpace = netPayFloorRouteDiscountSpace(state, store, finalPay, settings, targetObjective);
+  const activityNetPayBoundarySpace = netPayFloorRouteDiscountSpace(state, store, finalPay, settings, targetObjective, platform);
   const activitySafeDiscountSpace = activityDesignSpace;
   const scenario = activityBucketScenario(finalPay);
   const lowNetPay = netPay + 1e-9 < activityMinNetPayFloor(settings, targetObjective);
@@ -1742,7 +1743,7 @@ function activityBaseRedTiers(
   if (platform === JINGDONG_ACTIVITY_RED_TIER_PLATFORM) {
     return jingdongSubsidyCouponsToActivityRedTiers(store.activities.jingdong?.jingdongSubsidyCoupons);
   }
-  return state.platformRules.redTiers[platform] || [];
+  return effectiveFeeRule(state, store, platform).redTiers[platform] || [];
 }
 
 function bestActivityBaseRed(
@@ -1751,7 +1752,7 @@ function bestActivityBaseRed(
   platform: Platform,
   basis: number
 ): RedTier & { amount: number } {
-  if (platform !== JINGDONG_ACTIVITY_RED_TIER_PLATFORM) return bestBaseRed(state, platform, basis);
+  if (platform !== JINGDONG_ACTIVITY_RED_TIER_PLATFORM) return bestBaseRed(state, platform, basis, store);
   const tier = activityBaseRedTiers(state, store, platform)
     .filter(row => row.enabled && basis + 1e-9 >= row.threshold)
     .sort((a, b) => b.max - a.max || b.threshold - a.threshold)[0];
@@ -2072,7 +2073,7 @@ function createBaselineCombo(
   const targetDiscountRate = activityOriginalDiscountRate(settings, targetObjective, totals.originalTotal);
   const targetPay = roundMoney(totals.originalTotal * (1 - targetDiscountRate));
   const targetDiscountAmount = roundMoney(Math.max(0, totals.originalTotal - targetPay));
-  const fee = buildFeeSummary(state, store, finalPay);
+  const fee = buildFeeSummary(state, store, finalPay, platform);
   const alreadyDiscountAmount = activityAmountByBusinessFormula({
     fullReduction: platformFull.amount,
     baseRedAmount: baseRed.amount,
@@ -2106,7 +2107,7 @@ function createBaselineCombo(
     },
     finalPay
   );
-  const activityNetPayBoundarySpace = netPayFloorRouteDiscountSpace(state, store, finalPay, settings, targetObjective);
+  const activityNetPayBoundarySpace = netPayFloorRouteDiscountSpace(state, store, finalPay, settings, targetObjective, platform);
   const baseRow = {
     ...row,
     baseFinalPay: finalPay,
@@ -2140,10 +2141,11 @@ function routeDiscountRate(originalTotal: number, finalPay: number, activityAmou
 function netPayAtFinalPay(
   state: CalculatorState,
   store: ReturnType<typeof currentStoreFrom>,
-  finalPay: number
+  finalPay: number,
+  platform: Platform
 ) {
   const safeFinalPay = Math.max(0, Number(finalPay) || 0);
-  const fee = buildFeeSummary(state, store, safeFinalPay);
+  const fee = buildFeeSummary(state, store, safeFinalPay, platform);
   return Math.max(0, roundMoney(safeFinalPay - fee.commission - fee.serviceFee - fee.freightSubsidy));
 }
 
@@ -2152,17 +2154,18 @@ function netPayFloorRouteDiscountSpace(
   store: ReturnType<typeof currentStoreFrom>,
   finalPay: number,
   settings: ActivityDesignSettings,
-  objective?: ActivityDesignObjective
+  objective: ActivityDesignObjective | undefined,
+  platform: Platform
 ) {
   const currentFinalPay = Math.max(0, Number(finalPay) || 0);
   const minNetPay = activityMinNetPayFloor(settings, objective);
-  if (currentFinalPay <= 0 || netPayAtFinalPay(state, store, currentFinalPay) + 1e-9 < minNetPay) return 0;
+  if (currentFinalPay <= 0 || netPayAtFinalPay(state, store, currentFinalPay, platform) + 1e-9 < minNetPay) return 0;
 
   let low = 0;
   let high = currentFinalPay;
   for (let index = 0; index < 28; index++) {
     const discount = (low + high) / 2;
-    const nextNetPay = netPayAtFinalPay(state, store, currentFinalPay - discount);
+    const nextNetPay = netPayAtFinalPay(state, store, currentFinalPay - discount, platform);
     if (nextNetPay + 1e-9 >= minNetPay) low = discount;
     else high = discount;
   }
@@ -2238,7 +2241,13 @@ function simulateRecommendation(
 ): ActivityComboSimulationRow {
   const full = bestFullReduction(recommendation.fullReductionRules, row.originalTotal);
   const afterFull = Math.max(0, roundMoney(row.originalTotal - full.amount));
-  const couponOption = bestCouponOption(recommendation.couponRules, row.originalTotal, 1);
+  const couponOption = bestCouponOption(recommendation.couponRules, row.originalTotal, 1, amount => {
+    const productDiscount = Math.min(afterFull, Math.max(0, recommendation.productDiscountAmount));
+    const basis = Math.max(0, roundMoney(Math.max(0, roundMoney(afterFull - amount)) - productDiscount));
+    const afterRed = Math.max(0, roundMoney(basis - bestActivityBaseRed(state, store, row.platform, basis).amount));
+    const addOn = bestDesignRedAddOn(store, row.platform, basis, afterRed, recommendation.threshold, recommendationRedAddOnSpace(settings, recommendation));
+    return Math.max(0, roundMoney(afterRed - addOn.amount));
+  });
   const afterCoupon = Math.max(0, roundMoney(afterFull - couponOption.amount));
   const productDiscountAmount = Math.min(afterFull, Math.max(0, recommendation.productDiscountAmount));
   const afterProductDiscount = Math.max(0, roundMoney(row.originalTotal - productDiscountAmount));
@@ -2480,7 +2489,12 @@ function activityRouteDiscountState(
   const full = bestFullReduction(normalizedFullRules, originalTotal);
   const extra = roundMoney(Math.max(0, Number(extraDiscount) || 0));
   const afterFull = Math.max(0, roundMoney(originalTotal - full.amount - (extraKind === 'full' ? extra : 0)));
-  const couponOption = bestCouponOption(normalizedCouponRules, originalTotal, 1);
+  const couponOption = bestCouponOption(normalizedCouponRules, originalTotal, 1, amount => {
+    const basis = Math.max(0, roundMoney(afterFull - amount - (extraKind === 'coupon' ? extra : 0)));
+    const afterRed = Math.max(0, roundMoney(basis - bestActivityBaseRed(state, store, row.platform, basis).amount));
+    const addOn = bestDesignRedAddOn(store, row.platform, basis, afterRed, activityRouteAddOnThreshold(normalizedFullRules, normalizedCouponRules, originalTotal), configuredRedAddOnSpace(settings));
+    return Math.max(0, roundMoney(afterRed - addOn.amount));
+  });
   const afterCoupon = Math.max(0, roundMoney(afterFull - couponOption.amount - (extraKind === 'coupon' ? extra : 0)));
   const baseRed = bestActivityBaseRed(state, store, row.platform, afterCoupon);
   const afterBaseRed = Math.max(0, roundMoney(afterCoupon - baseRed.amount));
@@ -2493,7 +2507,7 @@ function activityRouteDiscountState(
     configuredRedAddOnSpace(settings)
   );
   const finalPay = Math.max(0, roundMoney(afterBaseRed - redAddOn.amount));
-  const fee = buildFeeSummary(state, store, finalPay);
+  const fee = buildFeeSummary(state, store, finalPay, row.platform);
   const fullAmount = roundMoney(full.amount + (extraKind === 'full' ? extra : 0));
   const couponAmount = roundMoney(couponOption.amount + (extraKind === 'coupon' ? extra : 0));
   const baseRedAmount = nonNegativeAmount(baseRed.amount);
@@ -2536,7 +2550,7 @@ function activityRouteDesignDiscountSpace(
       addOnDiscount,
       downgradeLoss: 0,
       currentFullAmount: 0,
-      boundarySpace: netPayFloorRouteDiscountSpace(state, store, row.finalPay, settings, objective),
+      boundarySpace: netPayFloorRouteDiscountSpace(state, store, row.finalPay, settings, objective, row.platform),
       targetDiscountRate,
       demandWeight: activityExpectedPayWeight(settings, objective, row.scenario, row.baseFinalPay, row.originalTotal)
     };
@@ -2554,7 +2568,7 @@ function activityRouteDesignDiscountSpace(
       addOnDiscount,
       downgradeLoss: 0,
       currentFullAmount: current.fullAmount,
-      boundarySpace: netPayFloorRouteDiscountSpace(state, store, current.finalPay, settings, objective),
+      boundarySpace: netPayFloorRouteDiscountSpace(state, store, current.finalPay, settings, objective, row.platform),
       targetDiscountRate,
       demandWeight: activityExpectedPayWeight(settings, objective, row.scenario, row.baseFinalPay, row.originalTotal)
     };
@@ -2575,7 +2589,7 @@ function activityRouteDesignDiscountSpace(
     addOnDiscount,
     downgradeLoss,
     currentFullAmount: current.fullAmount,
-    boundarySpace: netPayFloorRouteDiscountSpace(state, store, current.finalPay, settings, objective),
+    boundarySpace: netPayFloorRouteDiscountSpace(state, store, current.finalPay, settings, objective, row.platform),
     targetDiscountRate,
     demandWeight: activityExpectedPayWeight(settings, objective, row.scenario, row.baseFinalPay, row.originalTotal)
   };

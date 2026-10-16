@@ -1,4 +1,7 @@
 export const APP_ROUTES = [
+  { key: 'guide', path: '/guide', label: '网站地图与说明' },
+  { key: 'news', path: '/news', label: '平台动态' },
+  { key: 'backend-sync', path: '/backend-sync', label: '后台核对与同步' },
   { key: 'store', path: '/', label: '门店维护' },
   { key: 'products', path: '/products', label: '商品维护' },
   { key: 'product-analysis', path: '/product-analysis', label: '商品分析' },

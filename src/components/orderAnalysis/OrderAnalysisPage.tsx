@@ -7,7 +7,7 @@ import type { TableColumnsType } from 'antd';
 import { DownloadOutlined, UploadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import type { Dayjs } from 'dayjs';
-import { PLATFORM_NAMES, PLATFORMS } from '../../domain/core';
+import { PLATFORM_NAMES, ALL_PLATFORMS, buildFeeSummary } from '../../domain/core';
 import { roundMoney } from '../../domain/money';
 import { downloadCsv } from '../../utils/csv';
 import {
@@ -103,6 +103,7 @@ function importedAtText(value: string) {
 export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {}) {
   const { message } = AntApp.useApp();
   const {
+    calculatorState,
     store,
     storeId,
     storeName,
@@ -192,6 +193,12 @@ export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {
   const orderHourRows = React.useMemo(() => aggregateOrdersByHour(filteredOrderRecords), [filteredOrderRecords]);
   const orderActivityRows = React.useMemo(() => aggregateOrdersByActivityType(filteredOrderRecords), [filteredOrderRecords]);
   const enrichedOrderRecords = React.useMemo(() => enrichOrderRecords(filteredOrderRecords, products), [filteredOrderRecords, products]);
+  const settledOrderRecords = React.useMemo(() => enrichedOrderRecords.map(row => {
+    const orderTime = row.orderTime.match(/\b(\d{1,2}:\d{2})(?::\d{2})?/)?.[1] || store.orderTime;
+    const fee = buildFeeSummary(calculatorState, { ...store, orderTime }, row.merchantReceivable, row.platform);
+    const serviceFee = row.isPickup ? 0 : fee.serviceFee;
+    return { ...row, commission: fee.commission, serviceFee, netReceivable: roundMoney(row.merchantReceivable - fee.commission - serviceFee) };
+  }), [enrichedOrderRecords, calculatorState, store]);
   const orderProfitSummary = React.useMemo(() => summarizeOrderProfit(enrichedOrderRecords), [enrichedOrderRecords]);
   const orderActivityComboRows = React.useMemo(() => aggregateOrdersByActivityCombo(enrichedOrderRecords), [enrichedOrderRecords]);
   const orderPlatformPayBandRows = React.useMemo(() => aggregateOrdersByPlatformPayBand(enrichedOrderRecords), [enrichedOrderRecords]);
@@ -233,6 +240,7 @@ export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {
     </div>
   );
   const aggregateColumns: TableColumnsType<OrderAggregateRow> = [
+    { title: '单均预计到手（扣费前）', width: 180, render: (_, row) => `¥${money(row.avgMerchantReceivable)}`, sorter: (a, b) => a.avgMerchantReceivable - b.avgMerchantReceivable },
     { title: '名称', dataIndex: 'label', width: 120, fixed: 'left' },
     { title: '订单数', dataIndex: 'orderCount', width: 90, sorter: (a, b) => a.orderCount - b.orderCount },
     { title: '单均实付', width: 105, render: (_, row) => `¥${money(row.avgPay)}`, sorter: (a, b) => a.avgPay - b.avgPay },
@@ -246,6 +254,7 @@ export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {
     { title: '其他单均补贴', width: 125, render: (_, row) => `¥${money(row.otherSubsidyPerOrder)}`, sorter: (a, b) => a.otherSubsidyPerOrder - b.otherSubsidyPerOrder }
   ];
   const activityColumns: TableColumnsType<OrderActivityAggregateRow> = [
+    { title: '单均预计到手（扣费前）', width: 180, render: (_, row) => `¥${money(row.avgMerchantReceivable)}`, sorter: (a, b) => a.avgMerchantReceivable - b.avgMerchantReceivable },
     { title: '活动类型', dataIndex: 'activityName', width: 140, fixed: 'left' },
     { title: '订单数', dataIndex: 'orderCount', width: 90, sorter: (a, b) => a.orderCount - b.orderCount },
     { title: '单均实付', width: 105, render: (_, row) => `¥${money(row.avgPay)}`, sorter: (a, b) => a.avgPay - b.avgPay },
@@ -259,6 +268,7 @@ export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {
     { title: '其他单均补贴', width: 125, render: (_, row) => `¥${money(row.otherSubsidyPerOrder)}`, sorter: (a, b) => a.otherSubsidyPerOrder - b.otherSubsidyPerOrder }
   ];
   const comboColumns: TableColumnsType<OrderActivityComboRow> = [
+    { title: '单均预计到手（扣费前）', width: 180, render: (_, row) => `¥${money(row.avgMerchantReceivable)}`, sorter: (a, b) => a.avgMerchantReceivable - b.avgMerchantReceivable },
     { title: '活动组合', dataIndex: 'label', width: 280, fixed: 'left' },
     { title: '订单数', dataIndex: 'orderCount', width: 90, sorter: (a, b) => a.orderCount - b.orderCount },
     { title: '单均实付', width: 105, render: (_, row) => `¥${money(row.avgPay)}`, sorter: (a, b) => a.avgPay - b.avgPay },
@@ -270,6 +280,7 @@ export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {
     { title: '亏损单', dataIndex: 'lossOrderCount', width: 90, sorter: (a, b) => a.lossOrderCount - b.lossOrderCount }
   ];
   const crossColumns: TableColumnsType<OrderCrossAggregateRow> = [
+    { title: '单均预计到手（扣费前）', width: 180, render: (_, row) => `¥${money(row.avgMerchantReceivable)}`, sorter: (a, b) => a.avgMerchantReceivable - b.avgMerchantReceivable },
     { title: '维度', dataIndex: 'primary', width: 160, fixed: 'left' },
     { title: '支付价', dataIndex: 'secondary', width: 100 },
     { title: '订单数', dataIndex: 'orderCount', width: 90, sorter: (a, b) => a.orderCount - b.orderCount },
@@ -281,6 +292,7 @@ export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {
     { title: '亏损单', dataIndex: 'lossOrderCount', width: 90, sorter: (a, b) => a.lossOrderCount - b.lossOrderCount }
   ];
   const productColumns: TableColumnsType<OrderProductAggregateRow> = [
+    { title: '单均预计到手（扣费前）', width: 180, render: (_, row) => `¥${money(row.avgMerchantReceivable)}`, sorter: (a, b) => a.avgMerchantReceivable - b.avgMerchantReceivable },
     { title: '商品', dataIndex: 'productName', width: 240, fixed: 'left' },
     { title: '订单数', dataIndex: 'orderCount', width: 90, sorter: (a, b) => a.orderCount - b.orderCount },
     { title: '数量', dataIndex: 'quantity', width: 90, sorter: (a, b) => a.quantity - b.quantity },
@@ -297,16 +309,21 @@ export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {
     { title: '动作', dataIndex: 'action', width: 420 },
     { title: '预期影响', dataIndex: 'expectedImpact', width: 300 }
   ];
-  const detailColumns: TableColumnsType<EnrichedOrderDetailRecord> = [
+  const detailColumns: TableColumnsType<(typeof settledOrderRecords)[number]> = [
     { title: '下单时间', dataIndex: 'orderTime', width: 165, fixed: 'left' },
     { title: '平台', dataIndex: 'platformName', width: 90 },
     { title: '订单号', dataIndex: 'orderId', width: 180, ellipsis: true },
     { title: '餐段', dataIndex: 'mealPeriod', width: 80 },
-    { title: '实付', width: 90, render: (_, row) => `¥${money(row.customerPay)}`, sorter: (a, b) => a.customerPay - b.customerPay },
     { title: '商品原价', width: 100, render: (_, row) => `¥${money(row.grossOriginal)}`, sorter: (a, b) => a.grossOriginal - b.grossOriginal },
     { title: '订单原价', width: 100, render: (_, row) => `¥${money(row.orderOriginal)}`, sorter: (a, b) => a.orderOriginal - b.orderOriginal },
-    { title: '补贴', width: 90, render: (_, row) => `¥${money(row.totalSubsidy)}`, sorter: (a, b) => a.totalSubsidy - b.totalSubsidy },
+    { title: '顾客实付', width: 100, render: (_, row) => `¥${money(row.customerPay)}`, sorter: (a, b) => a.customerPay - b.customerPay },
+    { title: '总补贴', width: 90, render: (_, row) => `¥${money(row.totalSubsidy)}`, sorter: (a, b) => a.totalSubsidy - b.totalSubsidy },
+    { title: '商家补贴', width: 100, render: (_, row) => `¥${money(row.merchantSubsidy)}`, sorter: (a, b) => a.merchantSubsidy - b.merchantSubsidy },
+    { title: '平台补贴', width: 100, render: (_, row) => `¥${money(row.platformSubsidy)}`, sorter: (a, b) => a.platformSubsidy - b.platformSubsidy },
     { title: '其他补贴', width: 100, render: (_, row) => `¥${money(row.otherSubsidy)}`, sorter: (a, b) => a.otherSubsidy - b.otherSubsidy },
+    { title: '到手价（扣费前）', key: 'merchantReceivable', width: 160, render: (_, row) => `¥${money(row.merchantReceivable)}`, sorter: (a, b) => a.merchantReceivable - b.merchantReceivable },
+    { title: '佣金', key: 'commission', width: 100, render: (_, row) => `¥${money(row.commission)}`, sorter: (a, b) => a.commission - b.commission },
+    { title: '配送服务费', key: 'serviceFee', width: 120, render: (_, row) => `¥${money(row.serviceFee)}`, sorter: (a, b) => a.serviceFee - b.serviceFee },
     { title: '估算毛利', width: 105, render: (_, row) => row.estimatedProfit === null ? '-' : `¥${money(row.estimatedProfit)}`, sorter: (a, b) => (a.estimatedProfit || 0) - (b.estimatedProfit || 0) },
     { title: '配送', dataIndex: 'deliveryType', width: 110 },
     { title: '用户', width: 80, render: (_, row) => ({ new: '新客', old: '老客', unknown: '-' }[row.customerType]) },
@@ -318,7 +335,8 @@ export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {
       </Space>
     ) },
     { title: '商品', width: 320, render: (_, row) => row.productItems.map(item => `${item.name}x${item.quantity}`).join(' / ') },
-    { title: '未匹配商品', width: 220, render: (_, row) => row.unmatchedProductNames.join(' / ') || '-' }
+    { title: '未匹配商品', width: 220, render: (_, row) => row.unmatchedProductNames.join(' / ') || '-' },
+    { title: '扣费后到手价', key: 'netReceivable', width: 150, fixed: 'right', render: (_, row) => <Text strong>¥{money(row.netReceivable)}</Text>, sorter: (a, b) => a.netReceivable - b.netReceivable }
   ];
   const importColumns: TableColumnsType<OrderImportBatch> = [
     { title: '导入时间', dataIndex: 'importedAt', width: 170, render: value => importedAtText(String(value || '')) },
@@ -362,7 +380,7 @@ export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {
               onChange={setOrderAnalysisPlatform}
               options={[
                 { value: 'all', label: '全部平台' },
-                ...PLATFORMS.map(platform => ({ value: platform, label: PLATFORM_NAMES[platform] }))
+                ...ALL_PLATFORMS.map(platform => ({ value: platform, label: PLATFORM_NAMES[platform] }))
               ]}
             />
             <RangePicker
@@ -379,7 +397,8 @@ export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {
             <Tag>数据范围：{dateRangeText(orderDataDateBounds.start, orderDataDateBounds.end)}</Tag>
             <Tag color="green">当前统计：{orderActiveDateRangeText}</Tag>
           </Space>
-          <Text type="secondary">导入美团或饿了么订单明细后，系统按有效订单分析用户实付、下单时段、活动类型和商品偏好；重复订单号会用新导入记录覆盖。</Text>
+          <Text type="secondary">支持导入美团、饿了么和京东外卖订单明细，系统按有效订单分析用户实付、下单时段、活动类型和商品偏好；重复订单号会用新导入记录覆盖。京东以完成时间且非商责取消判断有效订单，未提供活动明细时无法识别具体活动类型。</Text>
+          <div><Text type="secondary">预计到手（扣费前）= 顾客实付 + 平台补贴；商家补贴已在顾客实付中扣减，不再重复扣除。其他补贴承担方不明时不计入。估算毛利 = 预计到手 − 商品成本，尚未扣除佣金及配送服务费，最终到手以平台结算为准。</Text></div>
         </Space>
       </Card>
 
@@ -387,6 +406,7 @@ export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {
         <Row gutter={[12, 12]}>
           <Col xs={12} md={6}>{renderOrderMetric('订单数', orderSummary.orderCount, `${orderSummary.platformCount} 个平台`)}</Col>
           <Col xs={12} md={6}>{renderOrderMetric('单均实付', `¥${money(orderSummary.avgPay)}`, `总实付 ¥${money(orderSummary.customerPay)}`)}</Col>
+          <Col xs={12} md={6}>{renderOrderMetric('单均预计到手（扣费前）', `¥${money(orderSummary.avgMerchantReceivable)}`, `预计合计 ¥${money(orderSummary.merchantReceivable)}`)}</Col>
           <Col xs={12} md={6}>{renderOrderMetric('商品口径原价', `¥${money(orderSummary.avgOriginal)}`, `合计 ¥${money(orderSummary.grossOriginal)}`)}</Col>
           <Col xs={12} md={6}>{renderOrderMetric('订单口径原价', `¥${money(orderSummary.avgOrderOriginal)}`, `含配送 ¥${money(orderSummary.orderOriginal)}`)}</Col>
           <Col xs={12} md={6}>{renderOrderMetric('商品口径让利率', orderSummary.discountRate === null ? '-' : rateText(orderSummary.discountRate), `单均补贴 ¥${money(orderSummary.avgDiscount)}`)}</Col>
@@ -567,7 +587,8 @@ export function OrderAnalysisPage(pageProps: Partial<OrderAnalysisPageProps> = {
       </Card>
 
       <Card title="订单明细">
-        <Table rowKey="key" size="small" columns={detailColumns} dataSource={enrichedOrderRecords} pagination={{ pageSize: 10 }} scroll={{ x: 1840 }} />
+        <div style={{ marginBottom: 12 }}><Text type="secondary">扣费后到手价 = 顾客实付 + 平台补贴 − 佣金 − 配送服务费。费用按当前门店对应平台配置测算：佣金以扣费前到手价为基数，取费率佣金与保底佣金较大值；配送服务费使用门店配送距离、订单下单时段及金额计算，自取订单不扣配送服务费。文件未提供实际结算费用，最终以平台账单为准。</Text></div>
+        <Table rowKey="key" size="small" columns={detailColumns} dataSource={settledOrderRecords} pagination={{ pageSize: 10 }} scroll={{ x: 'max-content' }} />
       </Card>
 
       <Card title="导入记录">

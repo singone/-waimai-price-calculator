@@ -5,7 +5,7 @@ import {
   otherSubsidyAmount,
   subsidyRate
 } from './businessFormula';
-import { PLATFORM_NAMES, PLATFORMS } from './core';
+import { PLATFORM_NAMES, ALL_PLATFORMS } from './core';
 import { average, roundMoney } from './money';
 import type { Platform, Product, Severity } from './types';
 
@@ -98,6 +98,8 @@ export type ParsedOrderWorkbook = {
 };
 
 export type OrderSummary = {
+  merchantReceivable: number;
+  avgMerchantReceivable: number;
   dateStart: string;
   dateEnd: string;
   orderCount: number;
@@ -152,6 +154,7 @@ export type OrderProductAggregateRow = OrderSummary & {
 };
 
 export type EnrichedOrderDetailRecord = OrderDetailRecord & {
+  merchantReceivable: number;
   activityComboKey: string;
   activityComboName: string;
   estimatedProductCost: number;
@@ -418,7 +421,7 @@ function normalizeOrderCustomerType(value: unknown): OrderCustomerType {
 }
 
 export function normalizeOrderDetailRecord(row: Partial<OrderDetailRecord> | undefined): OrderDetailRecord | null {
-  const platform = row?.platform === 'eleme' ? 'eleme' : row?.platform === 'meituan' ? 'meituan' : null;
+  const platform = ALL_PLATFORMS.find(platform => platform === row?.platform) || null;
   const orderId = String(row?.orderId || '').trim();
   const orderDate = normalizeBusinessDate(row?.orderDate);
   if (!platform || !orderId || !orderDate) return null;
@@ -491,7 +494,7 @@ export function normalizeOrderAnalysisState(value: Partial<OrderAnalysisState> |
     .sort((a, b) => a.orderDate.localeCompare(b.orderDate) || a.orderTime.localeCompare(b.orderTime) || a.orderId.localeCompare(b.orderId));
   const imports = (Array.isArray(value?.imports) ? value.imports : [])
     .map(row => {
-      const platform: Platform = row?.platform === 'eleme' ? 'eleme' : 'meituan';
+      const platform: Platform = ALL_PLATFORMS.find(platform => platform === row?.platform) || 'meituan';
       return {
         id: String(row?.id || uid('order-import')),
         storeId: String(row?.storeId || ''),
@@ -517,6 +520,9 @@ function orderColumn(row: unknown[], candidates: string[]) {
 }
 
 function detectOrderWorkbookPlatform(header: unknown[]): Platform | null {
+  const hasJingdongOrder = ['订单编号', '顾客实付', '商品原价', '完成时间', '是否商责取消']
+    .every(column => orderColumn(header, [column]) >= 0);
+  if (hasJingdongOrder) return 'jingdong';
   const hasMeituanOrder = orderColumn(header, ['订单编号']) >= 0 && orderColumn(header, ['订单实付']) >= 0 && orderColumn(header, ['商品原价']) >= 0;
   if (hasMeituanOrder) return 'meituan';
   const hasElemeOrder = orderColumn(header, ['订单单号']) >= 0 && orderColumn(header, ['顾客实付']) >= 0 && orderColumn(header, ['订单原价']) >= 0;
@@ -590,6 +596,18 @@ function parseMeituanOrderProducts(value: unknown): OrderProductItem[] {
     .filter((item): item is OrderProductItem => Boolean(item));
 }
 
+function parseJingdongOrderProducts(value: unknown): OrderProductItem[] {
+  return String(value ?? '').trim().split('/').flatMap(part => {
+    const match = part.trim().match(/^(.*),\s*([\d.]+),\s*(\d+)$/);
+    if (!match || !match[1].trim()) return [];
+    return [{
+      name: match[1].trim(),
+      unitPrice: roundMoney(toMoneyNumber(match[2], 0)),
+      quantity: Math.max(1, Math.floor(toNumber(match[3], 1)))
+    }];
+  });
+}
+
 function parseElemeOrderProducts(value: unknown): OrderProductItem[] {
   const text = String(value ?? '').trim();
   if (!text) return [];
@@ -648,17 +666,19 @@ function parseOrderActivityFlags(activityText: unknown, extras: Partial<OrderAct
 }
 
 function orderRecordBaseFromRow(row: unknown[], header: unknown[], platform: Platform, warnings: string[]) {
-  const orderIdIndex = platform === 'meituan' ? orderColumn(header, ['订单编号']) : orderColumn(header, ['订单单号']);
+  const orderIdIndex = platform === 'eleme' ? orderColumn(header, ['订单单号']) : orderColumn(header, ['订单编号']);
   const orderId = normalizeOrderId(row[orderIdIndex]);
   const orderDateTime = parseOrderDateTime(row[orderColumn(header, ['下单时间'])], row[orderColumn(header, ['日期'])]);
   if (!orderId || !orderDateTime.date) return null;
-  const orderStatus = businessText(row, orderColumn(header, ['订单状态']));
-  const isValid = platform === 'meituan' ? orderStatus === '已完成' : orderStatus === '订单完结';
+  const orderStatus = platform === 'jingdong'
+    ? (businessText(row, orderColumn(header, ['完成时间'])) && !parseOrderYesNo(row[orderColumn(header, ['是否商责取消'])]) ? '已完成' : '')
+    : businessText(row, orderColumn(header, ['订单状态']));
+  const isValid = platform === 'eleme' ? orderStatus === '订单完结' : orderStatus === '已完成';
   if (!isValid) return null;
   const externalStoreName = businessText(row, orderColumn(header, ['门店名称']));
-  const externalStoreId = businessText(row, orderColumn(header, platform === 'meituan' ? ['门店id'] : ['门店编号']));
+  const externalStoreId = businessText(row, orderColumn(header, platform === 'eleme' ? ['门店编号'] : ['门店id']));
   const activityText = businessText(row, orderColumn(header, ['活动信息']));
-  if (!activityText) warnings.push(`${PLATFORM_NAMES[platform]}订单 ${orderId} 缺少活动信息，活动类型可能低估。`);
+  if (!activityText && platform !== 'jingdong') warnings.push(`${PLATFORM_NAMES[platform]}订单 ${orderId} 缺少活动信息，活动类型可能低估。`);
   return {
     orderId,
     externalStoreName,
@@ -669,15 +689,17 @@ function orderRecordBaseFromRow(row: unknown[], header: unknown[], platform: Pla
   };
 }
 
-function parseMeituanOrderRecord(row: unknown[], header: unknown[], warnings: string[]): ParsedOrderWorkbook['records'][number] | null {
-  const base = orderRecordBaseFromRow(row, header, 'meituan', warnings);
+function parseMeituanOrderRecord(row: unknown[], header: unknown[], warnings: string[], platform: 'meituan' | 'jingdong' = 'meituan'): ParsedOrderWorkbook['records'][number] | null {
+  const base = orderRecordBaseFromRow(row, header, platform, warnings);
   if (!base) return null;
-  const productItems = parseMeituanOrderProducts(row[orderColumn(header, ['商品信息'])]);
+  const productItems = platform === 'jingdong'
+    ? parseJingdongOrderProducts(row[orderColumn(header, ['商品信息'])])
+    : parseMeituanOrderProducts(row[orderColumn(header, ['商品信息'])]);
   const productOriginal = businessNumber(row, orderColumn(header, ['商品原价']));
   const packageFee = businessNumber(row, orderColumn(header, ['包装费']));
   const deliveryType = businessText(row, orderColumn(header, ['配送类型']));
   const deliveryFee = businessNumber(row, orderColumn(header, ['配送费']));
-  const customerPay = businessNumber(row, orderColumn(header, ['订单实付']));
+  const customerPay = businessNumber(row, orderColumn(header, platform === 'jingdong' ? ['顾客实付'] : ['订单实付']));
   const totalSubsidy = businessNumber(row, orderColumn(header, ['活动补贴(平台+商家)', '活动补贴']));
   const merchantSubsidy = businessNumber(row, orderColumn(header, ['商家活动支出']));
   const platformSubsidy = businessNumber(row, orderColumn(header, ['平台补贴']), roundMoney(totalSubsidy - merchantSubsidy));
@@ -686,14 +708,15 @@ function parseMeituanOrderRecord(row: unknown[], header: unknown[], warnings: st
   const isMagicCoupon = parseOrderYesNo(row[orderColumn(header, ['神券订单'])]);
   const isOutsitePromotion = parseOrderYesNo(row[orderColumn(header, ['神券-站外推广订单'])]);
   const activityFlags = parseOrderActivityFlags(base.activityText, {
+    ...(platform === 'jingdong' ? { platformSubsidy: platformSubsidy > 0 } : {}),
     pinghaofan: isPinghaofan,
     magicCoupon: isMagicCoupon
   });
   const grossOriginal = goodsOriginalTotal(productOriginal, packageFee);
   const orderOriginal = businessNumber(row, orderColumn(header, ['订单原价']), orderOriginalTotal(productOriginal, packageFee, deliveryFee));
   return {
-    platform: 'meituan',
-    platformName: PLATFORM_NAMES.meituan,
+    platform,
+    platformName: PLATFORM_NAMES[platform],
     orderId: base.orderId,
     externalStoreId: base.externalStoreId,
     externalStoreName: base.externalStoreName,
@@ -706,7 +729,7 @@ function parseMeituanOrderRecord(row: unknown[], header: unknown[], warnings: st
     isValid: true,
     deliveryType,
     isPreOrder: parseOrderYesNo(row[orderColumn(header, ['是否预订单'])]),
-    isPickup: parseOrderYesNo(row[orderColumn(header, ['是否到店自取'])]) || /自取/.test(deliveryType),
+    isPickup: parseOrderYesNo(row[orderColumn(header, ['是否到店自取'])]) || /自取|自提/.test(deliveryType),
     customerType: 'unknown',
     isMember: false,
     isPinghaofan,
@@ -807,13 +830,17 @@ export function parseOrderWorkbook(workbook: XLSX.WorkBook, fileName: string): P
     .find(Boolean);
   if (!headerInfo) throw new Error('没有找到可识别的订单明细表头。');
   const warnings: string[] = [];
+  if (headerInfo.platform === 'jingdong') {
+    warnings.push('京东订单仅统计有完成时间且非商责取消的订单；平台补贴按活动补贴减商家活动支出推算，非商责取消且无完成时间的订单也会跳过。');
+    if (orderColumn(headerInfo.header, ['活动信息']) < 0) warnings.push('京东订单文件未提供活动明细，无法识别满减、商家券等具体活动类型。');
+  }
   let skippedRows = 0;
   const records = headerInfo.rows.slice(headerInfo.rowIndex + 1)
     .filter(rowHasText)
     .map(row => {
-      const parsed = headerInfo.platform === 'meituan'
-        ? parseMeituanOrderRecord(row, headerInfo.header, warnings)
-        : parseElemeOrderRecord(row, headerInfo.header, warnings);
+      const parsed = headerInfo.platform === 'eleme'
+        ? parseElemeOrderRecord(row, headerInfo.header, warnings)
+        : parseMeituanOrderRecord(row, headerInfo.header, warnings, headerInfo.platform);
       if (!parsed) skippedRows++;
       return parsed;
     })
@@ -831,7 +858,14 @@ export function parseOrderWorkbook(workbook: XLSX.WorkBook, fileName: string): P
   };
 }
 
+// 顾客实付已经扣除商家优惠，只加回平台承担，避免重复扣减商家补贴。
+// 此口径尚未扣除佣金、配送服务费，其他补贴承担方不明时不计入。
+export function orderMerchantReceivable(row: Pick<OrderDetailRecord, 'customerPay' | 'platformSubsidy'>) {
+  return roundMoney(row.customerPay + row.platformSubsidy);
+}
+
 export function summarizeOrderRecords(records: OrderDetailRecord[]): OrderSummary {
+  const merchantReceivable = roundMoney(records.reduce((sum, row) => sum + orderMerchantReceivable(row), 0));
   const dates = records.map(row => row.orderDate).filter(Boolean).sort();
   const orderCount = records.length;
   const customerPay = roundMoney(records.reduce((sum, row) => sum + row.customerPay, 0));
@@ -843,6 +877,8 @@ export function summarizeOrderRecords(records: OrderDetailRecord[]): OrderSummar
   const platformSubsidy = roundMoney(records.reduce((sum, row) => sum + row.platformSubsidy, 0));
   const otherSubsidy = roundMoney(records.reduce((sum, row) => sum + row.otherSubsidy, 0));
   return {
+    merchantReceivable,
+    avgMerchantReceivable: orderCount > 0 ? roundMoney(merchantReceivable / orderCount) : 0,
     dateStart: dates[0] || '',
     dateEnd: dates[dates.length - 1] || '',
     orderCount,
@@ -880,7 +916,7 @@ function aggregateOrderRecords(
 }
 
 export function aggregateOrdersByPlatform(records: OrderDetailRecord[]): OrderAggregateRow[] {
-  return aggregateOrderRecords(records, PLATFORMS.map(platform => ({
+  return aggregateOrderRecords(records, ALL_PLATFORMS.map(platform => ({
     key: platform,
     label: PLATFORM_NAMES[platform],
     predicate: row => row.platform === platform,
@@ -1017,14 +1053,16 @@ export function enrichOrderRecords(records: OrderDetailRecord[], products: Produ
       }
     });
     const activityTypes = orderActivityComboTypes(row);
-    const estimatedProfit = unmatchedProductCount > 0 ? null : roundMoney(row.customerPay - estimatedProductCost);
+    const merchantReceivable = orderMerchantReceivable(row);
+    const estimatedProfit = unmatchedProductCount > 0 || !row.productItems.length ? null : roundMoney(merchantReceivable - estimatedProductCost);
     return {
       ...row,
+      merchantReceivable,
       activityComboKey: orderActivityComboKey(activityTypes),
       activityComboName: orderActivityComboName(activityTypes),
       estimatedProductCost: roundMoney(estimatedProductCost),
       estimatedProfit,
-      estimatedProfitRate: estimatedProfit !== null && row.customerPay > 0 ? estimatedProfit / row.customerPay : null,
+      estimatedProfitRate: estimatedProfit !== null && merchantReceivable > 0 ? estimatedProfit / merchantReceivable : null,
       matchedProductCount,
       unmatchedProductCount,
       matchedProductNames: Array.from(new Set(matchedProductNames)),
@@ -1037,7 +1075,7 @@ export function summarizeOrderProfit(records: EnrichedOrderDetailRecord[]): Orde
   const knownRows = records.filter(row => row.estimatedProfit !== null);
   const estimatedProductCost = roundMoney(knownRows.reduce((sum, row) => sum + row.estimatedProductCost, 0));
   const estimatedProfit = roundMoney(knownRows.reduce((sum, row) => sum + (row.estimatedProfit || 0), 0));
-  const customerPay = roundMoney(knownRows.reduce((sum, row) => sum + row.customerPay, 0));
+  const merchantReceivable = roundMoney(knownRows.reduce((sum, row) => sum + orderMerchantReceivable(row), 0));
   const lossOrderCount = knownRows.filter(row => (row.estimatedProfit || 0) < 0).length;
   return {
     knownOrderCount: knownRows.length,
@@ -1046,7 +1084,7 @@ export function summarizeOrderProfit(records: EnrichedOrderDetailRecord[]): Orde
     estimatedProductCost,
     estimatedProfit,
     avgEstimatedProfit: knownRows.length ? roundMoney(estimatedProfit / knownRows.length) : null,
-    estimatedProfitRate: customerPay > 0 ? estimatedProfit / customerPay : null,
+    estimatedProfitRate: merchantReceivable > 0 ? estimatedProfit / merchantReceivable : null,
     costCoverageRate: records.length ? knownRows.length / records.length : null,
     lossOrderRate: knownRows.length ? lossOrderCount / knownRows.length : null
   };
@@ -1110,7 +1148,7 @@ export function aggregateOrdersByActivityCombo(records: EnrichedOrderDetailRecor
 }
 
 export function aggregateOrdersByPlatformPayBand(records: EnrichedOrderDetailRecord[]): OrderCrossAggregateRow[] {
-  return PLATFORMS.flatMap(platform => ORDER_PAY_BANDS.map(band => {
+  return ALL_PLATFORMS.flatMap(platform => ORDER_PAY_BANDS.map(band => {
     const label = `${PLATFORM_NAMES[platform]} / ${band.label}`;
     return aggregateEnrichedOrders(records, [{
       key: `${platform}-${band.key}`,
@@ -1380,6 +1418,7 @@ export function orderAnalysisExportRows(
     名称: '当前筛选',
     订单数: summary.orderCount,
     单均实付: money(summary.avgPay),
+    '单均预计到手(扣费前)': money(summary.avgMerchantReceivable),
     单均商品原价: money(summary.avgOriginal),
     单均订单原价: money(summary.avgOrderOriginal),
     单均补贴: money(summary.avgDiscount),
@@ -1399,6 +1438,7 @@ export function orderAnalysisExportRows(
     名称: row.label,
     订单数: row.orderCount,
     单均实付: money(row.avgPay),
+    '单均预计到手(扣费前)': money(row.avgMerchantReceivable),
     单均商品原价: money(row.avgOriginal),
     单均订单原价: money(row.avgOrderOriginal),
     单均补贴: money(row.avgDiscount),
@@ -1418,6 +1458,7 @@ export function orderAnalysisExportRows(
     名称: row.productName,
     订单数: row.orderCount,
     单均实付: money(row.avgPay),
+    '单均预计到手(扣费前)': money(row.avgMerchantReceivable),
     单均商品原价: money(row.avgOriginal),
     单均订单原价: money(row.avgOrderOriginal),
     单均补贴: money(row.avgDiscount),
@@ -1437,6 +1478,7 @@ export function orderAnalysisExportRows(
     名称: row.title,
     订单数: '',
     单均实付: '',
+    '单均预计到手(扣费前)': '',
     单均商品原价: '',
     单均订单原价: '',
     单均补贴: '',

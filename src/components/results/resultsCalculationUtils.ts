@@ -51,8 +51,8 @@ export const DEFAULT_MEASUREMENT_SETTINGS: MeasurementSettings = {
   ignoreOutOfPayRange: true
 };
 
-const MEASUREMENT_MODEL_VERSION = 'original-price-bucket-v1';
-const ACTIVITY_PRICE_SCAN_MODEL_VERSION = 'activity-price-scan-v13';
+const MEASUREMENT_MODEL_VERSION = 'original-price-bucket-v2';
+const ACTIVITY_PRICE_SCAN_MODEL_VERSION = 'activity-price-scan-v15';
 
 export function waitForLoadingPaint() {
   return new Promise<void>(resolve => setTimeout(resolve, 30));

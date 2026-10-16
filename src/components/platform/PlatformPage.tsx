@@ -92,7 +92,7 @@ export function PlatformPage(props: Partial<PlatformPageProps> = {}) {
   return (
     <div className="section-stack">
       <Card
-        title="平台费用规则"
+        title="通用费用参数（各平台未单独配置时使用）"
         extra={isEditing ? (
           <Space>
             <Button onClick={cancelEdit}>取消</Button>
@@ -102,6 +102,7 @@ export function PlatformPage(props: Partial<PlatformPageProps> = {}) {
           <Button type="primary" onClick={startEdit}>编辑平台规则</Button>
         )}
       >
+        <Text type="secondary">这些数值是测算参数，不是三个平台统一公布的费率。可前往 <a href="/meituan">美团</a>、<a href="/eleme">淘宝闪购 / 饿了么</a>、<a href="/jingdong">京东外卖</a> 页面按当前门店分别配置佣金、履约费与商家减配成本。平台参数优先于本页和门店通用费用。</Text>
         <Row gutter={[12, 12]}>
           {PLATFORM_FEE_FIELDS.map(([field, label]) => (
             <Col xs={12} md={6} key={field}>

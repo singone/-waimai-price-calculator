@@ -1,7 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Button, Card, Input, InputNumber, Space, Switch, Table, Tag, Typography } from 'antd';
+import { Alert, Button, Card, Input, InputNumber, Select, Space, Switch, Table, Tag, Typography } from 'antd';
 import type { TableColumnsType } from 'antd';
 import { DeleteOutlined, PlusOutlined, SaveOutlined } from '@ant-design/icons';
 import { deepClone, PLATFORM_NAMES } from '../../domain/core';
@@ -9,6 +9,9 @@ import { money as formatMoney } from '../../utils/format';
 import { useCalculatorPageProps } from '../shared/CalculatorContext';
 import { useCalculatorStateCommit } from '../shared/useCalculatorStateCommit';
 import { currentStoreFrom } from '../../data/calculatorState';
+import { PlatformRulesCard } from '../shared/PlatformRulesCard';
+import { ActivityConfigurationGuide } from './ActivityConfigurationGuide';
+import { activityConfigurationErrors, COUPON_CHANNELS, COUPON_TARGETS } from '../../domain/activity/configuration';
 import type { Activities, CalculatorState, Coupon, DiscountActivity, FullReduction, Platform, RedAddOn, Store } from '../../domain/types';
 
 const { Text } = Typography;
@@ -56,7 +59,7 @@ export function SimpleActivityTable<T extends FullReduction | RedAddOn>({
         : <InputNumber precision={2} value={row.threshold} onChange={value => change(rows.map((item, i) => i === index ? { ...item, threshold: Number(value) || 0 } : item))} />
     },
     {
-      title: '金额',
+      title: '商家承担（元）',
       dataIndex: 'amount',
       render: (_, row, index) => disabled
         ? `¥${money(row.amount)}`
@@ -109,18 +112,38 @@ export function CouponTable({
         : <InputNumber precision={2} value={row.threshold} onChange={value => change(rows.map((item, i) => i === index ? { ...item, threshold: Number(value) || 0 } : item))} />
     },
     {
-      title: '金额',
+      title: '商家承担（元）',
       dataIndex: 'amount',
       render: (_, row, index) => disabled
         ? `¥${money(row.amount)}`
         : <InputNumber precision={2} value={row.amount} onChange={value => change(rows.map((item, i) => i === index ? { ...item, amount: Number(value) || 0 } : item))} />
+    },
+    {
+      title: '发放渠道', width: 140,
+      render: (_, row, index) => disabled ? COUPON_CHANNELS.find(option => option.value === row.channel)?.label || '待核对'
+        : <Select allowClear placeholder="待核对" style={{ width: 120 }} options={[...COUPON_CHANNELS]} value={row.channel} onChange={value => change(rows.map((item, i) => i === index ? { ...item, channel: value } : item))} />
+    },
+    {
+      title: '适用人群', width: 140,
+      render: (_, row, index) => disabled ? COUPON_TARGETS.find(option => option.value === row.targetUser)?.label || '待核对'
+        : <Select allowClear placeholder="待核对" style={{ width: 120 }} options={[...COUPON_TARGETS]} value={row.targetUser} onChange={value => change(rows.map((item, i) => i === index ? { ...item, targetUser: value } : item))} />
+    },
+    {
+      title: '与其他订单券同享', width: 200,
+      render: (_, row, index) => disabled ? row.stackableWithCoupons === undefined ? '沿用门店张数（需核对）' : row.stackableWithCoupons ? '允许' : '不能同享'
+        : <Select style={{ width: 180 }} value={row.stackableWithCoupons === undefined ? 'inherit' : row.stackableWithCoupons ? 'allow' : 'single'} options={[{ value: 'inherit', label: '沿用门店张数（需核对）' }, { value: 'allow', label: '允许同享' }, { value: 'single', label: '不能与其他订单券同享' }]} onChange={value => change(rows.map((item, i) => i === index ? { ...item, stackableWithCoupons: value === 'inherit' ? undefined : value === 'allow' } : item))} />
+    },
+    {
+      title: '后台核对备注', width: 220,
+      render: (_, row, index) => disabled ? <Text>{row.usageSuggestion || '-'}</Text>
+        : <Input placeholder="领取条件、有效期、活动路径" value={row.usageSuggestion} onChange={event => change(rows.map((item, i) => i === index ? { ...item, usageSuggestion: event.target.value } : item))} />
     },
     ...(disabled ? [] : [{ title: '', width: 70, render: (_: unknown, __: Coupon, index: number) => <Button danger icon={<DeleteOutlined />} onClick={() => change(rows.filter((_, i) => i !== index))} /> }])
   ];
 
   return (
     <Card title={`${PLATFORM_NAMES[platform]}订单优惠券`} extra={disabled ? null : <Button icon={<PlusOutlined />} onClick={() => change(rows.concat({ enabled: true, name: '订单优惠券', threshold: 0, amount: 0 }))}>添加券</Button>}>
-      <Table rowKey={(_, index) => String(index)} size="small" columns={columns} dataSource={rows} pagination={false} scroll={{ x: 760 }} />
+      <Table rowKey={(_, index) => String(index)} size="small" columns={columns} dataSource={rows} pagination={false} scroll={{ x: 1400 }} />
     </Card>
   );
 }
@@ -179,7 +202,7 @@ export function DiscountActivityTable({
   ];
 
   return (
-    <Card title={`${PLATFORM_NAMES[platform]}商品折扣活动`} extra={disabled ? null : <Button icon={<PlusOutlined />} onClick={() => change(rows.concat({ enabled: true, name: '商品折扣', productNames: '', discountRate: 8.8, itemLimit: '' }))}>添加折扣</Button>}>
+    <Card title={`${PLATFORM_NAMES[platform]}商品折扣活动`} extra={disabled ? null : <Button icon={<PlusOutlined />} onClick={() => change(rows.concat({ enabled: false, name: '商品折扣', productNames: '', discountRate: 10, itemLimit: '' }))}>添加折扣</Button>}>
       <Table rowKey={(_, index) => String(index)} size="small" columns={columns} dataSource={rows} pagination={false} scroll={{ x: 920 }} />
     </Card>
   );
@@ -200,6 +223,7 @@ export function ActivityPage(props: Pick<ActivityPageProps, 'platform'> & Partia
   const [isSaving, setIsSaving] = useState(false);
   const isEditing = draft !== null;
   const pageActivities = draft || activities;
+  const configurationErrors = activityConfigurationErrors(pageActivities);
 
   useEffect(() => {
     setDraft(null);
@@ -222,7 +246,7 @@ export function ActivityPage(props: Pick<ActivityPageProps, 'platform'> & Partia
   };
 
   const saveEdit = async () => {
-    if (!draft) return;
+    if (!draft || configurationErrors.length) return;
     setIsSaving(true);
     try {
       await saveActivities(platform, deepClone(draft));
@@ -234,12 +258,15 @@ export function ActivityPage(props: Pick<ActivityPageProps, 'platform'> & Partia
 
   return (
     <div className="section-stack">
+      <PlatformRulesCard platform={platform} />
+      <ActivityConfigurationGuide platform={platform} />
+      {configurationErrors.length > 0 && <Alert type="error" showIcon message="活动配置需要修正" description={configurationErrors.join('；')} />}
       <Card
         title={`${platformName}活动维护`}
         extra={isEditing ? (
           <Space>
             <Button onClick={cancelEdit}>取消</Button>
-            <Button type="primary" icon={<SaveOutlined />} loading={isSaving} onClick={saveEdit}>保存活动</Button>
+            <Button type="primary" icon={<SaveOutlined />} disabled={configurationErrors.length > 0} loading={isSaving} onClick={saveEdit}>保存活动</Button>
           </Space>
         ) : (
           <Button type="primary" onClick={startEdit}>编辑活动</Button>

@@ -96,6 +96,8 @@ export type Coupon = {
   targetUser?: ActivityCouponTargetUser;
   thresholdMode?: ActivityCouponThresholdMode;
   usageSuggestion?: string;
+  /** 留空沿用门店券张数规则；false 表示不能与其他订单券同享。 */
+  stackableWithCoupons?: boolean;
 };
 
 export type RedAddOn = {
@@ -111,6 +113,7 @@ export type JingdongSubsidyCoupon = {
   threshold: number;
   amount: number;
   merchantAmount: number;
+  /** 最低价测算使用的最大可同时生效商家追加金额，互斥追加不能相加。 */
   merchantExtraAmount: number;
   platformAmount: number;
   stackableWithLarge: boolean;
@@ -146,6 +149,7 @@ export type PricingEvaluationRule = {
 };
 
 export type FeeRule = {
+  timeFeeOverride?: number;
   commissionRate: number;
   minCommission: number;
   baseDeliveryFee: number;
@@ -162,6 +166,8 @@ export type FeeRule = {
 };
 
 export type Store = {
+  backendSyncHistory?: import('./backendSync').BackendSyncRecord[];
+  platformFeeOverrides?: Partial<Record<Platform, Partial<FeeRule>>>;
   id: string;
   name: string;
   startPrice: number;

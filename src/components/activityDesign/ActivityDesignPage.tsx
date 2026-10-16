@@ -13,10 +13,10 @@ import { ProductDiscountSuggestionSection } from '../shared/ProductDiscountSugge
 import { useCalculatorPageProps } from '../shared/CalculatorContext';
 import { useCalculatorStateCommit } from '../shared/useCalculatorStateCommit';
 import { useStoreActivityDesignSettings } from '../shared/useStoreActivityDesignSettings';
-import { ALL_PLATFORMS, bestCouponOption, bestFullReduction, buildFeeSummary, calculationTotalRange, PLATFORM_NAMES, pricingStrategyTargetForPay } from '../../domain/core';
+import { ALL_PLATFORMS, bestFullReduction, buildFeeSummary, calculationTotalRange, PLATFORM_NAMES, pricingStrategyTargetForPay } from '../../domain/core';
 import { jingdongSubsidyCouponsToActivityRedTiers } from '../../domain/activity/activityDesigner';
 import { average, finiteRate, profitRateByBasis, roundMoney } from '../../domain/money';
-import { jingdongCouponEffectiveAmount, jingdongCouponEffectiveMerchantAmount } from '../../domain/jingdongSubsidyAnalysis';
+import { bestJingdongStoreCouponOption, jingdongCouponEffectiveAmount, jingdongCouponEffectiveMerchantAmount } from '../../domain/jingdongSubsidyAnalysis';
 import { tablePagination } from '../../utils/table';
 import { dateTimeText, formatActivityOriginalDiscountTiers, money, rateText } from '../../utils/format';
 import {
@@ -307,7 +307,7 @@ function evaluateJingdongActivityFinancials(
 ): JingdongActivityFinancials {
   const finalPay = Math.max(0, roundMoney(couponBasis - selectionAmount));
   const merchantSettlement = roundMoney(couponBasis - selectionMerchantAmount);
-  const fee = buildFeeSummary(state, store, finalPay);
+  const fee = buildFeeSummary(state, store, finalPay, 'jingdong');
   const netPay = roundMoney(merchantSettlement - fee.commission - fee.serviceFee - fee.freightSubsidy);
   const profit = roundMoney(netPay - cost);
   const target = pricingStrategyTargetForPay(state, store, finalPay, jingdongBucketStapleCount(finalPay));
@@ -349,7 +349,7 @@ function buildJingdongBucketDiagnosticsForCoupon(
       const originalTotal = jingdongBucketOriginalTotal(bucket);
       const full = bestFullReduction(activity?.fullReductions || [], originalTotal);
       const afterFull = Math.max(0, roundMoney(originalTotal - full.amount));
-      const storeCouponOption = bestCouponOption(activity?.coupons || [], originalTotal, store.maxCoupons);
+      const storeCouponOption = bestJingdongStoreCouponOption(store, originalTotal, afterFull);
       const couponBasis = Math.max(0, roundMoney(afterFull - storeCouponOption.amount));
       if (couponBasis + 1e-9 < coupon.threshold) return null;
       const smallCoupon = bestStackableJingdongSmallCoupon(coupons, couponBasis);

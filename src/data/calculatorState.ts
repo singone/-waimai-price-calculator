@@ -113,10 +113,15 @@ function defaultJingdongSubsidyCoupon(
 }
 
 export const DEFAULT_JINGDONG_SUBSIDY_COUPONS: JingdongSubsidyCoupon[] = [
+  // 已取得基础分摊的参考券；各店报名及最大加码需独立核实后启用。
+  defaultJingdongSubsidyCoupon('散店9月金秋券109-27', 'large', 109, 27, 25, false, false),
+  defaultJingdongSubsidyCoupon('散店9月金秋券90-22', 'large', 90, 22, 20, false, false),
+  defaultJingdongSubsidyCoupon('散店9月金秋券128-32', 'large', 128, 32, 30, false, false),
+  defaultJingdongSubsidyCoupon('1星补贴券8-5', 'large', 8, 5, 3.5, false, false),
   defaultJingdongSubsidyCoupon('散店9月金秋券70-20', 'large', 70, 20, 18),
   defaultJingdongSubsidyCoupon('散店9月金秋券60-18', 'large', 60, 18, 16),
   defaultJingdongSubsidyCoupon('散店9月金秋券50-16', 'large', 50, 16, 14),
-  defaultJingdongSubsidyCoupon('散店9月金秋券40-12', 'large', 60, 12, 10),
+  defaultJingdongSubsidyCoupon('散店9月金秋券40-12', 'large', 40, 12, 10),
   defaultJingdongSubsidyCoupon('散店9月金秋券35-10', 'large', 35, 10, 8.5),
   defaultJingdongSubsidyCoupon('散店9月金秋券30-8', 'large', 30, 8, 6.5),
 
@@ -137,7 +142,7 @@ export const DEFAULT_JINGDONG_SUBSIDY_COUPONS: JingdongSubsidyCoupon[] = [
   defaultJingdongSubsidyCoupon('主力券满25减10', 'large', 25, 10, 8),
   defaultJingdongSubsidyCoupon('主力券满20减8', 'large', 20, 8, 6),
   defaultJingdongSubsidyCoupon('主力券满10减6', 'large', 10, 6, 4.5),
-  defaultJingdongSubsidyCoupon('冲刺券满0.1减3', 'small', 0.1, 3, 1.5, true),
+  defaultJingdongSubsidyCoupon('冲刺券满0.01减3', 'small', 0.01, 3, 1.5, true),
   defaultJingdongSubsidyCoupon('冲刺券满0.01减5', 'small', 0.01, 5, 2.5, true),
   defaultJingdongSubsidyCoupon('冲刺券满3减2', 'small', 3, 2, 1, true),
   defaultJingdongSubsidyCoupon('冲刺券满5减4', 'small', 5, 4, 2, true)
@@ -145,6 +150,15 @@ export const DEFAULT_JINGDONG_SUBSIDY_COUPONS: JingdongSubsidyCoupon[] = [
 
 export function createDefaultJingdongSubsidyCoupons() {
   return DEFAULT_JINGDONG_SUBSIDY_COUPONS.map(row => ({ ...row }));
+}
+
+/** 只补缺少的测算参考项，保留已保存金额；新增项核实后再启用。 */
+export function appendMissingJingdongReferenceCoupons(rows: JingdongSubsidyCoupon[]) {
+  const missing = createDefaultJingdongSubsidyCoupons().filter(reference => !rows.some(row =>
+    row.kind === reference.kind && row.threshold === reference.threshold && row.amount === reference.amount
+    && row.merchantAmount === reference.merchantAmount && row.platformAmount === reference.platformAmount
+  ));
+  return rows.concat(missing.map(row => ({ ...row, enabled: false })));
 }
 
 function makeDefaultActivities(prefix: string): Activities {
@@ -582,7 +596,8 @@ function normalizeActivities(data: Partial<Activities> | undefined, platformName
       channel: row.channel,
       targetUser: row.targetUser,
       thresholdMode: row.thresholdMode,
-      usageSuggestion: row.usageSuggestion ? String(row.usageSuggestion) : undefined
+      usageSuggestion: row.usageSuggestion ? String(row.usageSuggestion) : undefined,
+      stackableWithCoupons: typeof row.stackableWithCoupons === 'boolean' ? row.stackableWithCoupons : undefined
     })) : fallback.coupons,
     redAddOns: Array.isArray(data?.redAddOns) ? data.redAddOns.map(row => ({
       enabled: parseBoolean(row.enabled, true),

@@ -1,0 +1,934 @@
+{
+  "version": 1,
+  "platform": "jingdong",
+  "storeName": "弘金饭团",
+  "observedAt": "2026-10-12T09:59:17+08:00",
+  "source": "京东后台 → 商家商品管理 → 任务列表：2026-10-12 09:59:17 全量86条商品导出；已排除5项加量规格绑定冲突",
+  "unsupportedRules": [],
+  "items": [
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrmurmzb-83jux",
+      "productName": "单人招牌尝鲜餐｜人气饭团+饮品任选",
+      "value": 30.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrmurmzb-83jux",
+      "productName": "单人招牌尝鲜餐｜人气饭团+饮品任选",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-3bq6i",
+      "productName": "金枪鱼海鸭蛋饭团｜双料·鲜香轻食",
+      "value": 33.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-3bq6i",
+      "productName": "金枪鱼海鸭蛋饭团｜双料·鲜香轻食",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-qmqgh",
+      "productName": "火腿片（1片）",
+      "value": 4.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-qmqgh",
+      "productName": "火腿片（1片）",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-q7ltr",
+      "productName": "单人肉香饱腹餐｜饭团+肉肠+豆乳",
+      "value": 40.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-q7ltr",
+      "productName": "单人肉香饱腹餐｜饭团+肉肠+豆乳",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-ifyks",
+      "productName": "单人清爽轻食餐｜清爽饭团+品质饮品",
+      "value": 37.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-ifyks",
+      "productName": "单人清爽轻食餐｜清爽饭团+品质饮品",
+      "value": false
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-ej63u",
+      "productName": "火腿爆浆芝士饭团｜火腿咸香·芝香浓郁",
+      "value": 27.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-ej63u",
+      "productName": "火腿爆浆芝士饭团｜火腿咸香·芝香浓郁",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-mlk3m",
+      "productName": "单人全家福豪华餐｜全家福饭团+饮品",
+      "value": 55.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-mlk3m",
+      "productName": "单人全家福豪华餐｜全家福饭团+饮品",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-5ony0",
+      "productName": "叉烧芝士饭团｜双料·甜咸香浓",
+      "value": 35.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-5ony0",
+      "productName": "叉烧芝士饭团｜双料·甜咸香浓",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-79jk1",
+      "productName": "单人招牌轻享套餐｜饭团+饮品双任选",
+      "value": 29.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-79jk1",
+      "productName": "单人招牌轻享套餐｜饭团+饮品双任选",
+      "value": false
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-gvyzp",
+      "productName": "鸡排芝士饭团｜双料·肉感爆浆",
+      "value": 33.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-gvyzp",
+      "productName": "鸡排芝士饭团｜双料·肉感爆浆",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-u600l",
+      "productName": "双人豪华畅享餐｜饭团双饮加双份小吃",
+      "value": 71.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-u600l",
+      "productName": "双人豪华畅享餐｜饭团双饮加双份小吃",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-wfvlr",
+      "productName": "玉米粒15g｜清甜解腻",
+      "value": 4.99
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-wfvlr",
+      "productName": "玉米粒15g｜清甜解腻",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-rk4o7",
+      "productName": "蟹棒丨加在饭团里",
+      "value": 5.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-rk4o7",
+      "productName": "蟹棒丨加在饭团里",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-4grqk",
+      "productName": "双人饭团双饮餐｜两份饭团两杯饮品",
+      "value": 56.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-4grqk",
+      "productName": "双人饭团双饮餐｜两份饭团两杯饮品",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p_0bjy0ph3",
+      "productName": "我不要萝卜干",
+      "value": 0.01
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p_0bjy0ph3",
+      "productName": "我不要萝卜干",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-4za7o",
+      "productName": "13&deg;醇香豆乳（冷热可备注）",
+      "value": 6.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-4za7o",
+      "productName": "13&deg;醇香豆乳（冷热可备注）",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrluykmx-u3o40",
+      "productName": "【单人甄选】饭团二选1+爆汁烤肠+饮品",
+      "value": 34.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrluykmx-u3o40",
+      "productName": "【单人甄选】饭团二选1+爆汁烤肠+饮品",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-7x8q9",
+      "productName": "【单人甄选套餐】秘制叉烧肉饭团+营养豆乳",
+      "value": 32.8
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-7x8q9",
+      "productName": "【单人甄选套餐】秘制叉烧肉饭团+营养豆乳",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-sd64x",
+      "productName": "娃哈哈AD钙奶1瓶｜酸甜解腻",
+      "value": 5.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-sd64x",
+      "productName": "娃哈哈AD钙奶1瓶｜酸甜解腻",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-95rt6",
+      "productName": "康师傅冰糖雪梨250ml｜清甜不腻",
+      "value": 4.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-95rt6",
+      "productName": "康师傅冰糖雪梨250ml｜清甜不腻",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-2k6nt",
+      "productName": "元气满满饭团｜丰富配料·一口满足",
+      "value": 21.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-2k6nt",
+      "productName": "元气满满饭团｜丰富配料·一口满足",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-4jet7",
+      "productName": "绿豆百合（冷热可备注）",
+      "value": 8.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-4jet7",
+      "productName": "绿豆百合（冷热可备注）",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-memi6",
+      "productName": "飞鱼仔丨加在饭团里",
+      "value": 7.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-memi6",
+      "productName": "飞鱼仔丨加在饭团里",
+      "value": false
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-u0ue9",
+      "productName": "蟹棒火腿饭团｜双重咸鲜·口味温和",
+      "value": 24.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-u0ue9",
+      "productName": "蟹棒火腿饭团｜双重咸鲜·口味温和",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-ohf09",
+      "productName": "伊利优酸乳 单盒装250ml/1盒",
+      "value": 5.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-ohf09",
+      "productName": "伊利优酸乳 单盒装250ml/1盒",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-9psc6",
+      "productName": "香菇15g｜鲜香更足",
+      "value": 4.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-9psc6",
+      "productName": "香菇15g｜鲜香更足",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p_831gbhj3",
+      "productName": "我不要生菜",
+      "value": 0.01
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p_831gbhj3",
+      "productName": "我不要生菜",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-cy4dv",
+      "productName": "金黄玉米汁（冷热可备注）",
+      "value": 7.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-cy4dv",
+      "productName": "金黄玉米汁（冷热可备注）",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p_tjtilf2m",
+      "productName": "章鱼丸子海苔肉松（六个一份）",
+      "value": 26.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p_tjtilf2m",
+      "productName": "章鱼丸子海苔肉松（六个一份）",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p_ohivr2a5",
+      "productName": "我不要油酥",
+      "value": 0.01
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p_ohivr2a5",
+      "productName": "我不要油酥",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-bot0h",
+      "productName": "招牌全家福饭团｜肉蛋芝士豪华款",
+      "value": 45.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-bot0h",
+      "productName": "招牌全家福饭团｜肉蛋芝士豪华款",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-4i9or",
+      "productName": "双人饭团随心选｜两份主食自由搭配",
+      "value": 48.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-4i9or",
+      "productName": "双人饭团随心选｜两份主食自由搭配",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-bjgo7",
+      "productName": "台式烤肠1根｜咸香加餐",
+      "value": 5.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-bjgo7",
+      "productName": "台式烤肠1根｜咸香加餐",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-gb26k",
+      "productName": "黑椒牛排饭团｜黑椒浓香·肉感扎实",
+      "value": 29.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-gb26k",
+      "productName": "黑椒牛排饭团｜黑椒浓香·肉感扎实",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-jfjrb",
+      "productName": "单人豪华随心选｜鸡排饭团+加肉+饮品",
+      "value": 40.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-jfjrb",
+      "productName": "单人豪华随心选｜鸡排饭团+加肉+饮品",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p_3plsg5q0",
+      "productName": "进店收藏福利｜任选1件|每单限1份",
+      "value": 0.01
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p_3plsg5q0",
+      "productName": "进店收藏福利｜任选1件|每单限1份",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-y7m45",
+      "productName": "奥尔良芝士饭团｜双料·芝士爆浆",
+      "value": 34.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-y7m45",
+      "productName": "奥尔良芝士饭团｜双料·芝士爆浆",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p_pp7k6fyi",
+      "productName": "我不要沙拉酱",
+      "value": 0.01
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p_pp7k6fyi",
+      "productName": "我不要沙拉酱",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-1yko6",
+      "productName": "康师傅冰红茶250ml｜冰爽解腻",
+      "value": 4.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-1yko6",
+      "productName": "康师傅冰红茶250ml｜冰爽解腻",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-4t9rl",
+      "productName": "金枪鱼丨加在饭团里",
+      "value": 5.99
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-4t9rl",
+      "productName": "金枪鱼丨加在饭团里",
+      "value": false
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-4hk8q",
+      "productName": "海藻飞鱼籽饭团｜鲜香爽脆·层次丰富",
+      "value": 27.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-4hk8q",
+      "productName": "海藻飞鱼籽饭团｜鲜香爽脆·层次丰富",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-mr66e",
+      "productName": "芝士玉米饭团｜香甜奶香·口味柔和",
+      "value": 26.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-mr66e",
+      "productName": "芝士玉米饭团｜香甜奶香·口味柔和",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-5le2g",
+      "productName": "奥尔良烤肉饭团｜甜辣酱香·烤肉入味",
+      "value": 22.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-5le2g",
+      "productName": "奥尔良烤肉饭团｜甜辣酱香·烤肉入味",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-iwjj2",
+      "productName": "单人加料豪华餐｜双料饭团+饮品",
+      "value": 41.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-iwjj2",
+      "productName": "单人加料豪华餐｜双料饭团+饮品",
+      "value": false
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-7rvmx",
+      "productName": "单人酥香肉松餐｜肉松饭团+饮品",
+      "value": 24.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-7rvmx",
+      "productName": "单人酥香肉松餐｜肉松饭团+饮品",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-qlu05",
+      "productName": "海鸭咸蛋黄1颗｜咸香升级",
+      "value": 6.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-qlu05",
+      "productName": "海鸭咸蛋黄1颗｜咸香升级",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p_0sjruer6",
+      "productName": "章鱼小丸子木鱼花（六个一份）",
+      "value": 26.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p_0sjruer6",
+      "productName": "章鱼小丸子木鱼花（六个一份）",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-kihm6",
+      "productName": "单人轻享鸡排餐｜鸡排饭团+饮品",
+      "value": 31.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-kihm6",
+      "productName": "单人轻享鸡排餐｜鸡排饭团+饮品",
+      "value": false
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p_585k22lw",
+      "productName": "【新客+收藏立减】点亮右上角立减",
+      "value": 0.01
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p_585k22lw",
+      "productName": "【新客+收藏立减】点亮右上角立减",
+      "value": false
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p_ogaax8a9",
+      "productName": "为什么选弘金饭团｜现蒸好米·真材实料",
+      "value": 0.01
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p_ogaax8a9",
+      "productName": "为什么选弘金饭团｜现蒸好米·真材实料",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-st3tt",
+      "productName": "米饭增量50g｜更顶饱",
+      "value": 4.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-st3tt",
+      "productName": "米饭增量50g｜更顶饱",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-4d9j0",
+      "productName": "卫龙小面筋24g｜香辣有嚼劲",
+      "value": 4.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-4d9j0",
+      "productName": "卫龙小面筋24g｜香辣有嚼劲",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p_b2lzgs0m",
+      "productName": "我不要肉松",
+      "value": 0.01
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p_b2lzgs0m",
+      "productName": "我不要肉松",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-20287",
+      "productName": "香肠丨加料只有半份哦",
+      "value": 5.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-20287",
+      "productName": "香肠丨加料只有半份哦",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-2llsn",
+      "productName": "蒲烧鳗鱼饭团｜蒲烧鲜甜·酱香浓郁",
+      "value": 33.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-2llsn",
+      "productName": "蒲烧鳗鱼饭团｜蒲烧鲜甜·酱香浓郁",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-st317",
+      "productName": "奶香浓郁拉丝芝士",
+      "value": 7.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-st317",
+      "productName": "奶香浓郁拉丝芝士",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p_q2pgbbll",
+      "productName": "统一鲜橙多橙汁饮料310ml／罐",
+      "value": 5.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p_q2pgbbll",
+      "productName": "统一鲜橙多橙汁饮料310ml／罐",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-kjgh0",
+      "productName": "卤蛋半个｜顶饱加分 | 加在饭团",
+      "value": 4.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-kjgh0",
+      "productName": "卤蛋半个｜顶饱加分 | 加在饭团",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-l60q8",
+      "productName": "肉松8g｜酥香更浓",
+      "value": 5.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-l60q8",
+      "productName": "肉松8g｜酥香更浓",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-vv5ml",
+      "productName": "爆汁烤肠1根｜肉感更足",
+      "value": 7.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-vv5ml",
+      "productName": "爆汁烤肠1根｜肉感更足",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p_e8fima8q",
+      "productName": "酥香肉松饭团｜原味饭团·简单好吃",
+      "value": 20.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p_e8fima8q",
+      "productName": "酥香肉松饭团｜原味饭团·简单好吃",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-nfw60",
+      "productName": "双人肉香分享餐｜两份饭团搭配双份小吃",
+      "value": 59.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-nfw60",
+      "productName": "双人肉香分享餐｜两份饭团搭配双份小吃",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-9ydxw",
+      "productName": "榴莲芝士饭团｜榴香浓郁·芝士绵香",
+      "value": 33.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-9ydxw",
+      "productName": "榴莲芝士饭团｜榴香浓郁·芝士绵香",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p-mrlob1nd-7zye0",
+      "productName": "韩国泡菜｜酸爽开胃",
+      "value": 4.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p-mrlob1nd-7zye0",
+      "productName": "韩国泡菜｜酸爽开胃",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p_2bhfm21l",
+      "productName": "统一酸梅汤310罐",
+      "value": 5.9
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p_2bhfm21l",
+      "productName": "统一酸梅汤310罐",
+      "value": true
+    },
+    {
+      "kind": "product",
+      "field": "price",
+      "productId": "p_fkndoacc",
+      "productName": "我不要海苔",
+      "value": 0.01
+    },
+    {
+      "kind": "product",
+      "field": "enabled",
+      "productId": "p_fkndoacc",
+      "productName": "我不要海苔",
+      "value": true
+    }
+  ]
+}

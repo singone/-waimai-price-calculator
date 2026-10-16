@@ -46,7 +46,7 @@ import {
 } from '../results/resultsCalculationUtils';
 import { normalizeActivityScanComboPools } from './activityDesignPageUtils';
 
-const ACTIVITY_PRICE_SCAN_MODEL_VERSION = 'activity-price-scan-v13';
+const ACTIVITY_PRICE_SCAN_MODEL_VERSION = 'activity-price-scan-v15';
 
 export function activityPriceScanRecordKey(storeId: string) {
   return `${storeId}::${ACTIVITY_PRICE_SCAN_MODEL_VERSION}`;
@@ -126,6 +126,7 @@ function activityPriceScanStoreSignatureInput(store: Store) {
     maxChecks: store.maxChecks,
     usePlatformFee: store.usePlatformFee,
     customFeeRule: store.customFeeRule,
+    platformFeeOverrides: store.platformFeeOverrides,
     activityDesignSettings: store.activityDesignSettings,
     activities: {
       meituan: {
@@ -378,7 +379,7 @@ function nonNegativeAmount(value: unknown) {
 }
 
 function bestActivityScanDetailBaseRed(state: CalculatorState, store: Store, platform: Platform, basis: number) {
-  if (platform !== 'jingdong') return bestBaseRed(state, platform, basis);
+  if (platform !== 'jingdong') return bestBaseRed(state, platform, basis, store);
   const tier = jingdongSubsidyCouponsToActivityRedTiers(store.activities.jingdong?.jingdongSubsidyCoupons)
     .filter(row => row.enabled && basis + 1e-9 >= row.threshold)
     .sort((a, b) => b.max - a.max || b.threshold - a.threshold)[0];
@@ -411,7 +412,7 @@ function buildActivityOriginalScanDetailRow(
   const redAddOn = bestRedAddOn(activity.redAddOns.concat(plannedRedAddOn), afterPlatformFull);
   const redAddAmount = Math.min(nonNegativeAmount(redAddOn.amount), afterBaseRed);
   const finalPay = Math.max(0, roundMoney(afterBaseRed - redAddAmount));
-  const fee = buildFeeSummary(state, store, finalPay);
+  const fee = buildFeeSummary(state, store, finalPay, bucket.platform);
   const netPay = Math.max(0, roundMoney(finalPay - fee.commission - fee.serviceFee - fee.freightSubsidy));
   const activityAmount = activityAmountByBusinessFormula({
     fullReduction: platformFull.amount,

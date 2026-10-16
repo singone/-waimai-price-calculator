@@ -35,10 +35,12 @@ export function currentStoreFrom(state: CalculatorState) {
   return state.stores.find(store => store.id === state.selectedStoreId) || state.stores[0];
 }
 
-export function effectiveFeeRule(state: CalculatorState, store = currentStoreFrom(state)): FeeRule {
-  return store.usePlatformFee || !store.customFeeRule
+export function effectiveFeeRule(state: CalculatorState, store = currentStoreFrom(state), platform?: Platform): FeeRule {
+  const rule = store.usePlatformFee || !store.customFeeRule
     ? deepClone(state.platformRules)
     : { ...deepClone(state.platformRules), ...deepClone(store.customFeeRule) };
+  const override = platform ? store.platformFeeOverrides?.[platform] : undefined;
+  return override ? { ...rule, ...override, redTiers: { ...rule.redTiers, ...override.redTiers } } : rule;
 }
 
 export function isProductListedOnPlatform(product: Product, platform: Platform) {
@@ -336,11 +338,11 @@ export function calculateServiceFee(rule: FeeRule, store: Store, priceBasis: num
   let priceFee = 0;
   if (basis > 25) priceFee = 5 * rule.midPriceRate + (basis - 25) * rule.highPriceRate;
   else if (basis > 20) priceFee = (basis - 20) * rule.midPriceRate;
-  return roundMoney(distanceFee + priceFee + calculateTimeFee(store.orderTime));
+  return roundMoney(distanceFee + priceFee + (rule.timeFeeOverride ?? calculateTimeFee(store.orderTime)));
 }
 
-export function buildFeeSummary(state: CalculatorState, store: Store, finalPay: number) {
-  const rule = effectiveFeeRule(state, store);
+export function buildFeeSummary(state: CalculatorState, store: Store, finalPay: number, platform?: Platform) {
+  const rule = effectiveFeeRule(state, store, platform);
   const commission = roundMoney(Math.max(finalPay * (rule.commissionRate / 100), rule.minCommission));
   const serviceFee = calculateServiceFee(rule, store, finalPay);
   const freightSubsidy = calculateFreightSubsidy(rule, store.deliveryDistance);
@@ -458,8 +460,8 @@ export function bestFullReduction(rows: FullReduction[], basis: number): FullRed
     .sort((a, b) => b.amount - a.amount || b.threshold - a.threshold)[0] || { enabled: true, threshold: 0, amount: 0 };
 }
 
-export function bestBaseRed(state: CalculatorState, platform: Platform, basis: number): RedTier & { amount: number } {
-  const tier = state.platformRules.redTiers[platform]
+export function bestBaseRed(state: CalculatorState, platform: Platform, basis: number, store = currentStoreFrom(state)): RedTier & { amount: number } {
+  const tier = (effectiveFeeRule(state, store, platform).redTiers[platform] || [])
     .filter(row => row.enabled && basis + 1e-9 >= row.threshold)
     .sort((a, b) => b.max - a.max || b.threshold - a.threshold)[0];
   if (!tier) return { enabled: true, threshold: 0, min: 0, max: 0, amount: 0 };
@@ -484,6 +486,7 @@ export function eligibleCouponOptions(coupons: Coupon[], basis: number, maxCoupo
     if (current.chosen.length >= limit) continue;
     for (let i = eligible.length - 1; i >= current.start; i--) {
       const coupon = eligible[i];
+      if (current.chosen.length && (coupon.stackableWithCoupons === false || current.chosen.some(item => item.stackableWithCoupons === false))) continue;
       const next = current.chosen.concat(coupon);
       const nextAmount = roundMoney(current.amount + coupon.amount);
       options.push({ coupons: next, amount: nextAmount });
@@ -493,13 +496,35 @@ export function eligibleCouponOptions(coupons: Coupon[], basis: number, maxCoupo
   return options;
 }
 
-export function bestCouponOption(coupons: Coupon[], basis: number, maxCoupons: number) {
+export function bestCouponOption(
+  coupons: Coupon[],
+  basis: number,
+  maxCoupons: number,
+  finalPayForAmount?: (amount: number) => number
+) {
+  // 券后还有红包阶梯时，以最终实付择优，不能只比较订单券面额。
+  if (finalPayForAmount) {
+    const options = eligibleCouponOptions(coupons, basis, maxCoupons);
+    let best = options[0];
+    let lowestPay = finalPayForAmount(best.amount);
+    for (const option of options.slice(1)) {
+      const pay = finalPayForAmount(option.amount);
+      if (pay < lowestPay - 1e-9 || (Math.abs(pay - lowestPay) < 1e-9 && option.amount > best.amount)) {
+        best = option;
+        lowestPay = pay;
+      }
+    }
+    return best;
+  }
   const limit = Math.max(0, Math.floor(Number(maxCoupons) || 0));
   if (limit <= 0) return { coupons: [], amount: 0 };
-  const selected = coupons
+  const eligible = coupons
     .filter(coupon => coupon.enabled && basis + 1e-9 >= coupon.threshold)
-    .sort((a, b) => b.amount - a.amount || b.threshold - a.threshold || a.name.localeCompare(b.name, 'zh-CN'))
-    .slice(0, limit);
+    .sort((a, b) => b.amount - a.amount || b.threshold - a.threshold || a.name.localeCompare(b.name, 'zh-CN'));
+  const stackable = eligible.filter(coupon => coupon.stackableWithCoupons !== false).slice(0, limit);
+  const single = eligible.find(coupon => coupon.stackableWithCoupons === false);
+  const stackableAmount = roundMoney(stackable.reduce((sum, coupon) => sum + Math.max(0, Number(coupon.amount) || 0), 0));
+  const selected = single && single.amount > stackableAmount ? [single] : stackable;
   return {
     coupons: selected,
     amount: roundMoney(selected.reduce((sum, coupon) => sum + Math.max(0, Number(coupon.amount) || 0), 0))
@@ -571,7 +596,7 @@ export function createComboEvaluationRow(
   ignored = false,
   ignoreReason = ''
 ): ComboEvaluationRow {
-  const fee = buildFeeSummary(state, store, finalPay);
+  const fee = buildFeeSummary(state, store, finalPay, platform);
   const netPay = Math.max(0, roundMoney(finalPay - fee.commission - fee.serviceFee - fee.freightSubsidy));
   const profit = roundMoney(netPay - totals.costTotal);
   const stapleCount = comboStapleServingCount(items);
@@ -663,9 +688,12 @@ export function evaluateComboWithCurrentActivities(
   const discountThresholdBasis = totals.originalTotal;
   const full = bestFullReduction(activity.fullReductions, discountThresholdBasis);
   const afterFull = Math.max(0, roundMoney(totals.afterProductDiscount - full.amount));
-  const couponOption = bestCouponOption(activity.coupons, discountThresholdBasis, store.maxCoupons);
+  const couponOption = bestCouponOption(activity.coupons, discountThresholdBasis, store.maxCoupons, amount => {
+    const basis = Math.max(0, roundMoney(afterFull - amount));
+    return Math.max(0, roundMoney(basis - bestBaseRed(state, platform, basis, store).amount - bestRedAddOn(activity.redAddOns, basis).amount));
+  });
   const afterCoupon = Math.max(0, roundMoney(afterFull - couponOption.amount));
-  const baseRed = bestBaseRed(state, platform, afterCoupon);
+  const baseRed = bestBaseRed(state, platform, afterCoupon, store);
   const addOn = bestRedAddOn(activity.redAddOns, afterCoupon);
   const finalPay = Math.max(0, roundMoney(afterCoupon - baseRed.amount - addOn.amount));
   const inRange = isInPayRange(settings, finalPay);

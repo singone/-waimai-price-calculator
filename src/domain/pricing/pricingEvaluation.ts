@@ -265,12 +265,12 @@ function pricingExpense(rule: FeeRule, store: Store, platform: Platform, origina
     : { enabled: true, threshold: matchedBaseRed.threshold, min: baseRedFloor, max: baseRedFloor, amount: baseRedFloor };
   const freightSubsidy = calculateFreightSubsidy(rule, store.deliveryDistance);
   const fixedActivityCost = roundMoney(settings.fixedActivityCost);
-  const finalPay = Math.max(0, roundMoney(originalPrice - baseRed.amount - freightSubsidy - fixedActivityCost));
+  const finalPay = Math.max(0, roundMoney(originalPrice - baseRed.amount - fixedActivityCost));
   const commission = roundMoney(Math.max(finalPay * (rule.commissionRate / 100), rule.minCommission));
   const serviceFee = calculateServiceFee(rule, store, finalPay);
   const commissionDeliveryFee = roundMoney(commission + serviceFee);
   const platformExpenseTotal = roundMoney(baseRed.amount + commission + serviceFee + freightSubsidy + fixedActivityCost);
-  const netRevenue = roundMoney(finalPay - commission - serviceFee);
+  const netRevenue = roundMoney(finalPay - commission - serviceFee - freightSubsidy);
   return {
     baseRed,
     baseRedAmount: baseRed.amount,
@@ -787,6 +787,7 @@ export async function runPricingEvaluationCalculation(
 
   platformLoop:
   for (const platform of platforms) {
+    const rule = effectiveFeeRule(state, store, platform);
     const platformReferenceProducts = store.products.filter(product => isProductListedOnPlatform(product, platform));
     const platformProducts = store.products.filter(product => {
       if (!isProductListedOnPlatform(product, platform)) return false;
